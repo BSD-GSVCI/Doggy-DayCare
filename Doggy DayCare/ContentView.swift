@@ -10,7 +10,10 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Dog.arrivalDate) private var allDogs: [Dog]
+    @Query(sort: [
+        SortDescriptor(\Dog.departureDate, order: .forward),
+        SortDescriptor(\Dog.name, order: .forward)
+    ]) private var allDogs: [Dog]
     @State private var showingAddDog = false
     @State private var showingWalkingList = false
     @State private var showingMedicationsList = false
@@ -28,13 +31,13 @@ struct ContentView: View {
     }
     
     private var daycareDogs: [Dog] {
-        filteredDogs.filter { !$0.isBoarding && $0.isCurrentlyPresent }
+        filteredDogs.filter { !$0.isBoarding }
     }
     
     private var boardingDogs: [Dog] {
-        filteredDogs.filter { $0.isBoarding && $0.isCurrentlyPresent }
+        filteredDogs.filter { $0.isBoarding }
     }
-    
+
     var body: some View {
         NavigationStack {
             List {
@@ -70,49 +73,50 @@ struct ContentView: View {
             .searchable(text: $searchText, prompt: "Search dogs by name")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showingAddDog = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Menu {
-                        Button {
-                            showingAddDog = true
-                        } label: {
-                            Label("Add Dog", systemImage: "plus")
-                        }
-                        
+                    HStack(spacing: 16) {
                         NavigationLink {
                             WalkingListView()
                         } label: {
-                            Label("Walking List", systemImage: "figure.walk")
+                            Image(systemName: "figure.walk")
                         }
                         
                         NavigationLink {
                             FeedingListView()
                         } label: {
-                            Label("Feeding List", systemImage: "fork.knife")
+                            Image(systemName: "fork.knife")
                         }
                         
-                        Button {
-                            showingMedicationsList = true
+                        NavigationLink {
+                            MedicationsListView()
                         } label: {
-                            Label("Medications List", systemImage: "pills")
+                            Image(systemName: "pills")
                         }
                         
-                        Button {
-                            Task {
-                                await exportData()
+                        Menu {
+                            Button {
+                                Task {
+                                    await exportData()
+                                }
+                            } label: {
+                                Label("Export Data", systemImage: "square.and.arrow.up")
                             }
                         } label: {
-                            Label("Export Data", systemImage: "square.and.arrow.up")
+                            Image(systemName: "ellipsis.circle")
                         }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
                     }
                 }
             }
             .sheet(isPresented: $showingAddDog) {
                 DogFormView()
-            }
-            .sheet(isPresented: $showingMedicationsList) {
-                MedicationsListView()
             }
             .sheet(isPresented: $showingExportSheet) {
                 if let url = exportURL {
@@ -130,7 +134,7 @@ struct ContentView: View {
             }
         }
     }
-    
+
     private func exportData() async {
         do {
             let url = try await BackupService.shared.exportDogs(allDogs)
@@ -162,9 +166,11 @@ private struct DogRow: View {
                             .foregroundStyle(.orange)
                     }
                     Spacer()
-                    Text(dog.formattedStayDuration)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    if dog.departureDate != nil {
+                        Text(dog.formattedStayDuration)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 
                 Text(dog.arrivalDate.formatted(date: .omitted, time: .shortened))
@@ -185,6 +191,15 @@ private struct DogRow: View {
                         .background(dog.isBoarding ? Color.blue.opacity(0.2) : Color.green.opacity(0.2))
                         .clipShape(Capsule())
                     
+                    if dog.isBoarding, let boardingEndDate = dog.boardingEndDate {
+                        Text("Until \(boardingEndDate.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.2))
+                            .clipShape(Capsule())
+                    }
+                    
                     if dog.isDaycareFed {
                         Text("Daycare Feeds")
                             .font(.caption)
@@ -192,25 +207,6 @@ private struct DogRow: View {
                             .padding(.vertical, 2)
                             .background(Color.orange.opacity(0.2))
                             .clipShape(Capsule())
-                    }
-                    
-                    if dog.needsWalking {
-                        HStack(spacing: 4) {
-                            Image(systemName: "drop.fill")
-                                .font(.caption)
-                                .foregroundStyle(.yellow)
-                            Text("\(dog.peeCount)")
-                                .font(.caption)
-                            Text("💩")
-                                .font(.caption)
-                                .foregroundColor(.brown)
-                            Text("\(dog.poopCount)")
-                                .font(.caption)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(Color.blue.opacity(0.1))
-                        .clipShape(Capsule())
                     }
                 }
             }

@@ -15,9 +15,9 @@ struct Doggy_DayCareApp: App {
     init() {
         do {
             // Create a schema with our Dog model
-            let schema = Schema([
+        let schema = Schema([
                 Dog.self
-            ])
+        ])
             
             // Configure the model container
             let modelConfiguration = ModelConfiguration(

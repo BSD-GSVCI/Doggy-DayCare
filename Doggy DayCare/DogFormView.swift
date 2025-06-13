@@ -5,51 +5,91 @@ struct DogFormView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
-    @State private var name: String
-    @State private var arrivalDate: Date
-    @State private var needsWalking: Bool
-    @State private var walkingNotes: String
-    @State private var isBoarding: Bool
-    @State private var specialInstructions: String
-    @State private var medications: String
-    @State private var isDaycareFed: Bool
+    @State private var name = ""
+    @State private var arrivalDate = Date()
+    @State private var departureDate: Date?
+    @State private var boardingEndDate: Date?
+    @State private var isBoarding = false
+    @State private var isDaycareFed = false
+    @State private var needsWalking = false
+    @State private var medications: String?
+    @State private var notes: String?
+    @State private var showingBoardingDatePicker = false
     
-    var dog: Dog?
+    private var dog: Dog?
     
     init(dog: Dog? = nil) {
-        _name = State(initialValue: dog?.name ?? "")
-        _arrivalDate = State(initialValue: dog?.arrivalDate ?? Date())
-        _needsWalking = State(initialValue: dog?.needsWalking ?? false)
-        _walkingNotes = State(initialValue: dog?.walkingNotes ?? "")
-        _isBoarding = State(initialValue: dog?.isBoarding ?? false)
-        _specialInstructions = State(initialValue: dog?.specialInstructions ?? "")
-        _medications = State(initialValue: dog?.medications ?? "")
-        _isDaycareFed = State(initialValue: dog?.isDaycareFed ?? false)
         self.dog = dog
+        if let dog = dog {
+            _name = State(initialValue: dog.name)
+            _arrivalDate = State(initialValue: dog.arrivalDate)
+            _departureDate = State(initialValue: dog.departureDate)
+            _boardingEndDate = State(initialValue: dog.boardingEndDate)
+            _isBoarding = State(initialValue: dog.isBoarding)
+            _isDaycareFed = State(initialValue: dog.isDaycareFed)
+            _needsWalking = State(initialValue: dog.needsWalking)
+            _medications = State(initialValue: dog.medications)
+            _notes = State(initialValue: dog.notes)
+        }
     }
     
     var body: some View {
         NavigationStack {
             Form {
-                Section("Basic Information") {
+                Section {
                     TextField("Name", text: $name)
                     DatePicker("Arrival Time", selection: $arrivalDate)
+                    
                     Toggle("Boarding", isOn: $isBoarding)
+                        .onChange(of: isBoarding) { _, newValue in
+                            if !newValue {
+                                boardingEndDate = nil
+                            }
+                        }
+                    
                     Toggle("Daycare Feeds", isOn: $isDaycareFed)
+                    
+                    if isBoarding {
+                        if let boardingEndDate = boardingEndDate {
+                            HStack {
+                                Text("Expected Departure")
+                                Spacer()
+                                Text(boardingEndDate.formatted(date: .long, time: .omitted))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                showingBoardingDatePicker = true
+                            }
+                        } else {
+                            Button("Set Expected Departure") {
+                                showingBoardingDatePicker = true
+                            }
+                        }
+                    }
                 }
                 
                 Section("Walking") {
                     Toggle("Needs Walking", isOn: $needsWalking)
                     if needsWalking {
-                        TextField("Walking Notes", text: $walkingNotes, axis: .vertical)
+                        TextField("Walking Notes", text: Binding(
+                            get: { notes ?? "" },
+                            set: { notes = $0.isEmpty ? nil : $0 }
+                        ), axis: .vertical)
                             .lineLimit(3...6)
                     }
                 }
                 
                 Section("Additional Information") {
-                    TextField("Medications (leave blank if none)", text: $medications, axis: .vertical)
+                    TextField("Medications (leave blank if none)", text: Binding(
+                        get: { medications ?? "" },
+                        set: { medications = $0.isEmpty ? nil : $0 }
+                    ), axis: .vertical)
                         .lineLimit(3...6)
-                    TextField("Special Instructions", text: $specialInstructions, axis: .vertical)
+                    TextField("Special Instructions", text: Binding(
+                        get: { notes ?? "" },
+                        set: { notes = $0.isEmpty ? nil : $0 }
+                    ), axis: .vertical)
                         .lineLimit(3...6)
                 }
             }
@@ -68,35 +108,68 @@ struct DogFormView: View {
                     .disabled(name.isEmpty)
                 }
             }
+            .sheet(isPresented: $showingBoardingDatePicker) {
+                NavigationStack {
+                    Form {
+                        DatePicker(
+                            "Expected Departure",
+                            selection: Binding(
+                                get: { boardingEndDate ?? Calendar.current.startOfDay(for: Date()) },
+                                set: { boardingEndDate = Calendar.current.startOfDay(for: $0) }
+                            ),
+                            in: Calendar.current.startOfDay(for: arrivalDate)...,
+                            displayedComponents: [.date]
+                        )
+                    }
+                    .navigationTitle("Set Expected Departure")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") {
+                                showingBoardingDatePicker = false
+                            }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") {
+                                showingBoardingDatePicker = false
+                            }
+                        }
+                    }
+                }
+                .presentationDetents([.medium])
+            }
         }
     }
     
     private func save() {
         if let dog = dog {
-            // Update existing dog
             dog.name = name
             dog.arrivalDate = arrivalDate
-            dog.needsWalking = needsWalking
-            dog.walkingNotes = walkingNotes.isEmpty ? nil : walkingNotes
+            dog.departureDate = departureDate
+            dog.boardingEndDate = boardingEndDate
             dog.isBoarding = isBoarding
-            dog.specialInstructions = specialInstructions.isEmpty ? nil : specialInstructions
-            dog.medications = medications.isEmpty ? nil : medications
             dog.isDaycareFed = isDaycareFed
-            dog.updatedAt = Date()
+            dog.needsWalking = needsWalking
+            dog.medications = medications
+            dog.notes = notes
+            dog.setModelContext(modelContext)
         } else {
-            // Create new dog
             let newDog = Dog(
                 name: name,
                 arrivalDate: arrivalDate,
-                needsWalking: needsWalking,
-                walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
+                departureDate: departureDate,
+                boardingEndDate: boardingEndDate,
                 isBoarding: isBoarding,
-                specialInstructions: specialInstructions.isEmpty ? nil : specialInstructions,
-                medications: medications.isEmpty ? nil : medications,
-                isDaycareFed: isDaycareFed
+                isDaycareFed: isDaycareFed,
+                needsWalking: needsWalking,
+                medications: medications,
+                notes: notes,
+                modelContext: modelContext
             )
             modelContext.insert(newDog)
         }
+        
+        try? modelContext.save()
         dismiss()
     }
 } 

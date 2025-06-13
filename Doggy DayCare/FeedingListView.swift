@@ -3,33 +3,73 @@ import SwiftData
 
 struct FeedingListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var allDogs: [Dog]
+    @Query(sort: \Dog.name) private var allDogs: [Dog]
+    @State private var searchText = ""
+    
+    private var filteredDogs: [Dog] {
+        if searchText.isEmpty {
+            return allDogs
+        } else {
+            return allDogs.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        }
+    }
     
     private var feedingDogs: [Dog] {
-        allDogs.filter { $0.isCurrentlyPresent }
+        filteredDogs.filter { $0.isCurrentlyPresent }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
     var body: some View {
-        List {
-            if feedingDogs.isEmpty {
-                ContentUnavailableView(
-                    "No Dogs Present",
-                    systemImage: "fork.knife.circle",
-                    description: Text("Add dogs to the main list")
-                )
-            } else {
-                ForEach(feedingDogs) { dog in
-                    DogFeedingRow(dog: dog)
+        NavigationStack {
+            List {
+                if feedingDogs.isEmpty {
+                    ContentUnavailableView(
+                        "No Dogs Present",
+                        systemImage: "fork.knife.circle",
+                        description: Text("Add dogs to the main list")
+                    )
+                } else {
+                    ForEach(feedingDogs) { dog in
+                        DogFeedingRow(dog: dog)
+                    }
                 }
             }
+            .searchable(text: $searchText, prompt: "Search dogs by name")
+            .navigationTitle("Feeding List")
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .navigationTitle("Feeding List")
     }
 }
 
 private struct DogFeedingRow: View {
+    @Environment(\.modelContext) private var modelContext
     @Bindable var dog: Dog
     @State private var showingFeedingAlert = false
+    @State private var showingEditAlert = false
+    @State private var showingDeleteAlert = false
+    @State private var selectedRecord: FeedingRecord?
+    @State private var selectedType: FeedingRecord.FeedingType?
+    
+    private func deleteRecord(_ record: FeedingRecord) {
+        withAnimation {
+            if let index = dog.feedingRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
+                dog.feedingRecords.remove(at: index)
+                dog.updatedAt = Date()
+                try? modelContext.save()
+            }
+        }
+    }
+    
+    private func updateRecord(_ record: FeedingRecord, type: FeedingRecord.FeedingType) {
+        withAnimation {
+            if let index = dog.feedingRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
+                let updatedRecord = FeedingRecord(timestamp: record.timestamp, type: type)
+                dog.feedingRecords[index] = updatedRecord
+                dog.updatedAt = Date()
+                try? modelContext.save()
+            }
+        }
+    }
     
     var body: some View {
         Button {
@@ -90,7 +130,7 @@ private struct DogFeedingRow: View {
                 
                 if !dog.feedingRecords.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
-                        ForEach(dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp }).prefix(3), id: \.timestamp) { record in
+                        ForEach(dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
                             HStack {
                                 Image(systemName: iconForFeedingType(record.type))
                                     .font(.caption)
@@ -101,7 +141,27 @@ private struct DogFeedingRow: View {
                                 Text(record.timestamp.formatted(date: .omitted, time: .shortened))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                Menu {
+                                    Button {
+                                        selectedRecord = record
+                                        selectedType = record.type
+                                        showingEditAlert = true
+                                    } label: {
+                                        Label("Change Type", systemImage: "arrow.triangle.2.circlepath")
+                                    }
+                                    
+                                    Button(role: .destructive) {
+                                        selectedRecord = record
+                                        showingDeleteAlert = true
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                } label: {
+                                    Image(systemName: "ellipsis.circle")
+                                        .foregroundStyle(.secondary)
+                                }
                             }
+                            .padding(.leading)
                         }
                     }
                     .padding(.top, 4)
@@ -127,6 +187,45 @@ private struct DogFeedingRow: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("What did \(dog.name) eat?")
+        }
+        .alert("Edit Feeding Record", isPresented: $showingEditAlert) {
+            Button("Breakfast") {
+                if let record = selectedRecord {
+                    updateRecord(record, type: .breakfast)
+                }
+            }
+            Button("Lunch") {
+                if let record = selectedRecord {
+                    updateRecord(record, type: .lunch)
+                }
+            }
+            Button("Dinner") {
+                if let record = selectedRecord {
+                    updateRecord(record, type: .dinner)
+                }
+            }
+            Button("Snack") {
+                if let record = selectedRecord {
+                    updateRecord(record, type: .snack)
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Change feeding type to:")
+        }
+        .alert("Delete Feeding Record", isPresented: $showingDeleteAlert) {
+            Button("Delete", role: .destructive) {
+                if let record = selectedRecord {
+                    deleteRecord(record)
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            if let record = selectedRecord {
+                Text("Are you sure you want to delete this \(record.type.rawValue) record?")
+            } else {
+                Text("Are you sure you want to delete this feeding record?")
+            }
         }
     }
     

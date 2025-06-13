@@ -39,6 +39,102 @@ struct DogDetailView: View {
                 if let medications = dog.medications, !medications.isEmpty {
                     Section("Medications") {
                         Text(medications)
+                        
+                        HStack {
+                            Image(systemName: "pills.fill")
+                                .font(.caption)
+                                .foregroundStyle(.purple)
+                            Text("\(dog.medicationCount) administrations")
+                                .font(.caption)
+                        }
+                        
+                        if !dog.medicationRecords.isEmpty {
+                            ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
+                                HStack {
+                                    Image(systemName: "pills.fill")
+                                        .foregroundStyle(.purple)
+                                    if let notes = record.notes {
+                                        Text(notes)
+                                            .font(.subheadline)
+                                    } else {
+                                        Text("Medication administered")
+                                            .font(.subheadline)
+                                    }
+                                    Spacer()
+                                    Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                            .onDelete { indexSet in
+                                let sortedRecords = dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp })
+                                for index in indexSet {
+                                    if let recordToDelete = sortedRecords[safe: index] {
+                                        dog.medicationRecords.removeAll { $0.timestamp == recordToDelete.timestamp }
+                                    }
+                                }
+                                dog.updatedAt = Date()
+                            }
+                        }
+                    }
+                }
+                
+                Section("Feeding Information") {
+                    HStack(spacing: 12) {
+                        HStack {
+                            Image(systemName: "sunrise.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                            Text("\(dog.breakfastCount)")
+                                .font(.caption)
+                        }
+                        HStack {
+                            Image(systemName: "sun.max.fill")
+                                .font(.caption)
+                                .foregroundStyle(.yellow)
+                            Text("\(dog.lunchCount)")
+                                .font(.caption)
+                        }
+                        HStack {
+                            Image(systemName: "sunset.fill")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                            Text("\(dog.dinnerCount)")
+                                .font(.caption)
+                        }
+                        HStack {
+                            Image(systemName: "pawprint.fill")
+                                .font(.caption)
+                                .foregroundStyle(.brown)
+                            Text("\(dog.snackCount)")
+                                .font(.caption)
+                        }
+                    }
+                    
+                    if !dog.feedingRecords.isEmpty {
+                        ForEach(dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
+                            HStack {
+                                Image(systemName: iconForFeedingType(record.type))
+                                    .foregroundStyle(colorForFeedingType(record.type))
+                                Text(record.type.rawValue.capitalized)
+                                    .font(.subheadline)
+                                Spacer()
+                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        .onDelete { indexSet in
+                            let sortedRecords = dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp })
+                            for index in indexSet {
+                                if let recordToDelete = sortedRecords[safe: index] {
+                                    dog.feedingRecords.removeAll { $0.timestamp == recordToDelete.timestamp }
+                                }
+                            }
+                            dog.updatedAt = Date()
+                        }
                     }
                 }
                 
@@ -81,6 +177,16 @@ struct DogDetailView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 .padding(.vertical, 2)
+                            }
+                            .onDelete { indexSet in
+                                let sortedRecords = dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp })
+                                for index in indexSet {
+                                    if let recordToDelete = sortedRecords[safe: index],
+                                       let originalIndex = dog.pottyRecords.firstIndex(where: { $0.timestamp == recordToDelete.timestamp }) {
+                                        dog.pottyRecords.remove(at: originalIndex)
+                                    }
+                                }
+                                dog.updatedAt = Date()
                             }
                         }
                     }
@@ -151,18 +257,42 @@ struct DogDetailView: View {
         modelContext.delete(dog)
         dismiss()
     }
+    
+    private func iconForFeedingType(_ type: FeedingRecord.FeedingType) -> String {
+        switch type {
+        case .breakfast: return "sunrise.fill"
+        case .lunch: return "sun.max.fill"
+        case .dinner: return "sunset.fill"
+        case .snack: return "pawprint.fill"
+        }
+    }
+    
+    private func colorForFeedingType(_ type: FeedingRecord.FeedingType) -> Color {
+        switch type {
+        case .breakfast: return .orange
+        case .lunch: return .yellow
+        case .dinner: return .red
+        case .snack: return .brown
+        }
+    }
+}
+
+extension Array {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
 }
 
 #Preview {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
     let container = try! ModelContainer(for: Dog.self, configurations: config)
     let dog = Dog(
-        name: "Buddy",
+        name: "Test Dog",
         arrivalDate: Date(),
-        needsWalking: true,
-        walkingNotes: "Needs 30-minute walk every 4 hours",
         isBoarding: true,
-        specialInstructions: "Allergic to chicken"
+        needsWalking: true,
+        walkingNotes: "Test walking notes",
+        medications: "Test medication"
     )
     
     NavigationStack {

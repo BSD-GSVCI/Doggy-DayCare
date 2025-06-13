@@ -1,13 +1,19 @@
 import Foundation
 import SwiftData
 
-struct PottyRecord: Codable {
-    let timestamp: Date
-    let type: PottyType
+@Model
+final class PottyRecord {
+    var timestamp: Date
+    var type: PottyType
     
     enum PottyType: String, Codable {
         case pee
         case poop
+    }
+    
+    init(timestamp: Date, type: PottyType) {
+        self.timestamp = timestamp
+        self.type = type
     }
 }
 
@@ -30,55 +36,92 @@ struct MedicationRecord: Codable {
 
 @Model
 final class Dog: Identifiable {
+    @Transient private var modelContext: ModelContext?
+    
     var id: UUID
     var name: String
     var arrivalDate: Date
     var departureDate: Date?
+    var boardingEndDate: Date?
+    var isBoarding: Bool
+    var isDaycareFed: Bool
     var needsWalking: Bool
     var walkingNotes: String?
-    var isBoarding: Bool
     var specialInstructions: String?
     var medications: String?
-    var isDaycareFed: Bool
-    var pottyRecords: [PottyRecord]
+    var notes: String?
     var feedingRecords: [FeedingRecord]
     var medicationRecords: [MedicationRecord]
     var createdAt: Date
     var updatedAt: Date
+    
+    @Relationship(deleteRule: .cascade) var pottyRecords: [PottyRecord]
     
     init(
         id: UUID = UUID(),
         name: String,
         arrivalDate: Date,
         departureDate: Date? = nil,
+        boardingEndDate: Date? = nil,
+        isBoarding: Bool = false,
+        isDaycareFed: Bool = false,
         needsWalking: Bool = false,
         walkingNotes: String? = nil,
-        isBoarding: Bool = false,
         specialInstructions: String? = nil,
         medications: String? = nil,
-        isDaycareFed: Bool = false
+        notes: String? = nil,
+        modelContext: ModelContext? = nil
     ) {
         self.id = id
         self.name = name
         self.arrivalDate = arrivalDate
         self.departureDate = departureDate
+        self.boardingEndDate = boardingEndDate
+        self.isBoarding = isBoarding
+        self.isDaycareFed = isDaycareFed
         self.needsWalking = needsWalking
         self.walkingNotes = walkingNotes
-        self.isBoarding = isBoarding
         self.specialInstructions = specialInstructions
         self.medications = medications
-        self.isDaycareFed = isDaycareFed
-        self.pottyRecords = []
+        self.notes = notes
         self.feedingRecords = []
         self.medicationRecords = []
+        self.pottyRecords = []
         self.createdAt = Date()
         self.updatedAt = Date()
+        self.modelContext = modelContext
+    }
+    
+    func setModelContext(_ context: ModelContext) {
+        self.modelContext = context
     }
     
     func addPottyRecord(type: PottyRecord.PottyType) {
+        guard let context = modelContext else { return }
         let record = PottyRecord(timestamp: Date(), type: type)
+        context.insert(record)
         pottyRecords.append(record)
         updatedAt = Date()
+        try? context.save()
+    }
+    
+    func removePottyRecord(at timestamp: Date) {
+        guard let context = modelContext else { return }
+        if let record = pottyRecords.first(where: { $0.timestamp == timestamp }) {
+            context.delete(record)
+            pottyRecords.removeAll { $0.timestamp == timestamp }
+            updatedAt = Date()
+            try? context.save()
+        }
+    }
+    
+    func updatePottyRecord(at timestamp: Date, type: PottyRecord.PottyType) {
+        guard let context = modelContext else { return }
+        if let record = pottyRecords.first(where: { $0.timestamp == timestamp }) {
+            record.type = type
+            updatedAt = Date()
+            try? context.save()
+        }
     }
     
     func addFeedingRecord(type: FeedingRecord.FeedingType) {
