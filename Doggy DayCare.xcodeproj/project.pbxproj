@@ -48,9 +48,9 @@
 			path = "Doggy DayCare";
 			sourceTree = "<group>";
 		};
-		4C576F952DF844E200FA22D3 /* Doggy DayCareTests */ = {
+		4C576F952DF844E200FA22D3 /* DoggyDayCareTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Doggy DayCareTests";
+			path = DoggyDayCareTests;
 			sourceTree = "<group>";
 		};
 		4C576F9F2DF844E200FA22D3 /* Doggy DayCareUITests */ = {
@@ -89,7 +89,7 @@
 			isa = PBXGroup;
 			children = (
 				4C576F832DF844E000FA22D3 /* Doggy DayCare */,
-				4C576F952DF844E200FA22D3 /* Doggy DayCareTests */,
+				4C576F952DF844E200FA22D3 /* DoggyDayCareTests */,
 				4C576F9F2DF844E200FA22D3 /* Doggy DayCareUITests */,
 				4C576F822DF844E000FA22D3 /* Products */,
 			);
@@ -144,7 +144,7 @@
 				4C576F942DF844E200FA22D3 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				4C576F952DF844E200FA22D3 /* Doggy DayCareTests */,
+				4C576F952DF844E200FA22D3 /* DoggyDayCareTests */,
 			);
 			name = "Doggy DayCareTests";
 			packageProductDependencies = (

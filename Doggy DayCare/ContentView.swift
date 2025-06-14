@@ -31,11 +31,46 @@ struct ContentView: View {
     }
     
     private var daycareDogs: [Dog] {
-        filteredDogs.filter { !$0.isBoarding }
+        filteredDogs.filter { dog in
+            let isDaycare = !dog.isBoarding
+            let isPresent = dog.isCurrentlyPresent
+            let isArrivingToday = Calendar.current.isDateInToday(dog.arrivalDate)
+            let hasArrived = Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).hour != 0 ||
+                            Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).minute != 0
+            let isFutureBooking = Calendar.current.startOfDay(for: dog.arrivalDate) > Calendar.current.startOfDay(for: Date())
+            
+            // Only show if:
+            // 1. It's a daycare dog AND
+            // 2. Either:
+            //    a. It's currently present (has arrived and hasn't departed), OR
+            //    b. It's arriving today and hasn't arrived yet (no arrival time set)
+            // AND it's not a future booking
+            return isDaycare && !isFutureBooking && (isPresent || (isArrivingToday && !hasArrived))
+        }
     }
     
     private var boardingDogs: [Dog] {
-        filteredDogs.filter { $0.isBoarding }
+        filteredDogs.filter { dog in
+            let isBoarding = dog.isBoarding
+            let isPresent = dog.isCurrentlyPresent
+            let isArrivingToday = Calendar.current.isDateInToday(dog.arrivalDate)
+            let hasArrived = Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).hour != 0 ||
+                            Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).minute != 0
+            let isFutureBooking = Calendar.current.startOfDay(for: dog.arrivalDate) > Calendar.current.startOfDay(for: Date())
+            
+            // Only show if:
+            // 1. It's a boarding dog AND
+            // 2. Either:
+            //    a. It's currently present (has arrived and hasn't departed), OR
+            //    b. It's arriving today and hasn't arrived yet (no arrival time set)
+            // AND it's not a future booking
+            return isBoarding && !isFutureBooking && (isPresent || (isArrivingToday && !hasArrived))
+        }
+    }
+    
+    private var departedDogs: [Dog] {
+        filteredDogs.filter { !$0.isCurrentlyPresent }
+            .sorted { ($0.departureDate ?? Date()) > ($1.departureDate ?? Date()) }
     }
 
     var body: some View {
@@ -69,6 +104,17 @@ struct ContentView: View {
                 } header: {
                     Text("Boarding")
                 }
+                .listSectionSpacing(20)
+                
+                if !departedDogs.isEmpty {
+                    Section {
+                        ForEach(departedDogs) { dog in
+                            DogRow(dog: dog)
+                        }
+                    } header: {
+                        Text("Departed Today")
+                    }
+                }
             }
             .searchable(text: $searchText, prompt: "Search dogs by name")
             .navigationBarTitleDisplayMode(.inline)
@@ -99,6 +145,12 @@ struct ContentView: View {
                             MedicationsListView()
                         } label: {
                             Image(systemName: "pills")
+                        }
+                        
+                        NavigationLink {
+                            FutureBookingsView()
+                        } label: {
+                            Image(systemName: "calendar.badge.plus")
                         }
                         
                         Menu {
@@ -147,7 +199,14 @@ struct ContentView: View {
 }
 
 private struct DogRow: View {
-    let dog: Dog
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var dog: Dog
+    
+    private var hasArrived: Bool {
+        let calendar = Calendar.current
+        let arrivalComponents = calendar.dateComponents([.hour, .minute], from: dog.arrivalDate)
+        return arrivalComponents.hour != 0 || arrivalComponents.minute != 0
+    }
     
     var body: some View {
         NavigationLink {
@@ -167,9 +226,23 @@ private struct DogRow: View {
                     }
                     Spacer()
                     if dog.departureDate != nil {
-                        Text(dog.formattedStayDuration)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            Text(dog.formattedStayDuration)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            
+                            Button {
+                                withAnimation {
+                                    dog.departureDate = nil
+                                    dog.updatedAt = Date()
+                                    try? modelContext.save()
+                                }
+                            } label: {
+                                Image(systemName: "arrow.uturn.backward.circle")
+                                    .foregroundStyle(.blue)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
                 
@@ -212,6 +285,11 @@ private struct DogRow: View {
             }
             .padding(.vertical, 4)
         }
+        .listRowBackground(
+            Calendar.current.isDateInToday(dog.arrivalDate) && !hasArrived ?
+            Color.red.opacity(0.1) :
+            Color.clear
+        )
     }
 }
 

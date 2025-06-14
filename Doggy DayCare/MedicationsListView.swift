@@ -14,26 +14,30 @@ struct MedicationsListView: View {
         }
     }
     
-    private var dogsWithMedications: [Dog] {
-        filteredDogs.filter { dog in
-            let hasMedications = dog.medications != nil && !dog.medications!.isEmpty
+    private var medicatedDogs: [Dog] {
+        let presentDogs = filteredDogs.filter { dog in
             let isPresent = dog.isCurrentlyPresent
-            return hasMedications && isPresent
+            let isArrivingToday = Calendar.current.isDateInToday(dog.arrivalDate)
+            let hasArrived = Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).hour != 0 ||
+                            Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).minute != 0
+            let isFutureBooking = Calendar.current.startOfDay(for: dog.arrivalDate) > Calendar.current.startOfDay(for: Date())
+            
+            return (isPresent || (isArrivingToday && !hasArrived)) && !isFutureBooking && dog.medications != nil && !dog.medications!.isEmpty
         }
-        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        return presentDogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
     var body: some View {
         NavigationStack {
             List {
-                if dogsWithMedications.isEmpty {
+                if medicatedDogs.isEmpty {
                     ContentUnavailableView(
                         "No Dogs Need Medication",
                         systemImage: "pills.circle",
                         description: Text("Add medication information in the main list")
                     )
                 } else {
-                    ForEach(dogsWithMedications) { dog in
+                    ForEach(medicatedDogs) { dog in
                         DogMedicationRow(dog: dog)
                     }
                 }

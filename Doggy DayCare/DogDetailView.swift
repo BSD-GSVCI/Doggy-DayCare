@@ -36,24 +36,68 @@ struct DogDetailView: View {
                     }
                 }
                 
-                if let medications = dog.medications, !medications.isEmpty {
-                    Section("Medications") {
-                        Text(medications)
-                        
-                        HStack {
-                            Image(systemName: "pills.fill")
-                                .font(.caption)
-                                .foregroundStyle(.purple)
-                            Text("\(dog.medicationCount) administrations")
-                                .font(.caption)
+                if dog.needsWalking {
+                    Section("Walking Information") {
+                        HStack(spacing: 12) {
+                            HStack {
+                                Image(systemName: "drop.fill")
+                                    .foregroundStyle(.yellow)
+                                Text("\(dog.peeCount)")
+                            }
+                            HStack {
+                                Text("💩")
+                                Text("\(dog.poopCount)")
+                            }
                         }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        
+                        if let notes = dog.walkingNotes {
+                            Text(notes)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                        if !dog.pottyRecords.isEmpty {
+                            ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
+                                HStack {
+                                    if record.type == .pee {
+                                        Image(systemName: "drop.fill")
+                                            .foregroundStyle(.yellow)
+                                    } else {
+                                        Text("💩")
+                                    }
+                                    Text(record.type == .pee ? "Peed" : "Pooped")
+                                        .font(.subheadline)
+                                    Spacer()
+                                    Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                            .onDelete { indexSet in
+                                let sortedRecords = dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp })
+                                for index in indexSet {
+                                    if let recordToDelete = sortedRecords[safe: index] {
+                                        dog.removePottyRecord(at: recordToDelete.timestamp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if dog.medications != nil && !dog.medications!.isEmpty {
+                    Section("Medications") {
+                        Text(dog.medications!)
                         
                         if !dog.medicationRecords.isEmpty {
                             ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
                                 HStack {
                                     Image(systemName: "pills.fill")
                                         .foregroundStyle(.purple)
-                                    if let notes = record.notes {
+                                    if let notes = record.notes, !notes.isEmpty {
                                         Text(notes)
                                             .font(.subheadline)
                                     } else {
@@ -138,63 +182,9 @@ struct DogDetailView: View {
                     }
                 }
                 
-                if dog.needsWalking {
-                    Section("Walking Information") {
-                        if let notes = dog.walkingNotes {
-                            Text(notes)
-                        }
-                        
-                        HStack(spacing: 12) {
-                            HStack {
-                                Image(systemName: "drop.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.yellow)
-                                Text("\(dog.peeCount) pees")
-                            }
-                            HStack {
-                                Text("💩")
-                                    .font(.caption)
-                                    .foregroundColor(.brown)
-                                Text("\(dog.poopCount) poops")
-                            }
-                        }
-                        
-                        if !dog.pottyRecords.isEmpty {
-                            ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
-                                HStack {
-                                    if record.type == .pee {
-                                        Image(systemName: "drop.fill")
-                                            .foregroundStyle(.yellow)
-                                    } else {
-                                        Text("💩")
-                                            .foregroundColor(.brown)
-                                    }
-                                    Text(record.type == .pee ? "Peed" : "Pooped")
-                                        .font(.subheadline)
-                                    Spacer()
-                                    Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.vertical, 2)
-                            }
-                            .onDelete { indexSet in
-                                let sortedRecords = dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp })
-                                for index in indexSet {
-                                    if let recordToDelete = sortedRecords[safe: index],
-                                       let originalIndex = dog.pottyRecords.firstIndex(where: { $0.timestamp == recordToDelete.timestamp }) {
-                                        dog.pottyRecords.remove(at: originalIndex)
-                                    }
-                                }
-                                dog.updatedAt = Date()
-                            }
-                        }
-                    }
-                }
-                
-                if let instructions = dog.specialInstructions, !instructions.isEmpty {
-                    Section("Special Instructions") {
-                        Text(instructions)
+                if let notes = dog.notes, !notes.isEmpty {
+                    Section("Additional Notes") {
+                        Text(notes)
                     }
                 }
                 

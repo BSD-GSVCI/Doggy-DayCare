@@ -12,6 +12,7 @@ struct DogFormView: View {
     @State private var isBoarding = false
     @State private var isDaycareFed = false
     @State private var needsWalking = false
+    @State private var walkingNotes: String?
     @State private var medications: String?
     @State private var notes: String?
     @State private var showingBoardingDatePicker = false
@@ -28,6 +29,7 @@ struct DogFormView: View {
             _isBoarding = State(initialValue: dog.isBoarding)
             _isDaycareFed = State(initialValue: dog.isDaycareFed)
             _needsWalking = State(initialValue: dog.needsWalking)
+            _walkingNotes = State(initialValue: dog.walkingNotes)
             _medications = State(initialValue: dog.medications)
             _notes = State(initialValue: dog.notes)
         }
@@ -47,34 +49,26 @@ struct DogFormView: View {
                             }
                         }
                     
-                    Toggle("Daycare Feeds", isOn: $isDaycareFed)
-                    
                     if isBoarding {
-                        if let boardingEndDate = boardingEndDate {
-                            HStack {
-                                Text("Expected Departure")
-                                Spacer()
-                                Text(boardingEndDate.formatted(date: .long, time: .omitted))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                showingBoardingDatePicker = true
-                            }
-                        } else {
-                            Button("Set Expected Departure") {
-                                showingBoardingDatePicker = true
-                            }
-                        }
+                        DatePicker(
+                            "Expected Departure",
+                            selection: Binding(
+                                get: { boardingEndDate ?? Calendar.current.startOfDay(for: Date()) },
+                                set: { boardingEndDate = $0 }
+                            ),
+                            displayedComponents: .date
+                        )
                     }
+                    
+                    Toggle("Daycare Feeds", isOn: $isDaycareFed)
                 }
                 
                 Section("Walking") {
                     Toggle("Needs Walking", isOn: $needsWalking)
                     if needsWalking {
                         TextField("Walking Notes", text: Binding(
-                            get: { notes ?? "" },
-                            set: { notes = $0.isEmpty ? nil : $0 }
+                            get: { walkingNotes ?? "" },
+                            set: { walkingNotes = $0.isEmpty ? nil : $0 }
                         ), axis: .vertical)
                             .lineLimit(3...6)
                     }
@@ -86,7 +80,7 @@ struct DogFormView: View {
                         set: { medications = $0.isEmpty ? nil : $0 }
                     ), axis: .vertical)
                         .lineLimit(3...6)
-                    TextField("Special Instructions", text: Binding(
+                    TextField("Additional Notes", text: Binding(
                         get: { notes ?? "" },
                         set: { notes = $0.isEmpty ? nil : $0 }
                     ), axis: .vertical)
@@ -108,36 +102,6 @@ struct DogFormView: View {
                     .disabled(name.isEmpty)
                 }
             }
-            .sheet(isPresented: $showingBoardingDatePicker) {
-                NavigationStack {
-                    Form {
-                        DatePicker(
-                            "Expected Departure",
-                            selection: Binding(
-                                get: { boardingEndDate ?? Calendar.current.startOfDay(for: Date()) },
-                                set: { boardingEndDate = Calendar.current.startOfDay(for: $0) }
-                            ),
-                            in: Calendar.current.startOfDay(for: arrivalDate)...,
-                            displayedComponents: [.date]
-                        )
-                    }
-                    .navigationTitle("Set Expected Departure")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") {
-                                showingBoardingDatePicker = false
-                            }
-                        }
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") {
-                                showingBoardingDatePicker = false
-                            }
-                        }
-                    }
-                }
-                .presentationDetents([.medium])
-            }
         }
     }
     
@@ -150,6 +114,7 @@ struct DogFormView: View {
             dog.isBoarding = isBoarding
             dog.isDaycareFed = isDaycareFed
             dog.needsWalking = needsWalking
+            dog.walkingNotes = walkingNotes
             dog.medications = medications
             dog.notes = notes
             dog.setModelContext(modelContext)
@@ -162,6 +127,8 @@ struct DogFormView: View {
                 isBoarding: isBoarding,
                 isDaycareFed: isDaycareFed,
                 needsWalking: needsWalking,
+                walkingNotes: walkingNotes,
+                specialInstructions: nil,
                 medications: medications,
                 notes: notes,
                 modelContext: modelContext

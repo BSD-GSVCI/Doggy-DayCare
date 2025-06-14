@@ -5,44 +5,82 @@ struct WalkingListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var dogs: [Dog]
     @State private var searchText = ""
+    @State private var showingPottyAlert = false
+    @State private var selectedDog: Dog?
     
     private var walkingDogs: [Dog] {
-        dogs.filter { $0.needsWalking }
+        let presentDogs = filteredDogs.filter { dog in
+            let isPresent = dog.isCurrentlyPresent
+            let isArrivingToday = Calendar.current.isDateInToday(dog.arrivalDate)
+            let hasArrived = Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).hour != 0 ||
+                            Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).minute != 0
+            let isFutureBooking = Calendar.current.startOfDay(for: dog.arrivalDate) > Calendar.current.startOfDay(for: Date())
+            
+            return (isPresent || (isArrivingToday && !hasArrived)) && !isFutureBooking && dog.needsWalking
+        }
+        return presentDogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+    
+    private var daycareDogs: [Dog] {
+        walkingDogs.filter { !$0.isBoarding }
+    }
+    
+    private var boardingDogs: [Dog] {
+        walkingDogs.filter { $0.isBoarding }
     }
     
     private var filteredDogs: [Dog] {
         if searchText.isEmpty {
-            return walkingDogs
+            return dogs
         } else {
-            return walkingDogs.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+            return dogs.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
         }
-    }
-    
-    private var presentDogs: [Dog] {
-        filteredDogs.filter { $0.isCurrentlyPresent }
     }
     
     var body: some View {
-        List {
-            if filteredDogs.isEmpty {
-                ContentUnavailableView {
-                    Label("No Dogs Found", systemImage: "magnifyingglass")
-                } description: {
-                    if searchText.isEmpty {
-                        Text("Add dogs that need walking in their details")
-                    } else {
-                        Text("No dogs match \"\(searchText)\"")
+        NavigationStack {
+            List {
+                if walkingDogs.isEmpty {
+                    ContentUnavailableView(
+                        "No Dogs Need Walking",
+                        systemImage: "figure.walk",
+                        description: Text("Enable walking for dogs in the main list")
+                    )
+                } else {
+                    Section {
+                        if daycareDogs.isEmpty {
+                            Text("No daycare dogs need walking")
+                                .foregroundStyle(.secondary)
+                                .italic()
+                        } else {
+                            ForEach(daycareDogs) { dog in
+                                DogWalkingRow(dog: dog, showingPottyAlert: showingPottyAlert(for:))
+                            }
+                        }
+                    } header: {
+                        Text("Daycare")
+                    }
+                    .listSectionSpacing(20)
+                    
+                    Section {
+                        if boardingDogs.isEmpty {
+                            Text("No boarding dogs need walking")
+                                .foregroundStyle(.secondary)
+                                .italic()
+                        } else {
+                            ForEach(boardingDogs) { dog in
+                                DogWalkingRow(dog: dog, showingPottyAlert: showingPottyAlert(for:))
+                            }
+                        }
+                    } header: {
+                        Text("Boarding")
                     }
                 }
-            } else {
-                ForEach(presentDogs) { dog in
-                    DogWalkingSection(dog: dog, showingPottyAlert: showingPottyAlert, modelContext: modelContext)
-                }
             }
+            .searchable(text: $searchText, prompt: "Search dogs by name")
+            .navigationTitle("Walking List")
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .searchable(text: $searchText, prompt: "Search dogs by name")
-        .navigationTitle("Walking List")
-        .navigationBarTitleDisplayMode(.inline)
         .alert("Record Potty", isPresented: $showingPottyAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Pee") {
@@ -62,9 +100,6 @@ struct WalkingListView: View {
         }
     }
     
-    @State private var showingPottyAlert = false
-    @State private var selectedDog: Dog?
-    
     private func showingPottyAlert(for dog: Dog) {
         selectedDog = dog
         showingPottyAlert = true
@@ -77,55 +112,69 @@ struct WalkingListView: View {
     }
 }
 
-private struct DogWalkingSection: View {
+private struct DogWalkingRow: View {
+    @Environment(\.modelContext) private var modelContext
     let dog: Dog
     let showingPottyAlert: (Dog) -> Void
-    let modelContext: ModelContext
+    @State private var showingEditAlert = false
+    @State private var showingDeleteAlert = false
+    @State private var selectedRecord: PottyRecord?
+    @State private var selectedType: PottyRecord.PottyType?
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             Button {
                 showingPottyAlert(dog)
             } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text(dog.name)
-                            .font(.headline)
-                            .textCase(.none)
+                HStack {
+                    Text(dog.name)
+                        .font(.headline)
+                    if dog.needsWalking {
+                        Image(systemName: "figure.walk")
+                            .foregroundStyle(.blue)
                     }
-                    
-                    HStack(spacing: 4) {
-                        Image(systemName: "drop.fill")
-                            .foregroundStyle(.yellow)
-                        Text("\(dog.peeCount)")
-                        Text("💩")
-                        Text("\(dog.poopCount)")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    
-                    if let notes = dog.walkingNotes {
-                        Text(notes)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    Spacer()
+                    Text(dog.formattedStayDuration)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 2)
-                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             
-            let columns = [
-                GridItem(.adaptive(minimum: 100, maximum: 120), spacing: 8)
-            ]
-            
-            LazyVGrid(columns: columns, spacing: 8) {
-                ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp })) { record in
-                    PottyRecordGridItem(dog: dog, record: record, modelContext: modelContext)
+            HStack(spacing: 12) {
+                HStack {
+                    Image(systemName: "drop.fill")
+                        .foregroundStyle(.yellow)
+                    Text("\(dog.peeCount)")
+                }
+                HStack {
+                    Text("💩")
+                    Text("\(dog.poopCount)")
                 }
             }
-            .padding(.leading, 4)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            
+            if let notes = dog.walkingNotes {
+                Text(notes)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            
+            if !dog.pottyRecords.isEmpty {
+                let columns = [
+                    GridItem(.adaptive(minimum: 100, maximum: 120), spacing: 8)
+                ]
+                
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
+                        PottyRecordGridItem(dog: dog, record: record, modelContext: modelContext)
+                    }
+                }
+                .padding(.top, 4)
+            }
         }
+        .padding(.vertical, 4)
     }
 }
 
@@ -134,9 +183,9 @@ private struct PottyRecordGridItem: View {
     let record: PottyRecord
     let modelContext: ModelContext
     
-    @State var showingEditAlert = false
-    @State var showingDeleteAlert = false
-    @State var selectedType: PottyRecord.PottyType?
+    @State private var showingEditAlert = false
+    @State private var showingDeleteAlert = false
+    @State private var selectedType: PottyRecord.PottyType?
     
     var body: some View {
         HStack(spacing: 4) {
@@ -195,14 +244,14 @@ private struct PottyRecordGridItem: View {
         }
     }
     
-    func deleteRecord() {
+    private func deleteRecord() {
         if let index = dog.pottyRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
             dog.pottyRecords.remove(at: index)
             try? modelContext.save()
         }
     }
     
-    func updateRecord(type: PottyRecord.PottyType) {
+    private func updateRecord(type: PottyRecord.PottyType) {
         if let index = dog.pottyRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
             dog.pottyRecords[index].type = type
             try? modelContext.save()
