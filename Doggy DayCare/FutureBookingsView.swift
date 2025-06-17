@@ -182,38 +182,42 @@ struct FutureBookingFormView: View {
     
     @State private var name: String
     @State private var arrivalDate: Date
-    @State private var boardingEndDate: Date?
+    @State private var departureDate: Date?
+    @State private var boardingEndDate: Date
     @State private var isBoarding: Bool
     @State private var isDaycareFed: Bool
     @State private var needsWalking: Bool
     @State private var walkingNotes: String
     @State private var medications: String
-    @State private var notes: String
+    @State private var notes: String?
+    @State private var showingBoardingDatePicker = false
     
-    private let editingDog: Dog?
+    let dog: Dog?
     
     init(dog: Dog? = nil) {
-        editingDog = dog
+        self.dog = dog
         if let dog = dog {
             _name = State(initialValue: dog.name)
-            _arrivalDate = State(initialValue: Calendar.current.startOfDay(for: dog.arrivalDate))
-            _boardingEndDate = State(initialValue: dog.boardingEndDate != nil ? Calendar.current.startOfDay(for: dog.boardingEndDate!) : nil)
+            _arrivalDate = State(initialValue: dog.arrivalDate)
+            _departureDate = State(initialValue: dog.departureDate)
+            _boardingEndDate = State(initialValue: dog.boardingEndDate ?? Date())
             _isBoarding = State(initialValue: dog.isBoarding)
             _isDaycareFed = State(initialValue: dog.isDaycareFed)
             _needsWalking = State(initialValue: dog.needsWalking)
             _walkingNotes = State(initialValue: dog.walkingNotes ?? "")
             _medications = State(initialValue: dog.medications ?? "")
-            _notes = State(initialValue: dog.notes ?? "")
+            _notes = State(initialValue: dog.notes)
         } else {
             _name = State(initialValue: "")
-            _arrivalDate = State(initialValue: Calendar.current.startOfDay(for: Date().addingTimeInterval(86400)))
-            _boardingEndDate = State(initialValue: nil)
+            _arrivalDate = State(initialValue: Date())
+            _departureDate = State(initialValue: nil)
+            _boardingEndDate = State(initialValue: Date())
             _isBoarding = State(initialValue: false)
             _isDaycareFed = State(initialValue: false)
             _needsWalking = State(initialValue: false)
             _walkingNotes = State(initialValue: "")
             _medications = State(initialValue: "")
-            _notes = State(initialValue: "")
+            _notes = State(initialValue: nil)
         }
     }
     
@@ -232,17 +236,14 @@ struct FutureBookingFormView: View {
                     Toggle("Boarding", isOn: $isBoarding)
                         .onChange(of: isBoarding) { _, newValue in
                             if !newValue {
-                                boardingEndDate = nil
+                                boardingEndDate = Calendar.current.startOfDay(for: arrivalDate)
                             }
                         }
                     
                     if isBoarding {
                         DatePicker(
                             "Expected Departure",
-                            selection: Binding(
-                                get: { boardingEndDate ?? Calendar.current.startOfDay(for: arrivalDate.addingTimeInterval(86400)) },
-                                set: { boardingEndDate = Calendar.current.startOfDay(for: $0) }
-                            ),
+                            selection: $boardingEndDate,
                             in: arrivalDate...,
                             displayedComponents: .date
                         )
@@ -254,23 +255,17 @@ struct FutureBookingFormView: View {
                 Section("Walking") {
                     Toggle("Needs Walking", isOn: $needsWalking)
                     if needsWalking {
-                        TextField("Walking Notes", text: Binding(
-                            get: { walkingNotes },
-                            set: { walkingNotes = $0 }
-                        ), axis: .vertical)
+                        TextField("Walking Notes", text: $walkingNotes, axis: .vertical)
                             .lineLimit(3...6)
                     }
                 }
                 
                 Section("Additional Information") {
-                    TextField("Medications (leave blank if none)", text: Binding(
-                        get: { medications },
-                        set: { medications = $0 }
-                    ), axis: .vertical)
+                    TextField("Medications (leave blank if none)", text: $medications, axis: .vertical)
                         .lineLimit(3...6)
                     TextField("Additional Notes", text: Binding(
-                        get: { notes },
-                        set: { notes = $0 }
+                        get: { notes ?? "" },
+                        set: { notes = $0.isEmpty ? nil : $0 }
                     ), axis: .vertical)
                         .lineLimit(3...6)
                 }
@@ -296,34 +291,33 @@ struct FutureBookingFormView: View {
     private func save() {
         let midnightArrivalDate = Calendar.current.startOfDay(for: arrivalDate)
         
-        if let existingDog = editingDog {
+        if let existingDog = dog {
             // Update existing dog
             existingDog.name = name
             existingDog.arrivalDate = midnightArrivalDate
-            existingDog.boardingEndDate = boardingEndDate != nil ? Calendar.current.startOfDay(for: boardingEndDate!) : nil
+            existingDog.boardingEndDate = isBoarding ? boardingEndDate : nil
             existingDog.isBoarding = isBoarding
             existingDog.isDaycareFed = isDaycareFed
             existingDog.needsWalking = needsWalking
-            existingDog.walkingNotes = walkingNotes.isEmpty ? nil : walkingNotes
+            existingDog.walkingNotes = needsWalking ? walkingNotes : nil
             existingDog.medications = medications.isEmpty ? nil : medications
-            existingDog.notes = notes.isEmpty ? nil : notes
+            existingDog.notes = notes?.isEmpty == true ? nil : notes
             existingDog.updatedAt = Date()
         } else {
             // Create new dog
+            let authService = AuthenticationService.shared
             let newDog = Dog(
                 name: name,
                 arrivalDate: midnightArrivalDate,
-                departureDate: nil,
-                boardingEndDate: boardingEndDate != nil ? Calendar.current.startOfDay(for: boardingEndDate!) : nil,
                 isBoarding: isBoarding,
-                isDaycareFed: isDaycareFed,
-                needsWalking: needsWalking,
-                walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
-                specialInstructions: nil,
                 medications: medications.isEmpty ? nil : medications,
-                notes: notes.isEmpty ? nil : notes,
-                modelContext: modelContext
+                needsWalking: needsWalking,
+                walkingNotes: needsWalking ? walkingNotes : nil,
+                isDaycareFed: isDaycareFed,
+                notes: notes?.isEmpty == true ? nil : notes
             )
+            newDog.createdBy = authService.currentUser
+            newDog.lastModifiedBy = authService.currentUser
             modelContext.insert(newDog)
         }
         
@@ -332,7 +326,85 @@ struct FutureBookingFormView: View {
     }
 }
 
-#Preview {
-    FutureBookingsView()
-        .modelContainer(for: Dog.self, inMemory: true)
+// MARK: - Test Views for Development
+#if DEBUG
+struct FutureBookingsTestView: View {
+    var body: some View {
+        FutureBookingsView()
+    }
+}
+
+struct FutureBookingFormTestView: View {
+    var body: some View {
+        FutureBookingFormView()
+    }
+}
+#endif
+
+#Preview("Future Bookings") {
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(
+        for: Dog.self, User.self, DogChange.self, FeedingRecord.self, MedicationRecord.self, PottyRecord.self,
+        configurations: config
+    )
+    
+    // Create original owner
+    let owner = User(
+        id: "original-owner",
+        name: "Owner",
+        email: "owner@doggydaycare.com",
+        isOwner: true,
+        isActive: true,
+        isOriginalOwner: true
+    )
+    container.mainContext.insert(owner)
+    
+    // Set up auth service and sign in with original owner credentials
+    let authService = AuthenticationService.shared
+    authService.setModelContext(container.mainContext)
+    UserDefaults.standard.set("Owner123", forKey: "owner_password")
+    
+    // Sign in synchronously for preview
+    Task { @MainActor in
+        try? await authService.signIn(email: "owner@doggydaycare.com", password: "Owner123")
+    }
+    
+    return NavigationStack {
+        FutureBookingsView()
+    }
+    .modelContainer(container)
+}
+
+#Preview("Booking Form") {
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(
+        for: Dog.self, User.self, DogChange.self, FeedingRecord.self, MedicationRecord.self, PottyRecord.self,
+        configurations: config
+    )
+    
+    // Create original owner
+    let owner = User(
+        id: "original-owner",
+        name: "Owner",
+        email: "owner@doggydaycare.com",
+        isOwner: true,
+        isActive: true,
+        isOriginalOwner: true
+    )
+    container.mainContext.insert(owner)
+    
+    // Set up auth service and sign in with original owner credentials
+    let authService = AuthenticationService.shared
+    authService.setModelContext(container.mainContext)
+    UserDefaults.standard.set("Owner123", forKey: "owner_password")
+    
+    // Sign in synchronously for preview
+    Task { @MainActor in
+        try? await authService.signIn(email: "owner@doggydaycare.com", password: "Owner123")
+    }
+    
+    return NavigationStack {
+        FutureBookingFormView()
+    }
+    .modelContainer(container)
 } 

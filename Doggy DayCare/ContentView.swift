@@ -8,199 +8,332 @@
 import SwiftUI
 import SwiftData
 
-struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: [
-        SortDescriptor(\Dog.departureDate, order: .forward),
-        SortDescriptor(\Dog.name, order: .forward)
-    ]) private var allDogs: [Dog]
-    @State private var showingAddDog = false
-    @State private var showingWalkingList = false
-    @State private var showingMedicationsList = false
-    @State private var showingExportSheet = false
-    @State private var exportError: Error?
-    @State private var exportURL: URL?
-    @State private var searchText = ""
-    
-    private var filteredDogs: [Dog] {
-        if searchText.isEmpty {
-            return allDogs
-        } else {
-            return allDogs.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
-        }
+// Debug extension to help us understand toolbar content types
+extension View {
+    func debugToolbarType<T: ToolbarContent>(_ content: T) -> some View {
+        print("Toolbar content type: \(type(of: content))")
+        return self.toolbar { content }
     }
-    
-    private var daycareDogs: [Dog] {
-        filteredDogs.filter { dog in
-            let isDaycare = !dog.isBoarding
-            let isPresent = dog.isCurrentlyPresent
-            let isArrivingToday = Calendar.current.isDateInToday(dog.arrivalDate)
-            let hasArrived = Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).hour != 0 ||
-                            Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).minute != 0
-            let isFutureBooking = Calendar.current.startOfDay(for: dog.arrivalDate) > Calendar.current.startOfDay(for: Date())
-            
-            // Only show if:
-            // 1. It's a daycare dog AND
-            // 2. Either:
-            //    a. It's currently present (has arrived and hasn't departed), OR
-            //    b. It's arriving today and hasn't arrived yet (no arrival time set)
-            // AND it's not a future booking
-            return isDaycare && !isFutureBooking && (isPresent || (isArrivingToday && !hasArrived))
-        }
-    }
-    
-    private var boardingDogs: [Dog] {
-        filteredDogs.filter { dog in
-            let isBoarding = dog.isBoarding
-            let isPresent = dog.isCurrentlyPresent
-            let isArrivingToday = Calendar.current.isDateInToday(dog.arrivalDate)
-            let hasArrived = Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).hour != 0 ||
-                            Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).minute != 0
-            let isFutureBooking = Calendar.current.startOfDay(for: dog.arrivalDate) > Calendar.current.startOfDay(for: Date())
-            
-            // Only show if:
-            // 1. It's a boarding dog AND
-            // 2. Either:
-            //    a. It's currently present (has arrived and hasn't departed), OR
-            //    b. It's arriving today and hasn't arrived yet (no arrival time set)
-            // AND it's not a future booking
-            return isBoarding && !isFutureBooking && (isPresent || (isArrivingToday && !hasArrived))
-        }
-    }
-    
-    private var departedDogs: [Dog] {
-        filteredDogs.filter { !$0.isCurrentlyPresent }
-            .sorted { ($0.departureDate ?? Date()) > ($1.departureDate ?? Date()) }
-    }
+}
 
+struct CustomNavigationBar: View {
+    @Binding var showingAddDog: Bool
+    @Binding var showingExportData: Bool
+    @Binding var showingStaffManagement: Bool
+    @Binding var showingLogoutConfirmation: Bool
+    @ObservedObject var authService: AuthenticationService
+    
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    if daycareDogs.isEmpty {
-                        Text("No daycare dogs present")
-                            .foregroundStyle(.secondary)
-                            .italic()
-                    } else {
-                        ForEach(daycareDogs) { dog in
-                            DogRow(dog: dog)
-                        }
+        VStack(spacing: 0) {
+            HStack {
+                Text("Dogs")
+                    .font(.headline)
+                Spacer()
+                HStack(spacing: 12) {
+                    NavigationLink(destination: WalkingListView()) {
+                        Image(systemName: "figure.walk")
+                            .foregroundStyle(.blue)
                     }
-                } header: {
-                    Text("Daycare")
-                }
-                .listSectionSpacing(20)
-                
-                Section {
-                    if boardingDogs.isEmpty {
-                        Text("No boarding dogs present")
-                            .foregroundStyle(.secondary)
-                            .italic()
-                    } else {
-                        ForEach(boardingDogs) { dog in
-                            DogRow(dog: dog)
-                        }
+                    
+                    NavigationLink(destination: FeedingListView()) {
+                        Image(systemName: "fork.knife")
+                            .foregroundStyle(.blue)
                     }
-                } header: {
-                    Text("Boarding")
-                }
-                .listSectionSpacing(20)
-                
-                if !departedDogs.isEmpty {
-                    Section {
-                        ForEach(departedDogs) { dog in
-                            DogRow(dog: dog)
-                        }
-                    } header: {
-                        Text("Departed Today")
+                    
+                    NavigationLink(destination: MedicationsListView()) {
+                        Image(systemName: "pills")
+                            .foregroundStyle(.blue)
                     }
-                }
-            }
-            .searchable(text: $searchText, prompt: "Search dogs by name")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                    
+                    NavigationLink(destination: FutureBookingsView()) {
+                        Image(systemName: "calendar")
+                            .foregroundStyle(.blue)
+                    }
+                    
                     Button {
                         showingAddDog = true
                     } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundStyle(.blue)
                     }
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 16) {
-                        NavigationLink {
-                            WalkingListView()
-                        } label: {
-                            Image(systemName: "figure.walk")
-                        }
-                        
-                        NavigationLink {
-                            FeedingListView()
-                        } label: {
-                            Image(systemName: "fork.knife")
-                        }
-                        
-                        NavigationLink {
-                            MedicationsListView()
-                        } label: {
-                            Image(systemName: "pills")
-                        }
-                        
-                        NavigationLink {
-                            FutureBookingsView()
-                        } label: {
-                            Image(systemName: "calendar.badge.plus")
-                        }
-                        
-                        Menu {
+                    
+                    Menu {
+                        if authService.currentUser?.isOwner == true {
                             Button {
-                                Task {
-                                    await exportData()
-                                }
+                                showingStaffManagement = true
                             } label: {
-                                Label("Export Data", systemImage: "square.and.arrow.up")
+                                Label("Staff Management", systemImage: "person.2")
                             }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
+                            
+                            Button {
+                                showingExportData = true
+                            } label: {
+                                Label("Export Data Manually", systemImage: "square.and.arrow.up")
+                            }
                         }
+                        
+                        Button(role: .destructive) {
+                            showingLogoutConfirmation = true
+                        } label: {
+                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundStyle(.blue)
                     }
                 }
             }
-            .sheet(isPresented: $showingAddDog) {
-                DogFormView()
-            }
-            .sheet(isPresented: $showingExportSheet) {
-                if let url = exportURL {
-                    ShareSheet(items: [url])
-                }
-            }
-            .alert("Export Error", isPresented: .constant(exportError != nil)) {
-                Button("OK") {
-                    exportError = nil
-                }
-            } message: {
-                if let error = exportError {
-                    Text(error.localizedDescription)
-                }
-            }
-        }
-    }
-
-    private func exportData() async {
-        do {
-            let url = try await BackupService.shared.exportDogs(allDogs)
-            exportURL = url
-            showingExportSheet = true
-        } catch {
-            exportError = error
+            .padding()
+            .background(Color(UIColor.systemBackground))
+            Divider()
         }
     }
 }
 
+// MARK: - Main Content View
+struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
+    @StateObject private var authService = AuthenticationService.shared
+    @Query private var dogs: [Dog]
+    @State private var searchText = ""
+    @State private var showingAddDog = false
+    @State private var showingStaffManagement = false
+    @State private var showingLogoutConfirmation = false
+    @State private var showingShareSheet = false
+    @State private var exportURL: URL?
+    
+    private var filteredDogs: [Dog] {
+        if searchText.isEmpty {
+            return dogs
+        } else {
+            return dogs.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        }
+    }
+    
+    private var daycareDogs: [Dog] {
+        filteredDogs.filter { !$0.isBoarding && $0.isCurrentlyPresent }
+    }
+    
+    private var boardingDogs: [Dog] {
+        filteredDogs.filter { $0.isBoarding && $0.isCurrentlyPresent }
+    }
+    
+    private var departedDogs: [Dog] {
+        filteredDogs.filter { $0.departureDate != nil && Calendar.current.isDateInToday($0.departureDate!) }
+    }
+    
+    private let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM/dd/yy"
+        return formatter
+    }()
+    
+    private let shortTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter
+    }()
+    
+    var body: some View {
+        if authService.currentUser == nil {
+            LoginView()
+        } else {
+            NavigationStack {
+                DogsListView(
+                    daycareDogs: daycareDogs,
+                    boardingDogs: boardingDogs,
+                    departedDogs: departedDogs
+                )
+                .searchable(text: $searchText, prompt: "Search dogs by name")
+                .navigationTitle("Dogs")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button {
+                            showingAddDog = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                    
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        HStack(spacing: 12) {
+                            NavigationLink(destination: WalkingListView()) {
+                                Image(systemName: "figure.walk")
+                                    .foregroundStyle(.blue)
+                            }
+                            
+                            NavigationLink(destination: FeedingListView()) {
+                                Image(systemName: "fork.knife")
+                                    .foregroundStyle(.blue)
+                            }
+                            
+                            NavigationLink(destination: MedicationsListView()) {
+                                Image(systemName: "pills")
+                                    .foregroundStyle(.blue)
+                            }
+                            
+                            NavigationLink(destination: FutureBookingsView()) {
+                                Image(systemName: "calendar")
+                                    .foregroundStyle(.blue)
+                            }
+                            
+                            if authService.currentUser?.isOwner == true {
+                                Button {
+                                    showingStaffManagement = true
+                                } label: {
+                                    Image(systemName: "person.2")
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                            
+                            Button {
+                                Task {
+                                    do {
+                                        exportURL = try await BackupService.shared.exportDogs(filteredDogs)
+                                        showingShareSheet = true
+                                    } catch {
+                                        print("Export error: \(error)")
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "square.and.arrow.up")
+                                    .foregroundStyle(.blue)
+                            }
+                            
+                            Button {
+                                showingLogoutConfirmation = true
+                            } label: {
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                    .foregroundStyle(.blue)
+                            }
+                        }
+                    }
+                }
+                .sheet(isPresented: $showingAddDog) {
+                    NavigationStack {
+                        DogFormView()
+                    }
+                }
+                .sheet(isPresented: $showingStaffManagement) {
+                    NavigationStack {
+                        StaffManagementView()
+                    }
+                }
+                .sheet(isPresented: $showingShareSheet) {
+                    if let url = exportURL {
+                        ShareSheet(activityItems: [url])
+                    }
+                }
+                .alert("Sign Out", isPresented: $showingLogoutConfirmation) {
+                    Button("Cancel", role: .cancel) { }
+                    Button("Sign Out", role: .destructive) {
+                        authService.signOut()
+                    }
+                } message: {
+                    Text("Are you sure you want to sign out?")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - User Info View
+private struct UserInfoView: View {
+    let user: User?
+    
+    var body: some View {
+        if let user = user {
+            VStack(spacing: 4) {
+                Text("Logged in as: \(user.name) (\(user.isOwner ? "Owner" : "Staff"))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                if !user.isOwner {
+                    if user.canWorkToday {
+                        Text("Working today")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    } else {
+                        Text("Not scheduled to work today")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .padding(.top)
+        }
+    }
+}
+
+// MARK: - Dogs List View
+private struct DogsListView: View {
+    let daycareDogs: [Dog]
+    let boardingDogs: [Dog]
+    let departedDogs: [Dog]
+    
+    var body: some View {
+        List {
+            Section {
+                if daycareDogs.isEmpty {
+                    Text("No daycare dogs present")
+                        .foregroundStyle(.secondary)
+                        .italic()
+                } else {
+                    ForEach(daycareDogs) { dog in
+                        DogRow(dog: dog)
+                    }
+                }
+            } header: {
+                Text("Daycare")
+            }
+            .listSectionSpacing(20)
+            
+            Section {
+                if boardingDogs.isEmpty {
+                    Text("No boarding dogs present")
+                        .foregroundStyle(.secondary)
+                        .italic()
+                } else {
+                    ForEach(boardingDogs) { dog in
+                        DogRow(dog: dog)
+                    }
+                }
+            } header: {
+                Text("Boarding")
+            }
+            .listSectionSpacing(20)
+            
+            if !departedDogs.isEmpty {
+                Section {
+                    ForEach(departedDogs) { dog in
+                        DogRow(dog: dog)
+                    }
+                } header: {
+                    Text("Departed Today")
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Dog Row View
 private struct DogRow: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var dog: Dog
+    @State private var showingDepartureSheet = false
+    
+    private let shortDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM/dd/yy"
+        return formatter
+    }()
+    
+    private let shortTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter
+    }()
     
     private var hasArrived: Bool {
         let calendar = Calendar.current
@@ -232,6 +365,14 @@ private struct DogRow: View {
                                 .foregroundStyle(.secondary)
                             
                             Button {
+                                showingDepartureSheet = true
+                            } label: {
+                                Image(systemName: "clock")
+                                    .foregroundStyle(.blue)
+                            }
+                            .buttonStyle(.plain)
+                            
+                            Button {
                                 withAnimation {
                                     dog.departureDate = nil
                                     dog.updatedAt = Date()
@@ -246,12 +387,12 @@ private struct DogRow: View {
                     }
                 }
                 
-                Text(dog.arrivalDate.formatted(date: .omitted, time: .shortened))
+                Text("\(shortDateFormatter.string(from: dog.arrivalDate)) at \(shortTimeFormatter.string(from: dog.arrivalDate))")
                     .font(.subheadline)
                     .foregroundStyle(.green.opacity(0.8))
                 
                 if let departureDate = dog.departureDate {
-                    Text(departureDate.formatted(date: .omitted, time: .shortened))
+                    Text("\(shortDateFormatter.string(from: departureDate)) at \(shortTimeFormatter.string(from: departureDate))")
                         .font(.subheadline)
                         .foregroundStyle(.red.opacity(0.8))
                 }
@@ -265,12 +406,25 @@ private struct DogRow: View {
                         .clipShape(Capsule())
                     
                     if dog.isBoarding, let boardingEndDate = dog.boardingEndDate {
-                        Text("Until \(boardingEndDate.formatted(date: .abbreviated, time: .omitted))")
+                        Text("Until \(shortDateFormatter.string(from: boardingEndDate))")
                             .font(.caption)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 2)
                             .background(Color.blue.opacity(0.2))
                             .clipShape(Capsule())
+                            .onAppear {
+                                print("Showing boarding end date for \(dog.name): \(boardingEndDate)")
+                            }
+                    } else if dog.isBoarding {
+                        Text("No end date set")
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Color.red.opacity(0.2))
+                            .clipShape(Capsule())
+                            .onAppear {
+                                print("Dog \(dog.name) is boarding but has no end date set")
+                            }
                     }
                     
                     if dog.isDaycareFed {
@@ -290,20 +444,81 @@ private struct DogRow: View {
             Color.red.opacity(0.1) :
             Color.clear
         )
+        .sheet(isPresented: $showingDepartureSheet) {
+            NavigationStack {
+                Form {
+                    Section {
+                        DatePicker(
+                            "Departure Time",
+                            selection: Binding(
+                                get: { dog.departureDate ?? Date() },
+                                set: { newValue in
+                                    // Keep the same date, only update the time
+                                    let calendar = Calendar.current
+                                    let currentDate = dog.departureDate ?? Date()
+                                    let currentDateComponents = calendar.dateComponents([.year, .month, .day], from: currentDate)
+                                    let newTimeComponents = calendar.dateComponents([.hour, .minute], from: newValue)
+                                    
+                                    var combinedComponents = DateComponents()
+                                    combinedComponents.year = currentDateComponents.year
+                                    combinedComponents.month = currentDateComponents.month
+                                    combinedComponents.day = currentDateComponents.day
+                                    combinedComponents.hour = newTimeComponents.hour
+                                    combinedComponents.minute = newTimeComponents.minute
+                                    
+                                    if let updatedDate = calendar.date(from: combinedComponents) {
+                                        dog.departureDate = updatedDate
+                                        dog.updatedAt = Date()
+                                        try? modelContext.save()
+                                    }
+                                }
+                            ),
+                            displayedComponents: .hourAndMinute
+                        )
+                        .onChange(of: dog.departureDate) { _, newValue in
+                            // Auto-close the sheet when a time is selected
+                            showingDepartureSheet = false
+                        }
+                    }
+                }
+                .navigationTitle("Edit Departure Time")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showingDepartureSheet = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            showingDepartureSheet = false
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
+// MARK: - Share Sheet
 struct ShareSheet: UIViewControllerRepresentable {
-    let items: [Any]
+    let activityItems: [Any]
     
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {
-    ContentView()
-        .modelContainer(for: Dog.self, inMemory: true)
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(for: Dog.self, User.self, configurations: config)
+    
+    // Set up authentication service
+    let authService = AuthenticationService.shared
+    authService.setModelContext(container.mainContext)
+    
+    return ContentView()
+        .modelContainer(container)
 }

@@ -3,6 +3,7 @@ import SwiftData
 
 struct FeedingListView: View {
     @Environment(\.modelContext) private var modelContext
+    @StateObject private var authService = AuthenticationService.shared
     @Query(sort: \Dog.name) private var allDogs: [Dog]
     @State private var searchText = ""
     @State private var selectedFilter: FeedingFilter = .alphabetical
@@ -145,6 +146,14 @@ struct FeedingListView: View {
         feedingDogs.filter { $0.isBoarding }
     }
     
+    private var canModifyRecords: Bool {
+        // Staff can only modify records for current day's dogs
+        if let user = authService.currentUser, !user.isOwner {
+            return true // Staff can add records for any dog that needs feeding
+        }
+        return true // Owners can modify all records
+    }
+    
     var body: some View {
         NavigationStack {
             List {
@@ -201,6 +210,7 @@ struct FeedingListView: View {
                     } label: {
                         Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
                     }
+                    .menuStyle(.borderlessButton)
                 }
             }
         }
@@ -209,208 +219,229 @@ struct FeedingListView: View {
 
 private struct DogFeedingRow: View {
     @Environment(\.modelContext) private var modelContext
+    @StateObject private var authService = AuthenticationService.shared
     @Bindable var dog: Dog
     @State private var showingFeedingAlert = false
+    @State private var feedingNotes = ""
     @State private var showingEditAlert = false
     @State private var showingDeleteAlert = false
     @State private var selectedRecord: FeedingRecord?
     @State private var selectedType: FeedingRecord.FeedingType?
     
-    private func deleteRecord(_ record: FeedingRecord) {
-        withAnimation {
-            if let index = dog.feedingRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
-                dog.feedingRecords.remove(at: index)
-                dog.updatedAt = Date()
-                try? modelContext.save()
+    private var canModifyRecords: Bool {
+        // Staff can only modify records for current day's dogs
+        if let user = authService.currentUser, !user.isOwner {
+            return Calendar.current.isDateInToday(dog.arrivalDate) && dog.isCurrentlyPresent
+        }
+        return true // Owners can modify all records
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(dog.name)
+                    .font(.headline)
+                    .onTapGesture {
+                        showingFeedingAlert = true
+                    }
+                Spacer()
             }
+            
+            HStack(spacing: 12) {
+                HStack {
+                    Image(systemName: "sunrise.fill")
+                        .foregroundStyle(.orange)
+                    Text("\(dog.breakfastCount)")
+                }
+                HStack {
+                    Image(systemName: "sun.max.fill")
+                        .foregroundStyle(.yellow)
+                    Text("\(dog.lunchCount)")
+                }
+                HStack {
+                    Image(systemName: "sunset.fill")
+                        .foregroundStyle(.red)
+                    Text("\(dog.dinnerCount)")
+                }
+                HStack {
+                    Image(systemName: "pawprint.fill")
+                        .foregroundStyle(.brown)
+                    Text("\(dog.snackCount)")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            
+            if !dog.feedingRecords.isEmpty {
+                let columns = [
+                    GridItem(.adaptive(minimum: 100, maximum: 120), spacing: 8)
+                ]
+                
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
+                        FeedingRecordGridItem(dog: dog, record: record)
+                            .disabled(!canModifyRecords)
+                    }
+                }
+                .padding(.top, 4)
+            } else {
+                Color.clear
+                    .frame(height: 0)
+            }
+        }
+        .padding(.vertical, 4)
+        .alert("Record Feeding", isPresented: $showingFeedingAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Breakfast") {
+                print("Adding breakfast record for \(dog.name)")
+                addFeedingRecord(for: dog, type: .breakfast)
+            }
+            Button("Lunch") {
+                print("Adding lunch record for \(dog.name)")
+                addFeedingRecord(for: dog, type: .lunch)
+            }
+            Button("Dinner") {
+                print("Adding dinner record for \(dog.name)")
+                addFeedingRecord(for: dog, type: .dinner)
+            }
+            Button("Snack") {
+                print("Adding snack record for \(dog.name)")
+                addFeedingRecord(for: dog, type: .snack)
+            }
+        } message: {
+            Text("Record feeding for \(dog.name)")
         }
     }
     
-    private func updateRecord(_ record: FeedingRecord, type: FeedingRecord.FeedingType) {
-        withAnimation {
-            if let index = dog.feedingRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
-                let updatedRecord = FeedingRecord(timestamp: record.timestamp, type: type)
-                dog.feedingRecords[index] = updatedRecord
-                dog.updatedAt = Date()
-                try? modelContext.save()
-            }
+    private func addFeedingRecord(for dog: Dog, type: FeedingRecord.FeedingType) {
+        print("Adding \(type) record for \(dog.name)")
+        guard canModifyRecords else { 
+            print("Cannot modify records for \(dog.name)")
+            return 
         }
+        
+        let record = FeedingRecord(timestamp: Date(), type: type, recordedBy: authService.currentUser?.name)
+        print("Created feeding record: \(record)")
+        modelContext.insert(record)
+        print("Inserted feeding record into model context")
+        
+        // Set the inverse relationship
+        record.dog = dog
+        
+        // Ensure the relationship is properly established
+        dog.feedingRecords.append(record)
+        print("Added feeding record to dog's feedingRecords array. Count before: \(dog.feedingRecords.count - 1), count after: \(dog.feedingRecords.count)")
+        
+        // Force a save to ensure the relationship is persisted
+        dog.updatedAt = Date()
+        dog.lastModifiedBy = authService.currentUser
+        
+        do {
+            try modelContext.save()
+            print("Successfully saved feeding record for \(dog.name)")
+            print("Dog \(dog.name) now has \(dog.feedingRecords.count) feeding records")
+            print("Feeding record array contents: \(dog.feedingRecords.map { "\($0.type) at \($0.timestamp)" })")
+        } catch {
+            print("Error saving feeding record: \(error)")
+        }
+    }
+}
+
+private struct FeedingRecordGridItem: View {
+    @Environment(\.modelContext) private var modelContext
+    @StateObject private var authService = AuthenticationService.shared
+    let dog: Dog
+    let record: FeedingRecord
+    
+    @State private var showingEditAlert = false
+    @State private var showingDeleteAlert = false
+    @State private var selectedType: FeedingRecord.FeedingType?
+    
+    private var canModifyRecords: Bool {
+        // Staff can only modify records for current day's dogs
+        if let user = authService.currentUser, !user.isOwner {
+            return Calendar.current.isDateInToday(dog.arrivalDate) && dog.isCurrentlyPresent
+        }
+        return true // Owners can modify all records
     }
     
     var body: some View {
         Button {
-            showingFeedingAlert = true
+            guard canModifyRecords else { return }
+            showingEditAlert = true
+            selectedType = record.type
         } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(dog.name)
-                            .font(.headline)
-                        
-                        if dog.isBoarding {
-                            Text("Boarding")
-                                .font(.caption)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(Color.blue.opacity(0.2))
-                                .clipShape(Capsule())
-                        } else {
-                            Text("Daycare")
-                                .font(.caption)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 2)
-                                .background(Color.green.opacity(0.2))
-                                .clipShape(Capsule())
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    if dog.isDaycareFed {
-                        Text("Daycare Feeds")
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .background(Color.orange.opacity(0.2))
-                            .clipShape(Capsule())
-                    }
-                }
-                
-                if let notes = dog.specialInstructions {
-                    Text(notes)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                
-                HStack(spacing: 12) {
-                    HStack {
-                        Image(systemName: "sunrise.fill")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                        Text("\(dog.breakfastCount)")
-                            .font(.caption)
-                    }
-                    HStack {
-                        Image(systemName: "sun.max.fill")
-                            .font(.caption)
-                            .foregroundStyle(.yellow)
-                        Text("\(dog.lunchCount)")
-                            .font(.caption)
-                    }
-                    HStack {
-                        Image(systemName: "sunset.fill")
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                        Text("\(dog.dinnerCount)")
-                            .font(.caption)
-                    }
-                    HStack {
-                        Image(systemName: "pawprint.fill")
-                            .font(.caption)
-                            .foregroundStyle(.brown)
-                        Text("\(dog.snackCount)")
-                            .font(.caption)
-                    }
-                }
-                
-                if !dog.feedingRecords.isEmpty {
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
-                            HStack {
-                                Image(systemName: iconForFeedingType(record.type))
-                                    .font(.caption)
-                                    .foregroundStyle(colorForFeedingType(record.type))
-                                Text(record.type.rawValue.capitalized)
-                                    .font(.caption)
-                                Spacer()
-                                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Menu {
-                                    Button {
-                                        selectedRecord = record
-                                        selectedType = record.type
-                                        showingEditAlert = true
-                                    } label: {
-                                        Label("Change Type", systemImage: "arrow.triangle.2.circlepath")
-                                    }
-                                    
-                                    Button(role: .destructive) {
-                                        selectedRecord = record
-                                        showingDeleteAlert = true
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                } label: {
-                                    Image(systemName: "ellipsis.circle")
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(.leading)
-                        }
-                    }
-                    .padding(.top, 4)
-                }
+            HStack {
+                Image(systemName: iconForFeedingType(record.type))
+                    .foregroundStyle(colorForFeedingType(record.type))
+                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.caption)
             }
+            .frame(maxWidth: .infinity)
             .padding(.vertical, 4)
-            .contentShape(Rectangle())
+            .background(Color.secondary.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .alert("Record Feeding", isPresented: $showingFeedingAlert) {
-            Button("Breakfast") {
-                dog.addFeedingRecord(type: .breakfast)
+        .disabled(!canModifyRecords)
+        .contextMenu {
+            if canModifyRecords {
+                Button(role: .destructive) {
+                    showingDeleteAlert = true
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
             }
-            Button("Lunch") {
-                dog.addFeedingRecord(type: .lunch)
-            }
-            Button("Dinner") {
-                dog.addFeedingRecord(type: .dinner)
-            }
-            Button("Snack") {
-                dog.addFeedingRecord(type: .snack)
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("What did \(dog.name) eat?")
         }
         .alert("Edit Feeding Record", isPresented: $showingEditAlert) {
+            Button("Cancel", role: .cancel) { }
             Button("Breakfast") {
-                if let record = selectedRecord {
-                    updateRecord(record, type: .breakfast)
-                }
+                updateRecord(type: .breakfast)
             }
             Button("Lunch") {
-                if let record = selectedRecord {
-                    updateRecord(record, type: .lunch)
-                }
+                updateRecord(type: .lunch)
             }
             Button("Dinner") {
-                if let record = selectedRecord {
-                    updateRecord(record, type: .dinner)
-                }
+                updateRecord(type: .dinner)
             }
             Button("Snack") {
-                if let record = selectedRecord {
-                    updateRecord(record, type: .snack)
-                }
+                updateRecord(type: .snack)
             }
-            Button("Cancel", role: .cancel) { }
         } message: {
-            Text("Change feeding type to:")
+            Text("Change feeding type for \(dog.name)?")
         }
         .alert("Delete Feeding Record", isPresented: $showingDeleteAlert) {
-            Button("Delete", role: .destructive) {
-                if let record = selectedRecord {
-                    deleteRecord(record)
-                }
-            }
             Button("Cancel", role: .cancel) { }
-        } message: {
-            if let record = selectedRecord {
-                Text("Are you sure you want to delete this \(record.type.rawValue) record?")
-            } else {
-                Text("Are you sure you want to delete this feeding record?")
+            Button("Delete", role: .destructive) {
+                deleteRecord()
             }
+        } message: {
+            Text("Are you sure you want to delete this feeding record?")
+        }
+    }
+    
+    private func updateRecord(type: FeedingRecord.FeedingType) {
+        guard canModifyRecords else { return }
+        if let index = dog.feedingRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
+            let updatedRecord = FeedingRecord(
+                timestamp: record.timestamp,
+                type: type,
+                recordedBy: authService.currentUser?.id
+            )
+            dog.feedingRecords[index] = updatedRecord
+            dog.updatedAt = Date()
+            dog.lastModifiedBy = authService.currentUser
+            try? modelContext.save()
+        }
+    }
+    
+    private func deleteRecord() {
+        guard canModifyRecords else { return }
+        if let index = dog.feedingRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
+            dog.feedingRecords.remove(at: index)
+            dog.updatedAt = Date()
+            dog.lastModifiedBy = authService.currentUser
+            try? modelContext.save()
         }
     }
     

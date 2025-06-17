@@ -4,6 +4,7 @@ import SwiftData
 struct DogDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var authService = AuthenticationService.shared
     @Bindable var dog: Dog
     
     @State private var showingEditSheet = false
@@ -11,9 +12,29 @@ struct DogDetailView: View {
     @State private var showingDepartureSheet = false
     @State private var departureDate = Date()
     
+    private var canEdit: Bool {
+        authService.currentUser?.isOwner ?? false
+    }
+    
+    private var canDelete: Bool {
+        authService.currentUser?.isOwner ?? false
+    }
+    
+    private var canSetDeparture: Bool {
+        authService.currentUser?.isOwner ?? false
+    }
+    
+    private var canModifyRecords: Bool {
+        // Staff can modify records for current day's dogs
+        if let user = authService.currentUser, !user.isOwner {
+            return Calendar.current.isDateInToday(dog.arrivalDate) && dog.isCurrentlyPresent
+        }
+        return true // Owners can modify all records
+    }
+    
     var body: some View {
         NavigationStack {
-            List {
+            Form {
                 Section("Dog Information") {
                     LabeledContent("Name", value: dog.name)
                 }
@@ -29,33 +50,34 @@ struct DogDetailView: View {
                     
                     if dog.isCurrentlyPresent {
                         Button {
+                            withAnimation {
+                                dog.departureDate = Date()
+                                dog.updatedAt = Date()
+                                try? modelContext.save()
+                            }
+                            dismiss()
+                        } label: {
+                            Label("Check Out", systemImage: "checkmark.circle")
+                        }
+                    } else if dog.departureDate != nil {
+                        Button {
                             showingDepartureSheet = true
                         } label: {
-                            Label("Set Departure Time", systemImage: "clock")
+                            Label("Edit Departure Time", systemImage: "clock")
                         }
                     }
                 }
                 
-                if dog.needsWalking {
-                    Section("Walking Information") {
-                        HStack(spacing: 12) {
-                            HStack {
-                                Image(systemName: "drop.fill")
-                                    .foregroundStyle(.yellow)
-                                Text("\(dog.peeCount)")
-                            }
-                            HStack {
-                                Text("💩")
-                                Text("\(dog.poopCount)")
-                            }
+                Section {
+                    Toggle("Needs Walking", isOn: $dog.needsWalking)
+                        .onChange(of: dog.needsWalking) { _, newValue in
+                            dog.recordStatusChange("Walking status", newValue: newValue)
                         }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        
-                        if let notes = dog.walkingNotes {
+                    
+                    if dog.needsWalking {
+                        if let notes = dog.walkingNotes, !notes.isEmpty {
                             Text(notes)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.subheadline)
                         }
                         
                         if !dog.pottyRecords.isEmpty {
@@ -67,7 +89,7 @@ struct DogDetailView: View {
                                     } else {
                                         Text("💩")
                                     }
-                                    Text(record.type == .pee ? "Peed" : "Pooped")
+                                    Text(record.type.rawValue.capitalized)
                                         .font(.subheadline)
                                     Spacer()
                                     Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
@@ -77,15 +99,33 @@ struct DogDetailView: View {
                                 .padding(.vertical, 2)
                             }
                             .onDelete { indexSet in
+                                guard canModifyRecords else { return }
                                 let sortedRecords = dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp })
                                 for index in indexSet {
                                     if let recordToDelete = sortedRecords[safe: index] {
-                                        dog.removePottyRecord(at: recordToDelete.timestamp)
+                                        dog.removePottyRecord(at: recordToDelete.timestamp, modifiedBy: authService.currentUser)
                                     }
                                 }
+                                try? modelContext.save()
                             }
                         }
+                        
+                        HStack(spacing: 12) {
+                            HStack {
+                                Image(systemName: "drop.fill")
+                                    .foregroundStyle(.yellow)
+                                Text("\(dog.peeCount)")
+                            }
+                            HStack {
+                                Text("💩")
+                                Text("\(dog.poopCount)")
+                            }
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                     }
+                } header: {
+                    Text("Walking Information")
                 }
                 
                 if dog.medications != nil && !dog.medications!.isEmpty {
@@ -112,50 +152,22 @@ struct DogDetailView: View {
                                 .padding(.vertical, 2)
                             }
                             .onDelete { indexSet in
+                                guard canModifyRecords else { return }
                                 let sortedRecords = dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp })
                                 for index in indexSet {
                                     if let recordToDelete = sortedRecords[safe: index] {
                                         dog.medicationRecords.removeAll { $0.timestamp == recordToDelete.timestamp }
+                                        dog.updatedAt = Date()
+                                        dog.lastModifiedBy = authService.currentUser
                                     }
                                 }
-                                dog.updatedAt = Date()
+                                try? modelContext.save()
                             }
                         }
                     }
                 }
                 
                 Section("Feeding Information") {
-                    HStack(spacing: 12) {
-                        HStack {
-                            Image(systemName: "sunrise.fill")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                            Text("\(dog.breakfastCount)")
-                                .font(.caption)
-                        }
-                        HStack {
-                            Image(systemName: "sun.max.fill")
-                                .font(.caption)
-                                .foregroundStyle(.yellow)
-                            Text("\(dog.lunchCount)")
-                                .font(.caption)
-                        }
-                        HStack {
-                            Image(systemName: "sunset.fill")
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                            Text("\(dog.dinnerCount)")
-                                .font(.caption)
-                        }
-                        HStack {
-                            Image(systemName: "pawprint.fill")
-                                .font(.caption)
-                                .foregroundStyle(.brown)
-                            Text("\(dog.snackCount)")
-                                .font(.caption)
-                        }
-                    }
-                    
                     if !dog.feedingRecords.isEmpty {
                         ForEach(dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
                             HStack {
@@ -171,15 +183,44 @@ struct DogDetailView: View {
                             .padding(.vertical, 2)
                         }
                         .onDelete { indexSet in
+                            guard canModifyRecords else { return }
                             let sortedRecords = dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp })
                             for index in indexSet {
                                 if let recordToDelete = sortedRecords[safe: index] {
                                     dog.feedingRecords.removeAll { $0.timestamp == recordToDelete.timestamp }
+                                    dog.updatedAt = Date()
+                                    dog.lastModifiedBy = authService.currentUser
                                 }
                             }
-                            dog.updatedAt = Date()
+                            try? modelContext.save()
                         }
                     }
+                    
+                    HStack(spacing: 16) {
+                        HStack {
+                            Image(systemName: "sunrise.fill")
+                                .foregroundStyle(.orange)
+                            Text("\(dog.breakfastCount)")
+                        }
+                        HStack {
+                            Image(systemName: "sun.max.fill")
+                                .foregroundStyle(.yellow)
+                            Text("\(dog.lunchCount)")
+                        }
+                        HStack {
+                            Image(systemName: "sunset.fill")
+                                .foregroundStyle(.red)
+                            Text("\(dog.dinnerCount)")
+                        }
+                        HStack {
+                            Image(systemName: "pawprint.fill")
+                                .foregroundStyle(.brown)
+                            Text("\(dog.snackCount)")
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 8)
                 }
                 
                 if let notes = dog.notes, !notes.isEmpty {
@@ -188,20 +229,24 @@ struct DogDetailView: View {
                     }
                 }
                 
-                Section {
-                    Button(role: .destructive) {
-                        showingDeleteAlert = true
-                    } label: {
-                        Label("Delete Dog", systemImage: "trash")
+                if canDelete {
+                    Section {
+                        Button(role: .destructive) {
+                            showingDeleteAlert = true
+                        } label: {
+                            Label("Delete Dog", systemImage: "trash")
+                        }
                     }
                 }
             }
             .navigationTitle(dog.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Edit") {
-                        showingEditSheet = true
+                if canEdit {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Edit") {
+                            showingEditSheet = true
+                        }
                     }
                 }
             }
@@ -213,6 +258,13 @@ struct DogDetailView: View {
             NavigationStack {
                 Form {
                     DatePicker("Departure Time", selection: $departureDate)
+                        .onChange(of: departureDate) { _, newValue in
+                            // Auto-close the sheet when a date is selected
+                            dog.departureDate = newValue
+                            dog.updatedAt = Date()
+                            dog.lastModifiedBy = authService.currentUser
+                            showingDepartureSheet = false
+                        }
                 }
                 .navigationTitle("Set Departure")
                 .navigationBarTitleDisplayMode(.inline)
@@ -226,6 +278,7 @@ struct DogDetailView: View {
                         Button("Save") {
                             dog.departureDate = departureDate
                             dog.updatedAt = Date()
+                            dog.lastModifiedBy = authService.currentUser
                             showingDepartureSheet = false
                         }
                     }
@@ -273,20 +326,33 @@ extension Array {
     }
 }
 
-#Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: Dog.self, configurations: config)
-    let dog = Dog(
-        name: "Test Dog",
-        arrivalDate: Date(),
-        isBoarding: true,
-        needsWalking: true,
-        walkingNotes: "Test walking notes",
-        medications: "Test medication"
-    )
+// MARK: - Test View for Development
+#if DEBUG
+struct DogDetailTestView: View {
+    let dog: Dog
     
-    NavigationStack {
+    var body: some View {
         DogDetailView(dog: dog)
     }
-    .modelContainer(container)
+}
+#endif
+
+#Preview {
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(for: Dog.self, User.self, configurations: config)
+    
+    // Create a sample dog for preview
+    let sampleDog = Dog(
+        id: UUID(),
+        name: "Max",
+        arrivalDate: Date(),
+        isBoarding: true,
+        medications: "Heart medication",
+        specialInstructions: "Needs extra attention"
+    )
+    
+    container.mainContext.insert(sampleDog)
+    
+    return DogDetailView(dog: sampleDog)
+        .modelContainer(container)
 } 

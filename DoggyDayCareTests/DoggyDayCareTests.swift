@@ -8,7 +8,6 @@ final class DoggyDayCareTests: XCTestCase {
     var modelContext: ModelContext!
     
     override func setUp() async throws {
-        // Create an in-memory container for testing
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         modelContainer = try ModelContainer(for: Dog.self, configurations: config)
         modelContext = modelContainer.mainContext
@@ -248,33 +247,316 @@ final class DoggyDayCareTests: XCTestCase {
         XCTAssertEqual(dogsWithBreakfast.first?.name, "Alpha Dog")
     }
     
+    // MARK: - Dog Management Tests
+    
+    func testDepartureTimeSetting() async throws {
+        let dog = try await createTestDog()
+        let departureDate = Date().addingTimeInterval(86400) // 24 hours from now
+        
+        // Set departure time
+        dog.departureDate = departureDate
+        try modelContext.save()
+        
+        // Verify departure time was set
+        XCTAssertEqual(dog.departureDate, departureDate)
+        XCTAssertTrue(dog.isCurrentlyPresent) // Should be present since departure is in the future
+        
+        // Test removing departure time
+        dog.departureDate = nil
+        try modelContext.save()
+        XCTAssertNil(dog.departureDate)
+        XCTAssertTrue(dog.isCurrentlyPresent)
+        
+        // Test setting departure time in the past
+        let pastDepartureDate = Date().addingTimeInterval(-3600) // 1 hour ago
+        dog.departureDate = pastDepartureDate
+        try modelContext.save()
+        XCTAssertEqual(dog.departureDate, pastDepartureDate)
+        XCTAssertFalse(dog.isCurrentlyPresent) // Should not be present since departure is in the past
+    }
+    
+    func testSpecialInstructions() async throws {
+        let dog = try await createTestDog()
+        
+        // Set special instructions
+        dog.specialInstructions = "Test special instructions"
+        try modelContext.save()
+        
+        // Verify special instructions
+        XCTAssertEqual(dog.specialInstructions, "Test special instructions")
+        
+        // Test removing special instructions
+        dog.specialInstructions = nil
+        try modelContext.save()
+        XCTAssertNil(dog.specialInstructions)
+    }
+    
+    // MARK: - Record Management Tests
+    
+    func testFeedingRecordManagement() async throws {
+        let dog = try await createTestDog()
+        
+        // Add feeding records
+        dog.addFeedingRecord(type: .breakfast)
+        dog.addFeedingRecord(type: .lunch)
+        try modelContext.save()
+        
+        // Verify initial state
+        XCTAssertEqual(dog.breakfastCount, 1)
+        XCTAssertEqual(dog.lunchCount, 1)
+        
+        // Test record deletion
+        if let breakfastRecord = dog.feedingRecords.first(where: { $0.type == .breakfast }) {
+            dog.feedingRecords.removeAll { $0.timestamp == breakfastRecord.timestamp }
+            try modelContext.save()
+            XCTAssertEqual(dog.breakfastCount, 0)
+        }
+        
+        // Test record editing (by removing and adding new)
+        if let lunchRecord = dog.feedingRecords.first(where: { $0.type == .lunch }) {
+            dog.feedingRecords.removeAll { $0.timestamp == lunchRecord.timestamp }
+            dog.addFeedingRecord(type: .dinner) // Change type
+            try modelContext.save()
+            XCTAssertEqual(dog.lunchCount, 0)
+            XCTAssertEqual(dog.dinnerCount, 1)
+        }
+    }
+    
+    func testMedicationRecordManagement() async throws {
+        let dog = try await createTestDog()
+        
+        // Add medication records
+        dog.addMedicationRecord()
+        dog.addMedicationRecord(notes: "Test notes")
+        try modelContext.save()
+        
+        // Verify initial state
+        XCTAssertEqual(dog.medicationCount, 2)
+        
+        // Test record deletion
+        if let firstRecord = dog.medicationRecords.first {
+            dog.medicationRecords.removeAll { $0.timestamp == firstRecord.timestamp }
+            try modelContext.save()
+            XCTAssertEqual(dog.medicationCount, 1)
+        }
+        
+        // Test record editing (by removing and adding new)
+        if let secondRecord = dog.medicationRecords.first {
+            dog.medicationRecords.removeAll { $0.timestamp == secondRecord.timestamp }
+            dog.addMedicationRecord(notes: "Updated notes")
+            try modelContext.save()
+            XCTAssertEqual(dog.medicationCount, 1)
+            XCTAssertEqual(dog.medicationRecords.first?.notes, "Updated notes")
+        }
+    }
+    
+    func testPottyRecordManagement() async throws {
+        let dog = try await createTestDog()
+        
+        // Add potty records
+        dog.addPottyRecord(type: .pee)
+        dog.addPottyRecord(type: .poop)
+        try modelContext.save()
+        
+        // Verify initial state
+        XCTAssertEqual(dog.peeCount, 1)
+        XCTAssertEqual(dog.poopCount, 1)
+        
+        // Test record deletion
+        if let peeRecord = dog.pottyRecords.first(where: { $0.type == .pee }) {
+            dog.removePottyRecord(at: peeRecord.timestamp)
+            try modelContext.save()
+            XCTAssertEqual(dog.peeCount, 0)
+        }
+        
+        // Test record editing
+        if let poopRecord = dog.pottyRecords.first(where: { $0.type == .poop }) {
+            dog.updatePottyRecord(at: poopRecord.timestamp, type: .pee)
+            try modelContext.save()
+            XCTAssertEqual(dog.peeCount, 1)
+            XCTAssertEqual(dog.poopCount, 0)
+        }
+    }
+    
+    // MARK: - Advanced Filtering Tests
+    
+    func testComplexFiltering() async throws {
+        // Create test dogs with various states
+        let dog1 = try await createTestDog(
+            name: "Filter Dog 1",
+            isBoarding: true,
+            isDaycareFed: true,
+            needsWalking: true
+        )
+        let dog2 = try await createTestDog(
+            name: "Filter Dog 2",
+            isBoarding: false,
+            isDaycareFed: false,
+            needsWalking: true
+        )
+        let dog3 = try await createTestDog(
+            name: "Filter Dog 3",
+            isBoarding: true,
+            isDaycareFed: true,
+            needsWalking: false
+        )
+        
+        // Add some records
+        dog1.addFeedingRecord(type: .breakfast)
+        dog2.addMedicationRecord(notes: "Test medication")
+        dog3.addPottyRecord(type: .pee)
+        try modelContext.save()
+        
+        // Test complex filtering
+        let boardingDogsWithFeeding = [dog1, dog2, dog3].filter { dog in
+            dog.isBoarding && dog.breakfastCount > 0
+        }
+        XCTAssertEqual(boardingDogsWithFeeding.count, 1)
+        XCTAssertEqual(boardingDogsWithFeeding.first?.name, "Filter Dog 1")
+        
+        let walkingDogsWithMedication = [dog1, dog2, dog3].filter { dog in
+            dog.needsWalking && dog.medicationCount > 0
+        }
+        XCTAssertEqual(walkingDogsWithMedication.count, 1)
+        XCTAssertEqual(walkingDogsWithMedication.first?.name, "Filter Dog 2")
+    }
+    
+    // MARK: - Date Based Filtering Tests
+    
+    func testDateBasedFiltering() async throws {
+        let today = Date()
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+        
+        // Create dogs with different dates
+        let dog1 = try await createTestDog(
+            name: "Date Dog 1",
+            arrivalDate: yesterday,
+            departureDate: today
+        )
+        let dog2 = try await createTestDog(
+            name: "Date Dog 2",
+            arrivalDate: today
+        )
+        let dog3 = try await createTestDog(
+            name: "Date Dog 3",
+            arrivalDate: tomorrow
+        )
+        
+        // Test current dogs
+        let currentDogs = [dog1, dog2, dog3].filter { $0.isCurrentlyPresent }
+        XCTAssertEqual(currentDogs.count, 1)
+        XCTAssertEqual(currentDogs.first?.name, "Date Dog 2")
+        
+        // Test departed dogs
+        let departedDogs = [dog1, dog2, dog3].filter { !$0.isCurrentlyPresent }
+        XCTAssertEqual(departedDogs.count, 1)
+        XCTAssertEqual(departedDogs.first?.name, "Date Dog 1")
+        
+        // Test future bookings
+        let futureDogs = [dog1, dog2, dog3].filter { dog in
+            Calendar.current.startOfDay(for: dog.arrivalDate) > Calendar.current.startOfDay(for: today)
+        }
+        XCTAssertEqual(futureDogs.count, 1)
+        XCTAssertEqual(futureDogs.first?.name, "Date Dog 3")
+    }
+    
     // MARK: - Data Export Tests
     
-    func testDataExport() async throws {
+    func testExportFormat() async throws {
         // Create test data
-        let dog1 = try await createTestDog(name: "Export Dog 1")
-        let dog2 = try await createTestDog(name: "Export Dog 2", isBoarding: true)
+        let dog = try await createTestDog(
+            name: "Export Test Dog",
+            isBoarding: true,
+            isDaycareFed: true,
+            needsWalking: true,
+            walkingNotes: "Test walking notes",
+            medications: "Test medications",
+            notes: "Test notes"
+        )
         
-        dog1.addFeedingRecord(type: .breakfast)
-        dog1.addMedicationRecord(notes: "Test medication")
-        dog1.addPottyRecord(type: .pee)
-        
-        dog2.addFeedingRecord(type: .lunch)
-        dog2.addMedicationRecord()
-        dog2.addPottyRecord(type: .poop)
+        // Add various records
+        dog.addFeedingRecord(type: .breakfast)
+        dog.addMedicationRecord(notes: "Test medication")
+        dog.addPottyRecord(type: .pee)
+        try modelContext.save()
         
         // Export data
-        let url = try await BackupService.shared.exportDogs([dog1, dog2])
+        let url = try await BackupService.shared.exportDogs([dog])
         
-        // Verify export file exists
-        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
-        
-        // Verify file content (basic check)
+        // Verify file content
         let data = try Data(contentsOf: url)
-        XCTAssertFalse(data.isEmpty)
+        let content = String(data: data, encoding: .utf8)!
+        
+        // Format dates for comparison
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let formattedArrivalDate = dateFormatter.string(from: dog.arrivalDate)
+        
+        // Check for essential data in export
+        XCTAssertTrue(content.contains(dog.id.uuidString))
+        XCTAssertTrue(content.contains(dog.name))
+        XCTAssertTrue(content.contains(formattedArrivalDate))
+        XCTAssertTrue(content.contains("true")) // isBoarding
+        XCTAssertTrue(content.contains("Test walking notes"))
+        XCTAssertTrue(content.contains("Test medications"))
+        XCTAssertTrue(content.contains("Test notes"))
         
         // Clean up
         try? FileManager.default.removeItem(at: url)
+    }
+    
+    // MARK: - Performance Tests
+    
+    func testLargeDatasetPerformance() async throws {
+        // Create 1000 test dogs
+        measure {
+            let dogs = (0..<1000).map { i in
+                Dog(
+                    name: "Performance Dog \(i)",
+                    arrivalDate: Date(),
+                    isBoarding: i % 2 == 0,
+                    modelContext: modelContext
+                )
+            }
+            // Insert dogs one at a time
+            for dog in dogs {
+                modelContext.insert(dog)
+            }
+            try? modelContext.save()
+        }
+        
+        // Test search performance with large dataset using a more efficient predicate
+        measure {
+            let descriptor = FetchDescriptor<Dog>(
+                predicate: #Predicate<Dog> { dog in
+                    dog.name.contains("Performance")
+                },
+                sortBy: [SortDescriptor(\Dog.name)]
+            )
+            _ = try? modelContext.fetch(descriptor)
+        }
+        
+        // Test filtering performance using a more efficient predicate
+        measure {
+            let descriptor = FetchDescriptor<Dog>(
+                predicate: #Predicate<Dog> { dog in
+                    dog.isBoarding && dog.isDaycareFed && dog.isCurrentlyPresent
+                },
+                sortBy: [SortDescriptor(\Dog.name)]
+            )
+            _ = try? modelContext.fetch(descriptor)
+        }
+        
+        // Clean up
+        let descriptor = FetchDescriptor<Dog>(
+            predicate: #Predicate<Dog> { dog in
+                dog.name.contains("Performance")
+            }
+        )
+        let dogs = try modelContext.fetch(descriptor)
+        dogs.forEach { modelContext.delete($0) }
+        try? modelContext.save()
     }
 }
 

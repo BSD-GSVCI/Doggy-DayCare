@@ -1,0 +1,188 @@
+import Foundation
+import SwiftData
+
+@Model
+final class User {
+    var id: String
+    var name: String
+    var email: String?  // Optional for staff
+    var isActive: Bool
+    var isOwner: Bool
+    var isWorkingToday: Bool
+    var updatedAt: Date
+    var lastLogin: Date?
+    var createdAt: Date
+    var isOriginalOwner: Bool  // Track if this is the original owner
+    
+    // Schedule-based access control
+    var scheduledDays: [Int]?  // Array of weekday indices (0-6, where 0 is Monday)
+    var scheduleStartTime: Date?
+    var scheduleEndTime: Date?
+    
+    // Relationships
+    @Relationship(deleteRule: .cascade, inverse: \DogChange.modifiedBy)
+    var changes: [DogChange]?
+    
+    // Permissions
+    var canAddDogs: Bool
+    var canAddFutureBookings: Bool
+    var canManageStaff: Bool
+    var canManageMedications: Bool
+    var canManageFeeding: Bool
+    var canManageWalking: Bool
+    
+    // Computed property for staff work status
+    var canWorkToday: Bool {
+        if isOwner {
+            return true
+        }
+        
+        // Check if schedule-based access is enabled
+        if let days = scheduledDays, !days.isEmpty {
+            let calendar = Calendar.current
+            let today = calendar.component(.weekday, from: Date())  // 1 = Sunday, 2 = Monday, etc.
+            guard days.contains(today) else { 
+                return false 
+            }
+            
+            // Check if current time is within scheduled hours
+            if let start = scheduleStartTime, let end = scheduleEndTime {
+                let now = Date()
+                let currentTime = calendar.dateComponents([.hour, .minute], from: now)
+                let startTime = calendar.dateComponents([.hour, .minute], from: start)
+                let endTime = calendar.dateComponents([.hour, .minute], from: end)
+                
+                let currentMinutes = currentTime.hour! * 60 + currentTime.minute!
+                let startMinutes = startTime.hour! * 60 + startTime.minute!
+                let endMinutes = endTime.hour! * 60 + endTime.minute!
+                
+                return currentMinutes >= startMinutes && currentMinutes <= endMinutes
+            }
+        }
+        
+        // Fall back to manual working status if no schedule is set
+        return isActive && isWorkingToday
+    }
+    
+    init(id: String, name: String, email: String? = nil, isOwner: Bool = false, isActive: Bool = true, isWorkingToday: Bool = false, isOriginalOwner: Bool = false) {
+        self.id = id
+        self.name = name
+        self.email = email
+        self.isOwner = isOwner
+        self.isActive = isActive
+        self.isWorkingToday = isWorkingToday
+        self.isOriginalOwner = isOriginalOwner
+        self.createdAt = Date()
+        self.updatedAt = Date()
+        
+        // Initialize schedule properties
+        self.scheduledDays = nil
+        self.scheduleStartTime = nil
+        self.scheduleEndTime = nil
+        
+        // Set permissions based on role
+        if isOwner {
+            self.canAddDogs = true
+            self.canAddFutureBookings = true
+            self.canManageStaff = true
+            self.canManageMedications = true
+            self.canManageFeeding = true
+            self.canManageWalking = true
+        } else {
+            // Give staff members full access
+            self.canAddDogs = true
+            self.canAddFutureBookings = true
+            self.canManageStaff = false  // Only owners can manage staff
+            self.canManageMedications = true
+            self.canManageFeeding = true
+            self.canManageWalking = true
+        }
+    }
+    
+    func promoteToOwner(email: String, password: String) {
+        guard !isOwner else { return }  // Already an owner
+        
+        // Update owner status and permissions
+        isOwner = true
+        self.email = email  // Set the new owner email
+        
+        // Update permissions for owner
+        canAddDogs = true
+        canAddFutureBookings = true
+        canManageStaff = true
+        canManageMedications = true
+        canManageFeeding = true
+        canManageWalking = true
+        
+        // Store the new owner password
+        let passwordKey = "owner_password_\(email)"
+        UserDefaults.standard.set(password, forKey: passwordKey)
+        
+        updatedAt = Date()
+    }
+    
+    func deactivate() {
+        // Prevent deactivating original owner
+        guard !isOriginalOwner else { return }
+        isActive = false
+        updatedAt = Date()
+    }
+    
+    func activate() {
+        isActive = true
+        updatedAt = Date()
+    }
+    
+    func updateWorkingStatus(_ isWorking: Bool) {
+        isWorkingToday = isWorking
+        updatedAt = Date()
+    }
+    
+    func updateLastLogin() {
+        lastLogin = Date()
+    }
+}
+
+// MARK: - Change Tracking
+@Model
+final class DogChange {
+    var timestamp: Date
+    var changeType: ChangeType
+    var fieldName: String
+    var oldValue: String?
+    var newValue: String?
+    
+    // Relationships
+    var dog: Dog?
+    var modifiedBy: User?
+    
+    init(
+        timestamp: Date = Date(),
+        changeType: ChangeType,
+        fieldName: String,
+        oldValue: String? = nil,
+        newValue: String? = nil,
+        dog: Dog? = nil,
+        modifiedBy: User? = nil
+    ) {
+        self.timestamp = timestamp
+        self.changeType = changeType
+        self.fieldName = fieldName
+        self.oldValue = oldValue
+        self.newValue = newValue
+        self.dog = dog
+        self.modifiedBy = modifiedBy
+    }
+}
+
+enum ChangeType: String, Codable {
+    case created
+    case updated
+    case deleted
+    case arrived
+    case departed
+    case medicationAdded
+    case medicationRemoved
+    case walkingStatusChanged
+    case feedingStatusChanged
+} 

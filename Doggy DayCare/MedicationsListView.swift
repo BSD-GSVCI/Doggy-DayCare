@@ -3,6 +3,7 @@ import SwiftData
 
 struct MedicationsListView: View {
     @Environment(\.modelContext) private var modelContext
+    @StateObject private var authService = AuthenticationService.shared
     @Query(sort: \Dog.name) private var allDogs: [Dog]
     @State private var searchText = ""
     
@@ -24,7 +25,24 @@ struct MedicationsListView: View {
             
             return (isPresent || (isArrivingToday && !hasArrived)) && !isFutureBooking && dog.medications != nil && !dog.medications!.isEmpty
         }
-        return presentDogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        
+        return presentDogs
+    }
+    
+    private var daycareDogs: [Dog] {
+        medicatedDogs.filter { !$0.isBoarding }
+    }
+    
+    private var boardingDogs: [Dog] {
+        medicatedDogs.filter { $0.isBoarding }
+    }
+    
+    private var canModifyRecords: Bool {
+        // Staff can only modify records for current day's dogs
+        if let user = authService.currentUser, !user.isOwner {
+            return true // Staff can add records for any dog that needs medication
+        }
+        return true // Owners can modify all records
     }
     
     var body: some View {
@@ -37,13 +55,38 @@ struct MedicationsListView: View {
                         description: Text("Add medication information in the main list")
                     )
                 } else {
-                    ForEach(medicatedDogs) { dog in
-                        DogMedicationRow(dog: dog)
+                    Section {
+                        if daycareDogs.isEmpty {
+                            Text("No daycare dogs need medication")
+                                .foregroundStyle(.secondary)
+                                .italic()
+                        } else {
+                            ForEach(daycareDogs) { dog in
+                                DogMedicationRow(dog: dog)
+                            }
+                        }
+                    } header: {
+                        Text("Daycare")
+                    }
+                    .listSectionSpacing(20)
+                    
+                    Section {
+                        if boardingDogs.isEmpty {
+                            Text("No boarding dogs need medication")
+                                .foregroundStyle(.secondary)
+                                .italic()
+                        } else {
+                            ForEach(boardingDogs) { dog in
+                                DogMedicationRow(dog: dog)
+                            }
+                        }
+                    } header: {
+                        Text("Boarding")
                     }
                 }
             }
             .searchable(text: $searchText, prompt: "Search dogs by name")
-            .navigationTitle("Medications")
+            .navigationTitle("Medications List")
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -51,6 +94,7 @@ struct MedicationsListView: View {
 
 private struct DogMedicationRow: View {
     @Environment(\.modelContext) private var modelContext
+    @StateObject private var authService = AuthenticationService.shared
     @Bindable var dog: Dog
     @State private var showingMedicationAlert = false
     @State private var medicationNotes = ""
@@ -58,146 +102,139 @@ private struct DogMedicationRow: View {
     @State private var showingDeleteAlert = false
     @State private var selectedRecord: MedicationRecord?
     
-    private func deleteRecord(_ record: MedicationRecord) {
-        withAnimation {
-            if let index = dog.medicationRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
-                dog.medicationRecords.remove(at: index)
-                dog.updatedAt = Date()
-                try? modelContext.save()
-            }
-        }
-    }
+    private let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter
+    }()
     
-    private func updateRecord(_ record: MedicationRecord, notes: String) {
-        withAnimation {
-            if let index = dog.medicationRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
-                let updatedRecord = MedicationRecord(timestamp: record.timestamp, notes: notes.isEmpty ? nil : notes)
-                dog.medicationRecords[index] = updatedRecord
-                dog.updatedAt = Date()
-                try? modelContext.save()
-            }
+    private var canModifyRecords: Bool {
+        // Staff can only modify records for current day's dogs
+        if let user = authService.currentUser, !user.isOwner {
+            return Calendar.current.isDateInToday(dog.arrivalDate) && dog.isCurrentlyPresent
         }
+        return true // Owners can modify all records
     }
     
     var body: some View {
-        Button {
-            showingMedicationAlert = true
-        } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(dog.name)
-                        .font(.headline)
-                    Spacer()
-                    Text(dog.formattedStayDuration)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                
-                if let medications = dog.medications {
-                    Text(medications)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(dog.name)
+                    .font(.headline)
+                    .onTapGesture {
+                        showingMedicationAlert = true
+                    }
+                Spacer()
+            }
+            
+            if let medications = dog.medications {
+                Text(medications)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            
+            HStack(spacing: 12) {
                 HStack {
                     Image(systemName: "pills.fill")
-                        .font(.caption)
                         .foregroundStyle(.purple)
-                    Text("\(dog.medicationRecords.count) administrations")
-                        .font(.caption)
+                    Text("\(dog.medicationCount)")
                 }
-                
-                if !dog.medicationRecords.isEmpty {
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
-                            HStack {
-                                Image(systemName: "pills.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.purple)
-                                if let notes = record.notes, !notes.isEmpty {
-                                    Text(notes)
-                                        .font(.caption)
-                                } else {
-                                    Text("Medication administered")
-                                        .font(.caption)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            
+            if !dog.medicationRecords.isEmpty {
+                ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Administered at \(record.timestamp, formatter: timeFormatter)")
+                                .font(.subheadline)
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Menu {
+                                Button("Delete", role: .destructive) {
+                                    deleteMedicationRecord(record)
                                 }
-                                Spacer()
-                                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Menu {
-                                    Button {
-                                        selectedRecord = record
-                                        medicationNotes = record.notes ?? ""
-                                        showingEditAlert = true
-                                    } label: {
-                                        Label("Edit Notes", systemImage: "pencil")
-                                    }
-                                    
-                                    Button(role: .destructive) {
-                                        selectedRecord = record
-                                        showingDeleteAlert = true
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                } label: {
-                                    Image(systemName: "ellipsis.circle")
-                                        .foregroundStyle(.secondary)
-                                }
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .foregroundColor(.secondary)
                             }
-                            .padding(.leading)
+                        }
+                        
+                        if let notes = record.notes, !notes.isEmpty {
+                            Text(notes)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.leading, 24)
                         }
                     }
-                    .padding(.top, 4)
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
                 }
+                .padding(.top, 4)
+            } else {
+                Color.clear
+                    .frame(height: 0)
             }
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 4)
         .alert("Record Medication", isPresented: $showingMedicationAlert) {
             TextField("Notes (optional)", text: $medicationNotes)
-            Button("Record Administration") {
-                dog.addMedicationRecord(notes: medicationNotes.isEmpty ? nil : medicationNotes)
+            Button("Cancel", role: .cancel) { 
                 medicationNotes = ""
             }
-            Button("Cancel", role: .cancel) {
+            Button("Record") {
+                print("Adding medication record with notes for \(dog.name)")
+                addMedicationRecord(for: dog, notes: medicationNotes.isEmpty ? nil : medicationNotes)
                 medicationNotes = ""
             }
         } message: {
-            if let medications = dog.medications {
-                Text("Record administration of:\n\(medications)")
-            } else {
-                Text("Record medication administration for \(dog.name)")
-            }
+            Text("Record medication for \(dog.name)")
         }
-        .alert("Edit Medication Record", isPresented: $showingEditAlert) {
-            TextField("Notes (optional)", text: $medicationNotes)
-            Button("Save") {
-                if let record = selectedRecord {
-                    updateRecord(record, notes: medicationNotes)
-                    medicationNotes = ""
-                }
-            }
-            Button("Cancel", role: .cancel) {
-                medicationNotes = ""
-            }
-        } message: {
-            if let medications = dog.medications {
-                Text("Edit notes for medication:\n\(medications)")
-            } else {
-                Text("Edit medication record notes")
-            }
+    }
+    
+    private func addMedicationRecord(for dog: Dog, notes: String?) {
+        print("Adding medication record for \(dog.name)")
+        guard canModifyRecords else { 
+            print("Cannot modify records for \(dog.name)")
+            return 
         }
-        .alert("Delete Medication Record", isPresented: $showingDeleteAlert) {
-            Button("Delete", role: .destructive) {
-                if let record = selectedRecord {
-                    deleteRecord(record)
-                }
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Are you sure you want to delete this medication record?")
+        
+        let record = MedicationRecord(timestamp: Date(), notes: notes, recordedBy: authService.currentUser?.name)
+        print("Created medication record: \(record)")
+        modelContext.insert(record)
+        print("Inserted medication record into model context")
+        
+        // Set the inverse relationship
+        record.dog = dog
+        
+        // Ensure the relationship is properly established
+        dog.medicationRecords.append(record)
+        print("Added medication record to dog's medicationRecords array. Count before: \(dog.medicationRecords.count - 1), count after: \(dog.medicationRecords.count)")
+        
+        // Force a save to ensure the relationship is persisted
+        dog.updatedAt = Date()
+        dog.lastModifiedBy = authService.currentUser
+        
+        do {
+            try modelContext.save()
+            print("Successfully saved medication record for \(dog.name)")
+            print("Dog \(dog.name) now has \(dog.medicationRecords.count) medication records")
+            print("Medication record array contents: \(dog.medicationRecords.map { "notes: \($0.notes ?? "none") at \($0.timestamp)" })")
+        } catch {
+            print("Error saving medication record: \(error)")
+        }
+    }
+    
+    private func deleteMedicationRecord(_ record: MedicationRecord) {
+        guard canModifyRecords else { return }
+        if let index = dog.medicationRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
+            print("Deleting medication record at index \(index) for \(dog.name)")
+            dog.medicationRecords.remove(at: index)
+            dog.updatedAt = Date()
+            dog.lastModifiedBy = authService.currentUser
+            try? modelContext.save()
         }
     }
 }

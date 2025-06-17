@@ -3,10 +3,19 @@ import SwiftData
 
 struct WalkingListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var dogs: [Dog]
+    @StateObject private var authService = AuthenticationService.shared
+    @Query(sort: \Dog.name) private var allDogs: [Dog]
     @State private var searchText = ""
     @State private var showingPottyAlert = false
     @State private var selectedDog: Dog?
+    
+    private var canModifyRecords: Bool {
+        // Staff can only modify records for current day's dogs
+        if let user = authService.currentUser, !user.isOwner {
+            return true // Staff can add records for any dog that needs walking
+        }
+        return true // Owners can modify all records
+    }
     
     private var walkingDogs: [Dog] {
         let presentDogs = filteredDogs.filter { dog in
@@ -31,9 +40,9 @@ struct WalkingListView: View {
     
     private var filteredDogs: [Dog] {
         if searchText.isEmpty {
-            return dogs
+            return allDogs
         } else {
-            return dogs.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+            return allDogs.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
         }
     }
     
@@ -80,6 +89,18 @@ struct WalkingListView: View {
             .searchable(text: $searchText, prompt: "Search dogs by name")
             .navigationTitle("Walking List")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        // Add any toolbar action if needed
+                    } label: {
+                        Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                }
+            }
+        }
+        .onAppear {
+            print("WalkingListView appeared")
         }
         .alert("Record Potty", isPresented: $showingPottyAlert) {
             Button("Cancel", role: .cancel) { }
@@ -101,45 +122,84 @@ struct WalkingListView: View {
     }
     
     private func showingPottyAlert(for dog: Dog) {
+        print("Showing potty alert for \(dog.name)")
         selectedDog = dog
         showingPottyAlert = true
     }
     
     private func addPottyRecord(for dog: Dog, type: PottyRecord.PottyType) {
-        let record = PottyRecord(timestamp: Date(), type: type)
+        print("Adding \(type) record for \(dog.name)")
+        guard canModifyRecords else { 
+            print("Cannot modify records for \(dog.name)")
+            return 
+        }
+        
+        let record = PottyRecord(timestamp: Date(), type: type, recordedBy: authService.currentUser?.name)
+        print("Created record: \(record)")
+        modelContext.insert(record)
+        print("Inserted record into model context")
+        
+        // Set the inverse relationship
+        record.dog = dog
+        
+        // Ensure the relationship is properly established
         dog.pottyRecords.append(record)
-        try? modelContext.save()
+        print("Added record to dog's pottyRecords array. Count before: \(dog.pottyRecords.count - 1), count after: \(dog.pottyRecords.count)")
+        
+        // Force a save to ensure the relationship is persisted
+        dog.updatedAt = Date()
+        dog.lastModifiedBy = authService.currentUser
+        
+        do {
+            try modelContext.save()
+            print("Successfully saved potty record for \(dog.name)")
+            print("Dog \(dog.name) now has \(dog.pottyRecords.count) potty records")
+            print("Record array contents: \(dog.pottyRecords.map { "\($0.type) at \($0.timestamp)" })")
+        } catch {
+            print("Error saving potty record: \(error)")
+        }
     }
 }
 
 private struct DogWalkingRow: View {
     @Environment(\.modelContext) private var modelContext
-    let dog: Dog
+    @StateObject private var authService = AuthenticationService.shared
+    @Bindable var dog: Dog
     let showingPottyAlert: (Dog) -> Void
     @State private var showingEditAlert = false
     @State private var showingDeleteAlert = false
     @State private var selectedRecord: PottyRecord?
     @State private var selectedType: PottyRecord.PottyType?
+    @State private var showingNotes = false
+    @State private var notes = ""
+    
+    private var canModifyRecords: Bool {
+        // Staff can only modify records for current day's dogs
+        if let user = authService.currentUser, !user.isOwner {
+            return Calendar.current.isDateInToday(dog.arrivalDate) && dog.isCurrentlyPresent
+        }
+        return true // Owners can modify all records
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Button {
-                showingPottyAlert(dog)
-            } label: {
-                HStack {
-                    Text(dog.name)
-                        .font(.headline)
-                    if dog.needsWalking {
-                        Image(systemName: "figure.walk")
+            HStack {
+                Text(dog.name)
+                    .font(.headline)
+                    .onTapGesture {
+                        showingPottyAlert(dog)
+                    }
+                Spacer()
+                if let notes = dog.walkingNotes {
+                    Button {
+                        self.notes = notes
+                        showingNotes = true
+                    } label: {
+                        Image(systemName: "note.text")
                             .foregroundStyle(.blue)
                     }
-                    Spacer()
-                    Text(dog.formattedStayDuration)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
                 }
             }
-            .buttonStyle(.plain)
             
             HStack(spacing: 12) {
                 HStack {
@@ -155,12 +215,6 @@ private struct DogWalkingRow: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             
-            if let notes = dog.walkingNotes {
-                Text(notes)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            
             if !dog.pottyRecords.isEmpty {
                 let columns = [
                     GridItem(.adaptive(minimum: 100, maximum: 120), spacing: 8)
@@ -168,93 +222,108 @@ private struct DogWalkingRow: View {
                 
                 LazyVGrid(columns: columns, spacing: 8) {
                     ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
-                        PottyRecordGridItem(dog: dog, record: record, modelContext: modelContext)
+                        PottyRecordGridItem(dog: dog, record: record)
+                            .disabled(!canModifyRecords)
                     }
                 }
                 .padding(.top, 4)
+            } else {
+                Color.clear
+                    .frame(height: 0)
             }
         }
         .padding(.vertical, 4)
+        .sheet(isPresented: $showingNotes) {
+            NavigationStack {
+                Form {
+                    Section {
+                        Text(notes)
+                    } header: {
+                        Text("Walking Notes")
+                    }
+                }
+                .navigationTitle("\(dog.name)'s Notes")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            showingNotes = false
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
 private struct PottyRecordGridItem: View {
+    @Environment(\.modelContext) private var modelContext
+    @StateObject private var authService = AuthenticationService.shared
     let dog: Dog
     let record: PottyRecord
-    let modelContext: ModelContext
     
     @State private var showingEditAlert = false
     @State private var showingDeleteAlert = false
     @State private var selectedType: PottyRecord.PottyType?
     
+    private var canModifyRecords: Bool {
+        // Staff can only modify records for current day's dogs
+        if let user = authService.currentUser, !user.isOwner {
+            return Calendar.current.isDateInToday(dog.arrivalDate) && dog.isCurrentlyPresent
+        }
+        return true // Owners can modify all records
+    }
+    
     var body: some View {
-        HStack(spacing: 4) {
-            if record.type == .pee {
-                Image(systemName: "drop.fill")
-                    .foregroundStyle(.yellow)
-            } else {
-                Text("💩")
-            }
-            
-            Text(record.timestamp.formatted(date: .omitted, time: .shortened))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            
-            Menu {
-                Button {
-                    selectedType = record.type == .pee ? .poop : .pee
-                    showingEditAlert = true
-                } label: {
-                    Label("Change Type", systemImage: "arrow.triangle.2.circlepath")
+        Button {
+            guard canModifyRecords else { return }
+            showingEditAlert = true
+            selectedType = record.type
+        } label: {
+            HStack {
+                if record.type == .pee {
+                    Image(systemName: "drop.fill")
+                        .foregroundStyle(.yellow)
+                } else {
+                    Text("💩")
                 }
-                
+                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.caption)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+            .background(Color.secondary.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .disabled(!canModifyRecords)
+        .contextMenu {
+            if canModifyRecords {
                 Button(role: .destructive) {
                     showingDeleteAlert = true
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
-        .padding(6)
-        .background(Color(.systemGray6))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .alert("Delete Record", isPresented: $showingDeleteAlert) {
+        .alert("Edit Potty Record", isPresented: $showingEditAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Pee") {
+                dog.updatePottyRecord(at: record.timestamp, type: .pee, modifiedBy: authService.currentUser)
+            }
+            Button("Poop") {
+                dog.updatePottyRecord(at: record.timestamp, type: .poop, modifiedBy: authService.currentUser)
+            }
+        } message: {
+            Text("Change record type for \(dog.name)?")
+        }
+        .alert("Delete Potty Record", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
-                deleteRecord()
+                dog.removePottyRecord(at: record.timestamp, modifiedBy: authService.currentUser)
             }
         } message: {
             Text("Are you sure you want to delete this record?")
-        }
-        .alert("Change Record Type", isPresented: $showingEditAlert) {
-            Button("Cancel", role: .cancel) { }
-            if let type = selectedType {
-                Button("Change to \(type == .pee ? "Pee" : "Poop")") {
-                    updateRecord(type: type)
-                }
-            }
-        } message: {
-            if let type = selectedType {
-                Text("Change this record to \(type == .pee ? "pee" : "poop")?")
-            }
-        }
-    }
-    
-    private func deleteRecord() {
-        if let index = dog.pottyRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
-            dog.pottyRecords.remove(at: index)
-            try? modelContext.save()
-        }
-    }
-    
-    private func updateRecord(type: PottyRecord.PottyType) {
-        if let index = dog.pottyRecords.firstIndex(where: { $0.timestamp == record.timestamp }) {
-            dog.pottyRecords[index].type = type
-            try? modelContext.save()
         }
     }
 }
