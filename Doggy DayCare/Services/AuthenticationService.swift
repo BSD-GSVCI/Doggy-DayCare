@@ -58,20 +58,20 @@ class AuthenticationService: ObservableObject {
             let userEmail = user.email.map { ", email: \($0)" } ?? ""
             print("Found user: \(user.name)\(userEmail), isOwner: \(user.isOwner), isActive: \(user.isActive)")
             
-            // Owner login requires password
-            guard let password = password else {
-                print("Password required for owner login")
-                throw AuthError.passwordRequired
-            }
-            
-            // For original owner, use the owner password key
-            if user.isOriginalOwner {
-                guard let storedPassword = UserDefaults.standard.string(forKey: ownerPasswordKey),
-                      password == storedPassword else {
-                    print("Invalid owner password")
-                    throw AuthError.invalidPassword
+                // Owner login requires password
+                guard let password = password else {
+                    print("Password required for owner login")
+                    throw AuthError.passwordRequired
                 }
-            } else {
+                
+                // For original owner, use the owner password key
+                if user.isOriginalOwner {
+                    guard let storedPassword = UserDefaults.standard.string(forKey: ownerPasswordKey),
+                          password == storedPassword else {
+                        print("Invalid owner password")
+                        throw AuthError.invalidPassword
+                    }
+                } else {
                 // For promoted owners, use their email-based password key
                 guard let userEmail = user.email else {
                     print("Promoted owner has no email")
@@ -79,12 +79,12 @@ class AuthenticationService: ObservableObject {
                 }
                 // Use lowercase email for password key
                 let passwordKey = "owner_password_\(userEmail.lowercased())"
-                guard let storedPassword = UserDefaults.standard.string(forKey: passwordKey),
-                      password == storedPassword else {
-                    print("Invalid password for promoted owner: \(user.name)")
-                    throw AuthError.invalidPassword
+                    guard let storedPassword = UserDefaults.standard.string(forKey: passwordKey),
+                          password == storedPassword else {
+                        print("Invalid password for promoted owner: \(user.name)")
+                        throw AuthError.invalidPassword
+                    }
                 }
-            }
             
             // Update last login time
             user.lastLogin = Date()
@@ -131,10 +131,10 @@ class AuthenticationService: ObservableObject {
                 
                 // Set current user
                 currentUser = user
-                print("Successfully signed in user: \(user.name)")
+            print("Successfully signed in user: \(user.name)")
             } catch {
                 print("Sign in error: \(error)")
-                throw error
+            throw error
             }
         } else {
             throw AuthError.invalidCredentials

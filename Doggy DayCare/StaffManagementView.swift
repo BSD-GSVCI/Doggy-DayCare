@@ -66,30 +66,7 @@ struct StaffManagementView: View {
                                 }
                             }
                             
-                            VStack(alignment: .leading, spacing: 4) {
-                                Toggle("Working Today", isOn: Binding(
-                                    get: { user.isWorkingToday },
-                                    set: { newValue in
-                                        user.isWorkingToday = newValue
-                                        user.updatedAt = Date()
-                                        try? modelContext.save()
-                                    }
-                                ))
-                                .disabled(!user.isActive)
-                                
-                                if user.isActive {
-                                    if user.isWorkingToday {
-                                        Text("Scheduled for work today")
-                                            .font(.caption)
-                                            .foregroundStyle(.green)
-                                    } else {
-                                        Text("Not scheduled for today")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                            
+                            // Schedule Access Button
                             if user.isActive {
                                 Button {
                                     handleScheduleAction(for: user)
@@ -98,6 +75,9 @@ struct StaffManagementView: View {
                                         .font(.subheadline)
                                 }
                             }
+                            
+                            // Schedule Information
+                            ScheduleInfoView(user: user)
                         }
                         .swipeActions(edge: .trailing) {
                             if isCurrentUserOwner {
@@ -386,16 +366,12 @@ struct StaffScheduleView: View {
     
     @State private var isScheduleEnabled: Bool
     @State private var selectedDays: Set<Int>
-    @State private var startTime: Date
-    @State private var endTime: Date
     
     init(staff: User) {
         self.staff = staff
         // Initialize state from staff member's current schedule
         _isScheduleEnabled = State(initialValue: staff.scheduledDays != nil)
         _selectedDays = State(initialValue: Set(staff.scheduledDays ?? []))
-        _startTime = State(initialValue: staff.scheduleStartTime ?? Calendar.current.date(from: DateComponents(hour: 9, minute: 0)) ?? Date())
-        _endTime = State(initialValue: staff.scheduleEndTime ?? Calendar.current.date(from: DateComponents(hour: 17, minute: 0)) ?? Date())
     }
     
     var body: some View {
@@ -425,13 +401,6 @@ struct StaffScheduleView: View {
                         ))
                     }
                 }
-                
-                Section("Working Hours") {
-                    DatePicker("Start Time", selection: $startTime, displayedComponents: .hourAndMinute)
-                        .onChange(of: startTime) { _, _ in updateStaffSchedule() }
-                    DatePicker("End Time", selection: $endTime, displayedComponents: .hourAndMinute)
-                        .onChange(of: endTime) { _, _ in updateStaffSchedule() }
-                }
             }
         }
         .navigationTitle("Schedule Access")
@@ -448,8 +417,9 @@ struct StaffScheduleView: View {
     private func updateStaffSchedule() {
         if isScheduleEnabled {
             staff.scheduledDays = Array(selectedDays)
-            staff.scheduleStartTime = startTime
-            staff.scheduleEndTime = endTime
+            // Remove time constraints - staff can work all day on scheduled days
+            staff.scheduleStartTime = nil
+            staff.scheduleEndTime = nil
         } else {
             staff.scheduledDays = nil
             staff.scheduleStartTime = nil
@@ -544,6 +514,64 @@ private struct AddStaffView: View {
         } catch {
             errorMessage = "Failed to add staff member: \(error.localizedDescription)"
             showingError = true
+        }
+    }
+}
+
+// MARK: - Schedule Info View
+private struct ScheduleInfoView: View {
+    let user: User
+    
+    private var dayNames: String {
+        guard let days = user.scheduledDays, !days.isEmpty else { return "" }
+        return days.map { day in
+            Calendar.current.weekdaySymbols[day - 1]
+        }.joined(separator: ", ")
+    }
+    
+    var body: some View {
+        if user.isActive {
+            VStack(alignment: .leading, spacing: 4) {
+                if user.scheduledDays != nil && !user.scheduledDays!.isEmpty {
+                    Text("📅 Weekly Schedule Active:")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                    
+                    Text("• Working days: \(dayNames)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    
+                    // Show current status
+                    if user.canWorkToday {
+                        Text("Can work today")
+                            .font(.caption2)
+                            .foregroundStyle(.green)
+                    } else {
+                        Text("Not scheduled for today")
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                    }
+                } else {
+                    Text("📅 No Schedule Set:")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                    
+                    Text("• Staff member cannot login without a schedule")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    
+                    Text("• Set up a weekly schedule to grant access")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.top, 8)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(.systemGray6))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 }

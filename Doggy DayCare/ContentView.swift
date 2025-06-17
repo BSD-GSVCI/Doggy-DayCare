@@ -139,24 +139,23 @@ struct ContentView: View {
             LoginView()
         } else {
             NavigationStack {
-                DogsListView(
-                    daycareDogs: daycareDogs,
-                    boardingDogs: boardingDogs,
-                    departedDogs: departedDogs
-                )
-                .searchable(text: $searchText, prompt: "Search dogs by name")
-                .navigationTitle("Dogs")
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button {
-                            showingAddDog = true
-                        } label: {
-                            Image(systemName: "plus")
+            DogsListView(
+                daycareDogs: daycareDogs,
+                boardingDogs: boardingDogs,
+                departedDogs: departedDogs
+            )
+        .searchable(text: $searchText, prompt: "Search dogs by name")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    showingAddDog = true
+                } label: {
+                    Image(systemName: "plus")
                                 .foregroundStyle(.blue)
-                        }
-                    }
-                    
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                }
+            }
+            
+            ToolbarItem(placement: .navigationBarTrailing) {
                         HStack(spacing: 12) {
                             NavigationLink(destination: WalkingListView()) {
                                 Image(systemName: "figure.walk")
@@ -199,8 +198,8 @@ struct ContentView: View {
                             } label: {
                                 Image(systemName: "square.and.arrow.up")
                                     .foregroundStyle(.blue)
-                            }
-                            
+    }
+    
                             Button {
                                 showingLogoutConfirmation = true
                             } label: {
@@ -468,16 +467,15 @@ private struct DogRow: View {
                                     
                                     if let updatedDate = calendar.date(from: combinedComponents) {
                                         dog.departureDate = updatedDate
-                                        dog.updatedAt = Date()
-                                        try? modelContext.save()
+                                    dog.updatedAt = Date()
+                                    try? modelContext.save()
                                     }
                                 }
                             ),
                             displayedComponents: .hourAndMinute
                         )
                         .onChange(of: dog.departureDate) { _, newValue in
-                            // Auto-close the sheet when a time is selected
-                            showingDepartureSheet = false
+                            // Keep the sheet open - don't auto-close
                         }
                     }
                 }

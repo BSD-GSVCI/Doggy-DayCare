@@ -60,8 +60,8 @@ class AutomationService: ObservableObject {
                              (hour == 23 && minute == 59)      // 11:59 PM
             
             if shouldBackup {
-                Task {
-                    await self?.performAutomatedBackup()
+                    Task {
+                        await self?.performAutomatedBackup()
                 }
             }
         }

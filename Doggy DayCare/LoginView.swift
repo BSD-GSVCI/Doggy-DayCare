@@ -22,6 +22,7 @@ struct LoginView: View {
     @State private var isResettingPassword = false
     @State private var isSigningUp = false
     @State private var ownerExists = false
+    @State private var isOwnerSignupMode = true  // Track if we're in signup or login mode for owner
     
     private var isFormValid: Bool {
         if isOwnerLogin {
@@ -47,8 +48,10 @@ struct LoginView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    Text("🐕‍🦺")
-                        .font(.system(size: 80))
+                    Image("GreenHouse_With_Dog")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 160, height: 160)
                         .padding(.bottom, 20)
                     
                     Text("Green House Doggy DayCare")
@@ -64,7 +67,7 @@ struct LoginView: View {
                     
                     if isOwnerLogin {
                         VStack(spacing: 15) {
-                            if !ownerExists {
+                            if isOwnerSignupMode {
                                 // Show signup form if no owner exists
                                 Text("Welcome to Doggy DayCare!")
                                     .font(.title2)
@@ -140,10 +143,20 @@ struct LoginView: View {
                                 .padding(.horizontal)
                                 .disabled(isLoading || !isSignupValid)
                                 
-                                Text("If already owner login")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.top, 4)
+                                Button {
+                                    withAnimation {
+                                        isOwnerSignupMode = false
+                                        // Clear signup-specific fields
+                                        name = ""
+                                        confirmPassword = ""
+                                        errorMessage = nil
+                                    }
+                                } label: {
+                                    Text("If you already have an owner account,login")
+                                        .font(.caption)
+                                        .foregroundStyle(.blue)
+                                        .padding(.top, 4)
+                                }
                             } else {
                                 // Show login form if owner exists
                                 Text("Owner Login")
@@ -189,6 +202,20 @@ struct LoginView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                                 .padding(.horizontal)
                                 .disabled(isLoading || !isFormValid)
+                                
+                                Button {
+                                    withAnimation {
+                                        isOwnerSignupMode = true
+                                        // Clear login-specific fields
+                                        ownerPassword = ""
+                                        errorMessage = nil
+                                    }
+                                } label: {
+                                    Text("Create new owner account")
+                                        .font(.caption)
+                                        .foregroundStyle(.blue)
+                                        .padding(.top, 4)
+                                }
                                 
                                 VStack(spacing: 8) {
                                     Button {
@@ -344,6 +371,8 @@ struct LoginView: View {
             errorMessage = nil
             if isOwnerLogin {
                 staffPassword = ""
+                // Reset owner mode based on whether owner exists
+                isOwnerSignupMode = !ownerExists
             } else {
                 ownerPassword = ""
                 confirmPassword = ""
@@ -374,9 +403,13 @@ struct LoginView: View {
                 }
                 ownerExists = !owners.isEmpty
                 print("ownerExists set to: \(ownerExists)")
+                
+                // Set initial owner signup mode
+                isOwnerSignupMode = !ownerExists
             } catch {
                 print("Error checking for owner: \(error)")
                 ownerExists = false
+                isOwnerSignupMode = true
             }
         }
     }

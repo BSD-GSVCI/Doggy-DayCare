@@ -77,7 +77,7 @@ struct MedicationsListView: View {
                                 .italic()
                         } else {
                             ForEach(boardingDogs) { dog in
-                                DogMedicationRow(dog: dog)
+                        DogMedicationRow(dog: dog)
                             }
                         }
                     } header: {
@@ -117,31 +117,31 @@ private struct DogMedicationRow: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(dog.name)
-                    .font(.headline)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(dog.name)
+                        .font(.headline)
                     .onTapGesture {
                         showingMedicationAlert = true
                     }
-                Spacer()
-            }
-            
-            if let medications = dog.medications {
-                Text(medications)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            
+                    Spacer()
+                }
+                
+                if let medications = dog.medications {
+                    Text(medications)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                
             HStack(spacing: 12) {
-                HStack {
-                    Image(systemName: "pills.fill")
-                        .foregroundStyle(.purple)
+                            HStack {
+                                Image(systemName: "pills.fill")
+                                    .foregroundStyle(.purple)
                     Text("\(dog.medicationCount)")
                 }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+                                }
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
             
             if !dog.medicationRecords.isEmpty {
                 ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
@@ -151,32 +151,33 @@ private struct DogMedicationRow: View {
                                 .font(.subheadline)
                                 .foregroundColor(.primary)
                             Spacer()
-                            Menu {
-                                Button("Delete", role: .destructive) {
-                                    deleteMedicationRecord(record)
-                                }
-                            } label: {
-                                Image(systemName: "ellipsis")
-                                    .foregroundColor(.secondary)
-                            }
                         }
                         
                         if let notes = record.notes, !notes.isEmpty {
                             Text(notes)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                        .foregroundStyle(.secondary)
                                 .padding(.leading, 24)
                         }
                     }
                     .padding()
                     .background(Color(.systemGray6))
                     .cornerRadius(8)
+                    .contextMenu {
+                        if canModifyRecords {
+                            Button(role: .destructive) {
+                                deleteMedicationRecord(record)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
                 }
                 .padding(.top, 4)
             } else {
                 Color.clear
                     .frame(height: 0)
-            }
+        }
         }
         .padding(.vertical, 4)
         .alert("Record Medication", isPresented: $showingMedicationAlert) {
@@ -224,8 +225,8 @@ private struct DogMedicationRow: View {
             print("Medication record array contents: \(dog.medicationRecords.map { "notes: \($0.notes ?? "none") at \($0.timestamp)" })")
         } catch {
             print("Error saving medication record: \(error)")
+            }
         }
-    }
     
     private func deleteMedicationRecord(_ record: MedicationRecord) {
         guard canModifyRecords else { return }

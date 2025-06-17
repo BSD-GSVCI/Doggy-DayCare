@@ -8,6 +8,19 @@ struct WalkingListView: View {
     @State private var searchText = ""
     @State private var showingPottyAlert = false
     @State private var selectedDog: Dog?
+    @State private var selectedFilter: WalkingFilter = .alphabetical
+    
+    enum WalkingFilter {
+        case alphabetical
+        case recentActivity
+        
+        var title: String {
+            switch self {
+            case .alphabetical: return "Alphabetical"
+            case .recentActivity: return "Recent Activity"
+            }
+        }
+    }
     
     private var canModifyRecords: Bool {
         // Staff can only modify records for current day's dogs
@@ -27,7 +40,36 @@ struct WalkingListView: View {
             
             return (isPresent || (isArrivingToday && !hasArrived)) && !isFutureBooking && dog.needsWalking
         }
-        return presentDogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        
+        // Sort based on selected filter
+        return presentDogs.sorted(by: { (dog1: Dog, dog2: Dog) -> Bool in
+            switch selectedFilter {
+            case .alphabetical:
+                return dog1.name.localizedCaseInsensitiveCompare(dog2.name) == .orderedAscending
+                
+            case .recentActivity:
+                let threeHoursAgo = Date().addingTimeInterval(-3 * 60 * 60) // 3 hours ago
+                let dog1LastPotty = dog1.pottyRecords
+                    .filter { $0.timestamp > threeHoursAgo }
+                    .sorted { $0.timestamp > $1.timestamp }
+                    .first?.timestamp
+                let dog2LastPotty = dog2.pottyRecords
+                    .filter { $0.timestamp > threeHoursAgo }
+                    .sorted { $0.timestamp > $1.timestamp }
+                    .first?.timestamp
+                
+                // If both have had potty in the last 3 hours, sort by time (most recent first)
+                if let time1 = dog1LastPotty, let time2 = dog2LastPotty {
+                    return time1 > time2
+                }
+                // If only one has had potty in the last 3 hours, put the one who hasn't first
+                if (dog1LastPotty != nil) != (dog2LastPotty != nil) {
+                    return dog1LastPotty == nil
+                }
+                // If neither has had potty in the last 3 hours, sort alphabetically
+                return dog1.name.localizedCaseInsensitiveCompare(dog2.name) == .orderedAscending
+            }
+        })
     }
     
     private var daycareDogs: [Dog] {
@@ -91,11 +133,15 @@ struct WalkingListView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        // Add any toolbar action if needed
+                    Menu {
+                        Picker("Sort By", selection: $selectedFilter) {
+                            Text("Alphabetical").tag(WalkingFilter.alphabetical)
+                            Text("Recent Activity").tag(WalkingFilter.recentActivity)
+                        }
                     } label: {
                         Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
                     }
+                    .menuStyle(.borderlessButton)
                 }
             }
         }

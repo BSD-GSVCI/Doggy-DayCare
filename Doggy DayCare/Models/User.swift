@@ -15,7 +15,7 @@ final class User {
     var isOriginalOwner: Bool  // Track if this is the original owner
     
     // Schedule-based access control
-    var scheduledDays: [Int]?  // Array of weekday indices (0-6, where 0 is Monday)
+    var scheduledDays: [Int]?  // Array of weekday indices (1-7, where 1 is Sunday, 2 is Monday, etc.)
     var scheduleStartTime: Date?
     var scheduleEndTime: Date?
     
@@ -37,31 +37,35 @@ final class User {
             return true
         }
         
+        // Staff must be active to work
+        guard isActive else {
+            print("DEBUG: User \(name) is not active")
+            return false
+        }
+        
         // Check if schedule-based access is enabled
         if let days = scheduledDays, !days.isEmpty {
             let calendar = Calendar.current
             let today = calendar.component(.weekday, from: Date())  // 1 = Sunday, 2 = Monday, etc.
+            
+            print("DEBUG: User \(name) - Today is weekday \(today), scheduled days: \(days)")
+            
+            // Check if today is in the scheduled days
             guard days.contains(today) else { 
+                print("DEBUG: User \(name) - Today (\(today)) is not in scheduled days (\(days))")
                 return false 
             }
             
-            // Check if current time is within scheduled hours
-            if let start = scheduleStartTime, let end = scheduleEndTime {
-                let now = Date()
-                let currentTime = calendar.dateComponents([.hour, .minute], from: now)
-                let startTime = calendar.dateComponents([.hour, .minute], from: start)
-                let endTime = calendar.dateComponents([.hour, .minute], from: end)
-                
-                let currentMinutes = currentTime.hour! * 60 + currentTime.minute!
-                let startMinutes = startTime.hour! * 60 + startTime.minute!
-                let endMinutes = endTime.hour! * 60 + endTime.minute!
-                
-                return currentMinutes >= startMinutes && currentMinutes <= endMinutes
-            }
+            print("DEBUG: User \(name) - Today is scheduled!")
+            
+            // If day is scheduled, allow access for the entire day (no time constraints)
+            print("DEBUG: User \(name) - Day scheduled, allowing all-day access")
+            return true
         }
         
-        // Fall back to manual working status if no schedule is set
-        return isActive && isWorkingToday
+        // If no schedule is set, staff cannot work
+        print("DEBUG: User \(name) - No schedule set")
+        return false
     }
     
     init(id: String, name: String, email: String? = nil, isOwner: Bool = false, isActive: Bool = true, isWorkingToday: Bool = false, isOriginalOwner: Bool = false) {
