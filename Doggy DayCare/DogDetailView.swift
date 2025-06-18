@@ -10,7 +10,9 @@ struct DogDetailView: View {
     @State private var showingEditSheet = false
     @State private var showingDeleteAlert = false
     @State private var showingDepartureSheet = false
+    @State private var showingBoardingSheet = false
     @State private var departureDate = Date()
+    @State private var boardingEndDate = Date()
     
     private var canEdit: Bool {
         authService.currentUser?.isOwner ?? false
@@ -49,6 +51,14 @@ struct DogDetailView: View {
                     LabeledContent("Feeding", value: dog.isDaycareFed ? "Daycare Fed" : "Own Food")
                     
                     if dog.isCurrentlyPresent {
+                        if !dog.isBoarding {
+                            Button {
+                                showingBoardingSheet = true
+                            } label: {
+                                Label("Board", systemImage: "house.fill")
+                            }
+                        }
+                        
                         Button {
                             withAnimation {
                                 dog.departureDate = Date()
@@ -86,8 +96,14 @@ struct DogDetailView: View {
                                     if record.type == .pee {
                                         Image(systemName: "drop.fill")
                                             .foregroundStyle(.yellow)
-                                    } else {
+                                    } else if record.type == .poop {
                                         Text("💩")
+                                    } else if record.type == .nothing {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundStyle(.red)
+                                    } else {
+                                        Image(systemName: "questionmark.circle")
+                                            .foregroundStyle(.gray)
                                     }
                                     Text(record.type.rawValue.capitalized)
                                         .font(.subheadline)
@@ -285,6 +301,38 @@ struct DogDetailView: View {
                 }
             }
             .presentationDetents([.height(200)])
+        }
+        .sheet(isPresented: $showingBoardingSheet) {
+            NavigationStack {
+                Form {
+                    Section {
+                        DatePicker("Expected Departure Date", selection: $boardingEndDate, displayedComponents: .date)
+                    } footer: {
+                        Text("This will convert \(dog.name) from daycare to boarding. The dog will remain in boarding until the expected departure date.")
+                    }
+                }
+                .navigationTitle("Convert to Boarding")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showingBoardingSheet = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Convert") {
+                            dog.isBoarding = true
+                            dog.boardingEndDate = boardingEndDate
+                            dog.updatedAt = Date()
+                            dog.lastModifiedBy = authService.currentUser
+                            try? modelContext.save()
+                            showingBoardingSheet = false
+                            dismiss()
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
         }
         .alert("Delete Dog", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }

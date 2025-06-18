@@ -27,6 +27,8 @@ final class PottyRecord {
     enum PottyType: String, Codable {
         case pee
         case poop
+        case both
+        case nothing
     }
     
     init(timestamp: Date, type: PottyType, recordedBy: String? = nil) {

@@ -544,7 +544,7 @@ private struct ScheduleInfoView: View {
                     
                     // Show current status
                     if user.canWorkToday {
-                        Text("Can work today")
+                        Text("Scheduled for work today")
                             .font(.caption2)
                             .foregroundStyle(.green)
                     } else {

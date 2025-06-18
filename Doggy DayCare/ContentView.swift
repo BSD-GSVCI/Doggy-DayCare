@@ -111,11 +111,27 @@ struct ContentView: View {
     }
     
     private var daycareDogs: [Dog] {
-        filteredDogs.filter { !$0.isBoarding && $0.isCurrentlyPresent }
+        filteredDogs.filter { dog in
+            let isPresent = dog.isCurrentlyPresent
+            let isArrivingToday = Calendar.current.isDateInToday(dog.arrivalDate)
+            let hasArrived = Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).hour != 0 ||
+                            Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).minute != 0
+            let isFutureBooking = Calendar.current.startOfDay(for: dog.arrivalDate) > Calendar.current.startOfDay(for: Date())
+            
+            return !dog.isBoarding && (isPresent || (isArrivingToday && !hasArrived)) && !isFutureBooking
+        }
     }
     
     private var boardingDogs: [Dog] {
-        filteredDogs.filter { $0.isBoarding && $0.isCurrentlyPresent }
+        filteredDogs.filter { dog in
+            let isPresent = dog.isCurrentlyPresent
+            let isArrivingToday = Calendar.current.isDateInToday(dog.arrivalDate)
+            let hasArrived = Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).hour != 0 ||
+                            Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).minute != 0
+            let isFutureBooking = Calendar.current.startOfDay(for: dog.arrivalDate) > Calendar.current.startOfDay(for: Date())
+            
+            return dog.isBoarding && (isPresent || (isArrivingToday && !hasArrived)) && !isFutureBooking
+        }
     }
     
     private var departedDogs: [Dog] {
@@ -321,6 +337,9 @@ private struct DogRow: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var dog: Dog
     @State private var showingDepartureSheet = false
+    @State private var showingUndoConfirmation = false
+    @State private var showingArrivalSheet = false
+    @State private var arrivalTime = Date()
     
     private let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -338,6 +357,10 @@ private struct DogRow: View {
         let calendar = Calendar.current
         let arrivalComponents = calendar.dateComponents([.hour, .minute], from: dog.arrivalDate)
         return arrivalComponents.hour != 0 || arrivalComponents.minute != 0
+    }
+    
+    private var needsArrivalTime: Bool {
+        Calendar.current.isDateInToday(dog.arrivalDate) && !hasArrived
     }
     
     var body: some View {
@@ -372,23 +395,43 @@ private struct DogRow: View {
                             .buttonStyle(.plain)
                             
                             Button {
-                                withAnimation {
-                                    dog.departureDate = nil
-                                    dog.updatedAt = Date()
-                                    try? modelContext.save()
-                                }
+                                showingUndoConfirmation = true
                             } label: {
                                 Image(systemName: "arrow.uturn.backward.circle")
                                     .foregroundStyle(.blue)
                             }
                             .buttonStyle(.plain)
                         }
+                    } else if needsArrivalTime {
+                        Button {
+                            showingArrivalSheet = true
+                        } label: {
+                            Text("Set Arrival Time")
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.blue)
+                                .foregroundStyle(.white)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 
-                Text("\(shortDateFormatter.string(from: dog.arrivalDate)) at \(shortTimeFormatter.string(from: dog.arrivalDate))")
-                    .font(.subheadline)
-                    .foregroundStyle(.green.opacity(0.8))
+                // Show arrival time or "No arrival time set" message
+                if hasArrived {
+                    Text("\(shortDateFormatter.string(from: dog.arrivalDate)) at \(shortTimeFormatter.string(from: dog.arrivalDate))")
+                        .font(.subheadline)
+                        .foregroundStyle(.green.opacity(0.8))
+                } else if Calendar.current.isDateInToday(dog.arrivalDate) {
+                    Text("\(shortDateFormatter.string(from: dog.arrivalDate)) - No arrival time set")
+                        .font(.subheadline)
+                        .foregroundStyle(.red.opacity(0.8))
+                } else {
+                    Text("\(shortDateFormatter.string(from: dog.arrivalDate)) at \(shortTimeFormatter.string(from: dog.arrivalDate))")
+                        .font(.subheadline)
+                        .foregroundStyle(.green.opacity(0.8))
+                }
                 
                 if let departureDate = dog.departureDate {
                     Text("\(shortDateFormatter.string(from: departureDate)) at \(shortTimeFormatter.string(from: departureDate))")
@@ -440,9 +483,21 @@ private struct DogRow: View {
         }
         .listRowBackground(
             Calendar.current.isDateInToday(dog.arrivalDate) && !hasArrived ?
-            Color.red.opacity(0.1) :
+            Color.red :
             Color.clear
         )
+        .alert("Undo Departure", isPresented: $showingUndoConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Undo", role: .destructive) {
+                withAnimation {
+                    dog.departureDate = nil
+                    dog.updatedAt = Date()
+                    try? modelContext.save()
+                }
+            }
+        } message: {
+            Text("Are you sure you want to undo \(dog.name)'s departure? This will move them back to the active dogs list.")
+        }
         .sheet(isPresented: $showingDepartureSheet) {
             NavigationStack {
                 Form {
@@ -494,6 +549,38 @@ private struct DogRow: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showingArrivalSheet) {
+            NavigationStack {
+                Form {
+                    DatePicker("Arrival Time", selection: $arrivalTime, displayedComponents: .hourAndMinute)
+                }
+                .navigationTitle("Set Arrival Time")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showingArrivalSheet = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            let calendar = Calendar.current
+                            var components = calendar.dateComponents([.year, .month, .day], from: dog.arrivalDate)
+                            let timeComponents = calendar.dateComponents([.hour, .minute], from: arrivalTime)
+                            components.hour = timeComponents.hour
+                            components.minute = timeComponents.minute
+                            if let newDate = calendar.date(from: components) {
+                                dog.arrivalDate = newDate
+                                dog.updatedAt = Date()
+                                try? modelContext.save()
+                            }
+                            showingArrivalSheet = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.height(200)])
         }
     }
 }

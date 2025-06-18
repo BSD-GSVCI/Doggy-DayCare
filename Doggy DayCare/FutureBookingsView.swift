@@ -87,25 +87,6 @@ private struct FutureBookingRow: View {
                 Text(dog.arrivalDate.formatted(date: .abbreviated, time: .omitted))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                
-                Menu {
-                    Button {
-                        onEdit()
-                    } label: {
-                        Label("Edit Booking", systemImage: "pencil")
-                    }
-                    
-                    if Calendar.current.isDateInToday(dog.arrivalDate) {
-                        Button {
-                            showingArrivalSheet = true
-                        } label: {
-                            Label("Set Arrival Time", systemImage: "clock")
-                        }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .foregroundStyle(.secondary)
-                }
             }
             
             HStack {
@@ -136,6 +117,21 @@ private struct FutureBookingRow: View {
             }
         }
         .padding(.vertical, 4)
+        .contextMenu {
+            Button {
+                onEdit()
+            } label: {
+                Label("Edit Booking", systemImage: "pencil")
+            }
+            
+            if Calendar.current.isDateInToday(dog.arrivalDate) {
+                Button {
+                    showingArrivalSheet = true
+                } label: {
+                    Label("Set Arrival Time", systemImage: "clock")
+                }
+            }
+        }
         .listRowBackground(
             Calendar.current.isDateInToday(dog.arrivalDate) ?
             Color.red.opacity(0.1) :

@@ -160,6 +160,16 @@ struct WalkingListView: View {
                     addPottyRecord(for: dog, type: .poop)
                 }
             }
+            Button("Both") {
+                if let dog = selectedDog {
+                    addPottyRecord(for: dog, type: .both)
+                }
+            }
+            Button("Nothing") {
+                if let dog = selectedDog {
+                    addPottyRecord(for: dog, type: .nothing)
+                }
+            }
         } message: {
             if let dog = selectedDog {
                 Text("What did \(dog.name) do?")
@@ -180,17 +190,35 @@ struct WalkingListView: View {
             return 
         }
         
-        let record = PottyRecord(timestamp: Date(), type: type, recordedBy: authService.currentUser?.name)
-        print("Created record: \(record)")
-        modelContext.insert(record)
-        print("Inserted record into model context")
-        
-        // Set the inverse relationship
-        record.dog = dog
-        
-        // Ensure the relationship is properly established
-        dog.pottyRecords.append(record)
-        print("Added record to dog's pottyRecords array. Count before: \(dog.pottyRecords.count - 1), count after: \(dog.pottyRecords.count)")
+        switch type {
+        case .both:
+            // Create two separate records - one for pee and one for poop
+            let peeRecord = PottyRecord(timestamp: Date(), type: .pee, recordedBy: authService.currentUser?.name)
+            let poopRecord = PottyRecord(timestamp: Date(), type: .poop, recordedBy: authService.currentUser?.name)
+            
+            modelContext.insert(peeRecord)
+            modelContext.insert(poopRecord)
+            
+            peeRecord.dog = dog
+            poopRecord.dog = dog
+            
+            dog.pottyRecords.append(peeRecord)
+            dog.pottyRecords.append(poopRecord)
+            
+        case .nothing:
+            // Create a single "nothing" record that doesn't count toward totals
+            let record = PottyRecord(timestamp: Date(), type: .nothing, recordedBy: authService.currentUser?.name)
+            modelContext.insert(record)
+            record.dog = dog
+            dog.pottyRecords.append(record)
+            
+        default:
+            // Regular single record for pee or poop
+            let record = PottyRecord(timestamp: Date(), type: type, recordedBy: authService.currentUser?.name)
+            modelContext.insert(record)
+            record.dog = dog
+            dog.pottyRecords.append(record)
+        }
         
         // Force a save to ensure the relationship is persisted
         dog.updatedAt = Date()
@@ -330,8 +358,15 @@ private struct PottyRecordGridItem: View {
                 if record.type == .pee {
                     Image(systemName: "drop.fill")
                         .foregroundStyle(.yellow)
-                } else {
+                } else if record.type == .poop {
                     Text("💩")
+                } else if record.type == .nothing {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.red)
+                } else {
+                    // This shouldn't happen, but just in case
+                    Image(systemName: "questionmark.circle")
+                        .foregroundStyle(.gray)
                 }
                 Text(record.timestamp.formatted(date: .omitted, time: .shortened))
                     .font(.caption)
@@ -359,6 +394,9 @@ private struct PottyRecordGridItem: View {
             }
             Button("Poop") {
                 dog.updatePottyRecord(at: record.timestamp, type: .poop, modifiedBy: authService.currentUser)
+            }
+            Button("Nothing") {
+                dog.updatePottyRecord(at: record.timestamp, type: .nothing, modifiedBy: authService.currentUser)
             }
         } message: {
             Text("Change record type for \(dog.name)?")
