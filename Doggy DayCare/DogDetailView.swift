@@ -11,8 +11,10 @@ struct DogDetailView: View {
     @State private var showingDeleteAlert = false
     @State private var showingDepartureSheet = false
     @State private var showingBoardingSheet = false
+    @State private var showingExtendStaySheet = false
     @State private var departureDate = Date()
     @State private var boardingEndDate = Date()
+    @State private var newBoardingEndDate = Date()
     
     private var canEdit: Bool {
         authService.currentUser?.isOwner ?? false
@@ -38,7 +40,26 @@ struct DogDetailView: View {
         NavigationStack {
             Form {
                 Section("Dog Information") {
+                    // Profile Picture
+                    if let imageData = dog.profilePictureData, let uiImage = UIImage(data: imageData) {
+                        HStack {
+                            Spacer()
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 80, height: 80)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color.gray, lineWidth: 1))
+                            Spacer()
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    
                     LabeledContent("Name", value: dog.name)
+                    
+                    if let ownerName = dog.ownerName, !ownerName.isEmpty {
+                        LabeledContent("Owner", value: ownerName)
+                    }
                 }
                 
                 Section("Stay Information") {
@@ -56,6 +77,14 @@ struct DogDetailView: View {
                                 showingBoardingSheet = true
                             } label: {
                                 Label("Board", systemImage: "house.fill")
+                            }
+                        } else {
+                            // Extend Stay button for boarding dogs
+                            Button {
+                                newBoardingEndDate = dog.boardingEndDate ?? Date()
+                                showingExtendStaySheet = true
+                            } label: {
+                                Label("Extend Stay", systemImage: "house.fill")
                             }
                         }
                         
@@ -245,6 +274,12 @@ struct DogDetailView: View {
                     }
                 }
                 
+                if let allergiesAndFeeding = dog.allergiesAndFeedingInstructions, !allergiesAndFeeding.isEmpty {
+                    Section("Allergies and Feeding Instructions") {
+                        Text(allergiesAndFeeding)
+                    }
+                }
+                
                 if canDelete {
                     Section {
                         Button(role: .destructive) {
@@ -328,6 +363,36 @@ struct DogDetailView: View {
                             try? modelContext.save()
                             showingBoardingSheet = false
                             dismiss()
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showingExtendStaySheet) {
+            NavigationStack {
+                Form {
+                    Section {
+                        DatePicker("New Expected Departure Date", selection: $newBoardingEndDate, displayedComponents: .date)
+                    } footer: {
+                        Text("This will extend \(dog.name)'s boarding stay until the new expected departure date.")
+                    }
+                }
+                .navigationTitle("Extend Stay")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showingExtendStaySheet = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Extend") {
+                            dog.boardingEndDate = newBoardingEndDate
+                            dog.updatedAt = Date()
+                            dog.lastModifiedBy = authService.currentUser
+                            try? modelContext.save()
+                            showingExtendStaySheet = false
                         }
                     }
                 }

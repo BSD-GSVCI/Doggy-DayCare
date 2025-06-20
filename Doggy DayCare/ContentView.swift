@@ -97,6 +97,7 @@ struct ContentView: View {
     @Query private var dogs: [Dog]
     @State private var searchText = ""
     @State private var showingAddDog = false
+    @State private var showingDogSearch = false
     @State private var showingStaffManagement = false
     @State private var showingLogoutConfirmation = false
     @State private var showingShareSheet = false
@@ -163,11 +164,20 @@ struct ContentView: View {
         .searchable(text: $searchText, prompt: "Search dogs by name")
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    showingAddDog = true
-                } label: {
-                    Image(systemName: "plus")
-                                .foregroundStyle(.blue)
+                HStack(spacing: 12) {
+                    Button {
+                        showingAddDog = true
+                    } label: {
+                        Image(systemName: "plus")
+                                    .foregroundStyle(.blue)
+                    }
+                    
+                    Button {
+                        showingDogSearch = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                                    .foregroundStyle(.blue)
+                    }
                 }
             }
             
@@ -229,6 +239,9 @@ struct ContentView: View {
                     NavigationStack {
                         DogFormView()
                     }
+                }
+                .sheet(isPresented: $showingDogSearch) {
+                    DogSearchView()
                 }
                 .sheet(isPresented: $showingStaffManagement) {
                     NavigationStack {
@@ -300,7 +313,7 @@ private struct DogsListView: View {
                     }
                 }
             } header: {
-                Text("Daycare")
+                Text("Daycare \(daycareDogs.count)")
             }
             .listSectionSpacing(20)
             
@@ -315,7 +328,7 @@ private struct DogsListView: View {
                     }
                 }
             } header: {
-                Text("Boarding")
+                Text("Boarding \(boardingDogs.count)")
             }
             .listSectionSpacing(20)
             
@@ -325,7 +338,7 @@ private struct DogsListView: View {
                         DogRow(dog: dog)
                     }
                 } header: {
-                    Text("Departed Today")
+                    Text("Departed Today \(departedDogs.count)")
                 }
             }
         }

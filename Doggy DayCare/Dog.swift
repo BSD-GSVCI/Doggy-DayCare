@@ -29,6 +29,28 @@ final class PottyRecord {
         case poop
         case both
         case nothing
+        
+        // Safe initializer to handle invalid enum values
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            let rawValue = try container.decode(String.self)
+            
+            // Handle migration from old enum values
+            switch rawValue {
+            case "pee", "Pee", "PEE":
+                self = .pee
+            case "poop", "Poop", "POOP":
+                self = .poop
+            case "both", "Both", "BOTH":
+                self = .both
+            case "nothing", "Nothing", "NOTHING":
+                self = .nothing
+            default:
+                // Fallback to pee for any unrecognized values
+                print("⚠️ Unknown PottyType value: \(rawValue), defaulting to pee")
+                self = .pee
+            }
+        }
     }
     
     init(timestamp: Date, type: PottyType, recordedBy: String? = nil) {
@@ -83,16 +105,19 @@ final class MedicationRecord {
 final class Dog: Codable {
     var id: UUID
     var name: String
+    var ownerName: String?  // New field for dog owner's name
     var arrivalDate: Date
     var departureDate: Date?
     var isBoarding: Bool
     var boardingEndDate: Date?
     var medications: String?
     var specialInstructions: String?
+    var allergiesAndFeedingInstructions: String?  // New field for allergies and feeding instructions
     var needsWalking: Bool
     var walkingNotes: String?
     var isDaycareFed: Bool
     var notes: String?
+    var profilePictureData: Data?  // New field for profile picture
     var updatedAt: Date
     var createdAt: Date
     var createdBy: User?
@@ -111,25 +136,31 @@ final class Dog: Codable {
     init(
         id: UUID = UUID(),
         name: String,
+        ownerName: String? = nil,
         arrivalDate: Date,
         isBoarding: Bool = false,
         medications: String? = nil,
         specialInstructions: String? = nil,
+        allergiesAndFeedingInstructions: String? = nil,
         needsWalking: Bool = false,
         walkingNotes: String? = nil,
         isDaycareFed: Bool = false,
-        notes: String? = nil
+        notes: String? = nil,
+        profilePictureData: Data? = nil
     ) {
         self.id = id
         self.name = name
+        self.ownerName = ownerName
         self.arrivalDate = arrivalDate
         self.isBoarding = isBoarding
         self.medications = medications
         self.specialInstructions = specialInstructions
+        self.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions
         self.needsWalking = needsWalking
         self.walkingNotes = walkingNotes
         self.isDaycareFed = isDaycareFed
         self.notes = notes
+        self.profilePictureData = profilePictureData
         self.updatedAt = Date()
         self.createdAt = Date()
         self.createdBy = nil
@@ -262,9 +293,9 @@ final class Dog: Codable {
     }
     
     enum CodingKeys: String, CodingKey {
-        case id, name, arrivalDate, departureDate, isBoarding, boardingEndDate
-        case medications, specialInstructions, needsWalking, walkingNotes
-        case isDaycareFed, notes, updatedAt, createdAt
+        case id, name, ownerName, arrivalDate, departureDate, isBoarding, boardingEndDate
+        case medications, specialInstructions, allergiesAndFeedingInstructions, needsWalking, walkingNotes
+        case isDaycareFed, notes, profilePictureData, updatedAt, createdAt
         case feedingRecords, medicationRecords, pottyRecords
     }
     
@@ -273,26 +304,32 @@ final class Dog: Codable {
         let idString = try container.decode(String.self, forKey: .id)
         let id = UUID(uuidString: idString) ?? UUID()
         let name = try container.decode(String.self, forKey: .name)
+        let ownerName = try container.decodeIfPresent(String.self, forKey: .ownerName)
         let arrivalDate = try container.decode(Date.self, forKey: .arrivalDate)
         let isBoarding = try container.decode(Bool.self, forKey: .isBoarding)
         let medications = try container.decodeIfPresent(String.self, forKey: .medications)
         let specialInstructions = try container.decodeIfPresent(String.self, forKey: .specialInstructions)
+        let allergiesAndFeedingInstructions = try container.decodeIfPresent(String.self, forKey: .allergiesAndFeedingInstructions)
         let needsWalking = try container.decode(Bool.self, forKey: .needsWalking)
         let walkingNotes = try container.decodeIfPresent(String.self, forKey: .walkingNotes)
         let isDaycareFed = try container.decode(Bool.self, forKey: .isDaycareFed)
         let notes = try container.decodeIfPresent(String.self, forKey: .notes)
+        let profilePictureData = try container.decodeIfPresent(Data.self, forKey: .profilePictureData)
         
         self.init(
             id: id,
             name: name,
+            ownerName: ownerName,
             arrivalDate: arrivalDate,
             isBoarding: isBoarding,
             medications: medications,
             specialInstructions: specialInstructions,
+            allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
             needsWalking: needsWalking,
             walkingNotes: walkingNotes,
             isDaycareFed: isDaycareFed,
-            notes: notes
+            notes: notes,
+            profilePictureData: profilePictureData
         )
         
         // Decode optional properties
@@ -311,14 +348,17 @@ final class Dog: Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id.uuidString, forKey: .id)
         try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(ownerName, forKey: .ownerName)
         try container.encode(arrivalDate, forKey: .arrivalDate)
         try container.encode(isBoarding, forKey: .isBoarding)
         try container.encodeIfPresent(medications, forKey: .medications)
         try container.encodeIfPresent(specialInstructions, forKey: .specialInstructions)
+        try container.encodeIfPresent(allergiesAndFeedingInstructions, forKey: .allergiesAndFeedingInstructions)
         try container.encode(needsWalking, forKey: .needsWalking)
         try container.encodeIfPresent(walkingNotes, forKey: .walkingNotes)
         try container.encode(isDaycareFed, forKey: .isDaycareFed)
         try container.encodeIfPresent(notes, forKey: .notes)
+        try container.encodeIfPresent(profilePictureData, forKey: .profilePictureData)
         try container.encodeIfPresent(departureDate, forKey: .departureDate)
         try container.encodeIfPresent(boardingEndDate, forKey: .boardingEndDate)
         try container.encode(updatedAt, forKey: .updatedAt)

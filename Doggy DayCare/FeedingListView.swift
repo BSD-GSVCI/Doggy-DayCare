@@ -247,6 +247,17 @@ private struct DogFeedingRow: View {
                 Spacer()
             }
             
+            // Show allergies and feeding instructions if available
+            if let allergiesAndFeeding = dog.allergiesAndFeedingInstructions, !allergiesAndFeeding.isEmpty {
+                Text(allergiesAndFeeding)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            }
+            
             HStack(spacing: 12) {
                 HStack {
                     Image(systemName: "sunrise.fill")
