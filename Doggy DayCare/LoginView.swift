@@ -1,9 +1,8 @@
 import SwiftUI
-import SwiftData
 
 struct LoginView: View {
-    @Environment(\.modelContext) private var modelContext
     @StateObject private var authService = AuthenticationService.shared
+    
     @State private var email = ""
     @State private var name = ""
     @State private var ownerPassword = ""
@@ -11,18 +10,19 @@ struct LoginView: View {
     @State private var confirmPassword = ""
     @State private var newPassword = ""
     @State private var confirmNewPassword = ""
+    @State private var isOwnerLogin = true
+    @State private var isSigningUp = false
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var isOwnerLogin = true
-    @State private var isFirstLogin = false
-    @State private var showingPasswordChange = false
+    @State private var isOwnerSignupMode = true  // Track if we're in signup or login mode for owner
     @State private var showingForgotPassword = false
     @State private var showingTemporaryPassword = false
+    @State private var showingPasswordChange = false
     @State private var showingPasswordUpdateConfirmation = false
     @State private var isResettingPassword = false
-    @State private var isSigningUp = false
+    
+    // Owner management
     @State private var ownerExists = false
-    @State private var isOwnerSignupMode = true  // Track if we're in signup or login mode for owner
     
     private var isFormValid: Bool {
         if isOwnerLogin {
@@ -254,7 +254,9 @@ struct LoginView: View {
                                                 .foregroundStyle(.red)
                                                 
                                                 Button("Update Password") {
-                                                    updateOwnerPassword()
+                                                    Task {
+                                                        await updateOwnerPassword()
+                                                    }
                                                 }
                                                 .disabled(!isPasswordChangeValid)
                                             }
@@ -388,28 +390,32 @@ struct LoginView: View {
             staffPassword = ""
             confirmPassword = ""
             
-            // Check if owner exists
-            let fetchDescriptor = FetchDescriptor<User>(
-                predicate: #Predicate<User> { user in
-                    user.isOwner == true && user.isActive == true
+            // Check if owner exists using CloudKit
+            Task {
+                do {
+                    let cloudKitService = CloudKitService.shared
+                    let allUsers = try await cloudKitService.fetchAllUsers()
+                    let owners = allUsers.filter { $0.isOwner && $0.isActive }
+                    
+                    print("Found \(owners.count) active owners")
+                    for owner in owners {
+                        print("Owner: \(owner.name), email: \(owner.email ?? "none"), isOriginalOwner: \(owner.isOriginalOwner)")
+                    }
+                    
+                    await MainActor.run {
+                        ownerExists = !owners.isEmpty
+                        print("ownerExists set to: \(ownerExists)")
+                        
+                        // Set initial owner signup mode
+                        isOwnerSignupMode = !ownerExists
+                    }
+                } catch {
+                    print("Error checking for owner: \(error)")
+                    await MainActor.run {
+                        ownerExists = false
+                        isOwnerSignupMode = true
+                    }
                 }
-            )
-            
-            do {
-                let owners = try modelContext.fetch(fetchDescriptor)
-                print("Found \(owners.count) active owners")
-                for owner in owners {
-                    print("Owner: \(owner.name), email: \(owner.email ?? "none"), isOriginalOwner: \(owner.isOriginalOwner)")
-                }
-                ownerExists = !owners.isEmpty
-                print("ownerExists set to: \(ownerExists)")
-                
-                // Set initial owner signup mode
-                isOwnerSignupMode = !ownerExists
-            } catch {
-                print("Error checking for owner: \(error)")
-                ownerExists = false
-                isOwnerSignupMode = true
             }
         }
     }
@@ -454,22 +460,17 @@ struct LoginView: View {
         errorMessage = nil
         
         do {
+            let cloudKitService = CloudKitService.shared
+            
             // Check if this is the first owner account
-            let fetchDescriptor = FetchDescriptor<User>(
-                predicate: #Predicate<User> { user in
-                    user.isOwner == true
-                }
-            )
-            let existingOwners = try modelContext.fetch(fetchDescriptor)
+            let allUsers = try await cloudKitService.fetchAllUsers()
+            let existingOwners = allUsers.filter { $0.isOwner }
             let isFirstOwner = existingOwners.isEmpty
             
             // Convert email to lowercase for case-insensitive storage
             let lowercaseEmail = email.lowercased()
             
             // Check if email already exists (case-insensitive)
-            // We'll fetch all users and filter in memory since we can't use lowercased() in predicate
-            let allUsersDescriptor = FetchDescriptor<User>()
-            let allUsers = try modelContext.fetch(allUsersDescriptor)
             if allUsers.contains(where: { $0.email?.lowercased() == lowercaseEmail }) {
                 errorMessage = "An account with this email already exists"
                 isLoading = false
@@ -477,16 +478,17 @@ struct LoginView: View {
             }
             
             // Create owner account with lowercase email
-            let owner = User(
+            let owner = CloudKitUser(
                 id: UUID().uuidString,
                 name: name,
                 email: lowercaseEmail,
                 isOwner: true,
                 isActive: true,
+                isWorkingToday: false,
                 isOriginalOwner: isFirstOwner
             )
             
-            // Store password before inserting the user
+            // Store password before creating the user
             if isFirstOwner {
                 // For original owner, use the owner password key
                 UserDefaults.standard.set(ownerPassword, forKey: "owner_password")
@@ -495,8 +497,8 @@ struct LoginView: View {
                 UserDefaults.standard.set(ownerPassword, forKey: "owner_password_\(lowercaseEmail)")
             }
             
-            modelContext.insert(owner)
-            try modelContext.save()
+            // Create the user in CloudKit
+            _ = try await cloudKitService.createUser(owner)
             
             // Sign in the new owner
             try await authService.signIn(email: lowercaseEmail, password: ownerPassword)
@@ -516,13 +518,13 @@ struct LoginView: View {
         isLoading = false
     }
     
-    private func updateOwnerPassword() {
+    private func updateOwnerPassword() async {
         guard isPasswordChangeValid else {
             errorMessage = "Please enter a valid password (minimum 8 characters with at least one number)"
             return
         }
         
-        authService.updateOwnerPassword(newPassword)
+        await authService.updateOwnerPassword(newPassword)
         showingPasswordChange = false
         newPassword = ""
         confirmNewPassword = ""
@@ -554,5 +556,4 @@ struct LoginView: View {
 
 #Preview {
     LoginView()
-        .modelContainer(for: User.self)
 } 

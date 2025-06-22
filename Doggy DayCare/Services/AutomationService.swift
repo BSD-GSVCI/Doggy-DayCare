@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 import UserNotifications
 
 @MainActor
@@ -84,18 +83,13 @@ class AutomationService: ObservableObject {
     }
     
     private func checkDaycareDepartures() async {
-        let descriptor = FetchDescriptor<Dog>(
-            predicate: #Predicate<Dog> { dog in
-                !dog.isBoarding && dog.isCurrentlyPresent
-            }
-        )
-        
         do {
-            let modelContext = try ModelContainer(for: Dog.self).mainContext
-            let dogs = try modelContext.fetch(descriptor)
+            let cloudKitService = CloudKitService.shared
+            let allDogs = try await cloudKitService.fetchDogs()
+            let daycareDogs = allDogs.filter { !$0.isBoarding && $0.isCurrentlyPresent }
             
-            if !dogs.isEmpty {
-                let dogNames = dogs.map { $0.name }.joined(separator: ", ")
+            if !daycareDogs.isEmpty {
+                let dogNames = daycareDogs.map { $0.name }.joined(separator: ", ")
                 let content = UNMutableNotificationContent()
                 content.title = "Daycare Dogs Still Present"
                 content.body = "The following dogs still need departure times set: \(dogNames)"
@@ -116,15 +110,15 @@ class AutomationService: ObservableObject {
     
     private func performAutomatedBackup() async {
         do {
-            let modelContext = try ModelContainer(for: Dog.self).mainContext
-            let descriptor = FetchDescriptor<Dog>()
-            let dogs = try modelContext.fetch(descriptor)
+            let cloudKitService = CloudKitService.shared
+            let allCloudKitDogs = try await cloudKitService.fetchDogs()
+            let allDogs = allCloudKitDogs.map { $0.toDog() }
             
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm"
             let timestamp = dateFormatter.string(from: Date())
             
-            let url = try await BackupService.shared.exportDogs(dogs, filename: "backup_\(timestamp)")
+            let url = try await BackupService.shared.exportDogs(allDogs, filename: "backup_\(timestamp)")
             print("Automated backup created at: \(url.path)")
         } catch {
             print("Error performing automated backup: \(error.localizedDescription)")
@@ -133,25 +127,24 @@ class AutomationService: ObservableObject {
     
     private func handleMidnightTransition() async {
         do {
-            guard let modelContext = AuthenticationService.shared.modelContext else {
-                print("Error: Model context not available")
-                return
-            }
-            
-            let descriptor = FetchDescriptor<Dog>()
-            let allDogs = try modelContext.fetch(descriptor)
+            let cloudKitService = CloudKitService.shared
+            let allDogs = try await cloudKitService.fetchDogs()
             
             let today = Date()
             print("Starting midnight transition for \(today.formatted())")
             
             for dog in allDogs {
+                var updatedDog = dog
+                var needsUpdate = false
+                
                 if dog.isBoarding {
                     if let boardingEndDate = dog.boardingEndDate {
                         // Only convert to daycare if boarding end date is today
                         if Calendar.current.isDate(boardingEndDate, inSameDayAs: today) {
                             print("Converting boarding dog '\(dog.name)' to daycare (boarding end date: \(boardingEndDate.formatted()))")
-                            dog.isBoarding = false
-                            dog.boardingEndDate = nil
+                            updatedDog.isBoarding = false
+                            updatedDog.boardingEndDate = nil
+                            needsUpdate = true
                         } else {
                             print("Keeping '\(dog.name)' as boarding (end date: \(boardingEndDate.formatted()))")
                         }
@@ -162,12 +155,16 @@ class AutomationService: ObservableObject {
                     // Only clear departure time for daycare dogs that are currently present
                     if dog.departureDate != nil {
                         print("Clearing departure time for daycare dog '\(dog.name)'")
-                        dog.departureDate = nil
+                        updatedDog.departureDate = nil
+                        needsUpdate = true
                     }
+                }
+                
+                if needsUpdate {
+                    _ = try await cloudKitService.updateDog(updatedDog)
                 }
             }
             
-            try modelContext.save()
             print("Midnight transition completed successfully")
         } catch {
             print("Error handling midnight transition: \(error.localizedDescription)")

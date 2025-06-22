@@ -10,7 +10,7 @@ import CloudKit
 
 @main
 struct Doggy_DayCareApp: App {
-    @StateObject private var cloudKitService = CloudKitService.shared
+    @StateObject private var dataManager = DataManager.shared
     @State private var isInitialized = false
     @State private var initializationError: String?
     
@@ -18,7 +18,7 @@ struct Doggy_DayCareApp: App {
         WindowGroup {
             Group {
                 if let error = initializationError {
-                    // Show error screen instead of crashing
+                    // Show error screen
                     VStack(spacing: 20) {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.system(size: 50))
@@ -35,28 +35,38 @@ struct Doggy_DayCareApp: App {
                             .padding(.horizontal)
                         
                         Button("Retry") {
-                            // Force app restart
-                            exit(0)
+                            // Reset and retry
+                            initializationError = nil
+                            isInitialized = false
                         }
                         .buttonStyle(.borderedProminent)
                     }
                     .padding()
                 } else if !isInitialized {
-                    ProgressView("Initializing CloudKit...")
-                        .task {
-                            print("🚀 Starting CloudKit initialization...")
-                            do {
-                                try await cloudKitService.authenticate()
-                                print("✅ CloudKit initialization completed successfully")
-                                isInitialized = true
-                            } catch {
-                                print("❌ CloudKit initialization failed: \(error)")
-                                initializationError = "CloudKit setup failed: \(error.localizedDescription)"
-                            }
+                    // Show loading screen
+                    VStack(spacing: 20) {
+                        ProgressView("Initializing CloudKit...")
+                            .scaleEffect(1.2)
+                        
+                        Text("Setting up data sync...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .task {
+                        print("🚀 Starting CloudKit initialization...")
+                        do {
+                            try await dataManager.authenticate()
+                            print("✅ CloudKit initialization completed successfully")
+                            isInitialized = true
+                        } catch {
+                            print("❌ CloudKit initialization failed: \(error)")
+                            initializationError = "CloudKit setup failed: \(error.localizedDescription)"
                         }
+                    }
                 } else {
+                    // Show main app
                     ContentView()
-                        .environmentObject(cloudKitService)
+                        .environmentObject(dataManager)
                 }
             }
         }

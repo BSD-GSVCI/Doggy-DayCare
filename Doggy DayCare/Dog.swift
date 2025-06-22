@@ -1,8 +1,7 @@
 import Foundation
-import SwiftData
 
-@Model
-final class WalkingRecord {
+struct WalkingRecord: Codable, Identifiable {
+    var id = UUID()
     var timestamp: Date
     var notes: String?
     var recordedBy: String?  // Store user name instead of User reference
@@ -14,15 +13,11 @@ final class WalkingRecord {
     }
 }
 
-@Model
-final class PottyRecord {
+struct PottyRecord: Codable, Identifiable {
+    var id = UUID()
     var timestamp: Date
     var type: PottyType
     var recordedBy: String?  // Store user name instead of User reference
-    
-    // Inverse relationship to Dog
-    @Relationship(inverse: \Dog.pottyRecords)
-    var dog: Dog?
     
     enum PottyType: String, Codable {
         case pee
@@ -60,15 +55,11 @@ final class PottyRecord {
     }
 }
 
-@Model
-final class FeedingRecord {
+struct FeedingRecord: Codable, Identifiable {
+    var id = UUID()
     var timestamp: Date
     var type: FeedingType
     var recordedBy: String?  // Store user name instead of User reference
-    
-    // Inverse relationship to Dog
-    @Relationship(inverse: \Dog.feedingRecords)
-    var dog: Dog?
     
     enum FeedingType: String, Codable {
         case breakfast
@@ -84,15 +75,11 @@ final class FeedingRecord {
     }
 }
 
-@Model
-final class MedicationRecord {
+struct MedicationRecord: Codable, Identifiable {
+    var id = UUID()
     var timestamp: Date
     var notes: String?
     var recordedBy: String?  // Store user name instead of User reference
-    
-    // Inverse relationship to Dog
-    @Relationship(inverse: \Dog.medicationRecords)
-    var dog: Dog?
     
     init(timestamp: Date, notes: String? = nil, recordedBy: String? = nil) {
         self.timestamp = timestamp
@@ -101,8 +88,7 @@ final class MedicationRecord {
     }
 }
 
-@Model
-final class Dog: Codable {
+struct Dog: Codable, Identifiable {
     var id: UUID
     var name: String
     var ownerName: String?  // New field for dog owner's name
@@ -122,16 +108,13 @@ final class Dog: Codable {
     var createdAt: Date
     var createdBy: User?
     var lastModifiedBy: User?
+    var visitCount: Int = 1  // Track total visits for this dog
     
     // Records
-    @Relationship(deleteRule: .cascade)
     var feedingRecords: [FeedingRecord] = []
-    
-    @Relationship(deleteRule: .cascade)
     var medicationRecords: [MedicationRecord] = []
-    
-    @Relationship(deleteRule: .cascade)
     var pottyRecords: [PottyRecord] = []
+    var walkingRecords: [WalkingRecord] = []
     
     init(
         id: UUID = UUID(),
@@ -167,7 +150,7 @@ final class Dog: Codable {
         self.lastModifiedBy = nil
     }
     
-    func addPottyRecord(type: PottyRecord.PottyType, recordedBy: User? = nil) {
+    mutating func addPottyRecord(type: PottyRecord.PottyType, recordedBy: User? = nil) {
         let record = PottyRecord(timestamp: Date(), type: type, recordedBy: recordedBy?.name)
         pottyRecords.append(record)
         updatedAt = Date()
@@ -175,7 +158,7 @@ final class Dog: Codable {
         print("Added potty record for \(name), total records: \(pottyRecords.count)")
     }
     
-    func removePottyRecord(at timestamp: Date, modifiedBy: User? = nil) {
+    mutating func removePottyRecord(at timestamp: Date, modifiedBy: User? = nil) {
         if pottyRecords.contains(where: { $0.timestamp == timestamp }) {
             pottyRecords.removeAll { $0.timestamp == timestamp }
             updatedAt = Date()
@@ -183,15 +166,15 @@ final class Dog: Codable {
         }
     }
     
-    func updatePottyRecord(at timestamp: Date, type: PottyRecord.PottyType, modifiedBy: User? = nil) {
-        if let record = pottyRecords.first(where: { $0.timestamp == timestamp }) {
-            record.type = type
+    mutating func updatePottyRecord(at timestamp: Date, type: PottyRecord.PottyType, modifiedBy: User? = nil) {
+        if let index = pottyRecords.firstIndex(where: { $0.timestamp == timestamp }) {
+            pottyRecords[index].type = type
             updatedAt = Date()
             lastModifiedBy = modifiedBy
         }
     }
     
-    func addFeedingRecord(type: FeedingRecord.FeedingType, recordedBy: User? = nil) {
+    mutating func addFeedingRecord(type: FeedingRecord.FeedingType, recordedBy: User? = nil) {
         let record = FeedingRecord(
             timestamp: Date(),
             type: type,
@@ -203,7 +186,23 @@ final class Dog: Codable {
         print("Added feeding record for \(name), total records: \(feedingRecords.count)")
     }
     
-    func addMedicationRecord(notes: String?, recordedBy: User? = nil) {
+    mutating func removeFeedingRecord(at timestamp: Date, modifiedBy: User? = nil) {
+        if feedingRecords.contains(where: { $0.timestamp == timestamp }) {
+            feedingRecords.removeAll { $0.timestamp == timestamp }
+            updatedAt = Date()
+            lastModifiedBy = modifiedBy
+        }
+    }
+    
+    mutating func updateFeedingRecord(at timestamp: Date, type: FeedingRecord.FeedingType, modifiedBy: User? = nil) {
+        if let index = feedingRecords.firstIndex(where: { $0.timestamp == timestamp }) {
+            feedingRecords[index].type = type
+            updatedAt = Date()
+            lastModifiedBy = modifiedBy
+        }
+    }
+    
+    mutating func addMedicationRecord(notes: String?, recordedBy: User? = nil) {
         let record = MedicationRecord(
             timestamp: Date(),
             notes: notes,
@@ -215,26 +214,93 @@ final class Dog: Codable {
         print("Added medication record for \(name), total records: \(medicationRecords.count)")
     }
     
-    func recordStatusChange(_ field: String, newValue: Bool) {
+    mutating func removeMedicationRecord(at timestamp: Date, modifiedBy: User? = nil) {
+        if medicationRecords.contains(where: { $0.timestamp == timestamp }) {
+            medicationRecords.removeAll { $0.timestamp == timestamp }
+            updatedAt = Date()
+            lastModifiedBy = modifiedBy
+        }
+    }
+    
+    mutating func updateMedicationRecord(at timestamp: Date, notes: String?, modifiedBy: User? = nil) {
+        if let index = medicationRecords.firstIndex(where: { $0.timestamp == timestamp }) {
+            medicationRecords[index].notes = notes
+            updatedAt = Date()
+            lastModifiedBy = modifiedBy
+        }
+    }
+    
+    mutating func addWalkingRecord(notes: String?, recordedBy: User? = nil) {
+        let record = WalkingRecord(
+            timestamp: Date(),
+            notes: notes,
+            recordedBy: recordedBy?.name
+        )
+        walkingRecords.append(record)
         updatedAt = Date()
-        // In a real app, you might want to log this to a change history
-        print("\(field) changed to \(newValue)")
+        lastModifiedBy = recordedBy
+        print("Added walking record for \(name), total records: \(walkingRecords.count)")
     }
     
-    private func recordChange(_ change: String) {
-        updatedAt = Date()
+    mutating func removeWalkingRecord(at timestamp: Date, modifiedBy: User? = nil) {
+        if walkingRecords.contains(where: { $0.timestamp == timestamp }) {
+            walkingRecords.removeAll { $0.timestamp == timestamp }
+            updatedAt = Date()
+            lastModifiedBy = modifiedBy
+        }
     }
     
-    var peeCount: Int {
-        let count = pottyRecords.filter { $0.type == .pee }.count
-        print("peeCount for \(name): \(count) (total records: \(pottyRecords.count))")
-        return count
+    mutating func updateWalkingRecord(at timestamp: Date, notes: String?, modifiedBy: User? = nil) {
+        if let index = walkingRecords.firstIndex(where: { $0.timestamp == timestamp }) {
+            walkingRecords[index].notes = notes
+            updatedAt = Date()
+            lastModifiedBy = modifiedBy
+        }
     }
     
-    var poopCount: Int {
-        let count = pottyRecords.filter { $0.type == .poop }.count
-        print("poopCount for \(name): \(count) (total records: \(pottyRecords.count))")
-        return count
+    // MARK: - Computed Properties
+    
+    var isCurrentlyPresent: Bool {
+        // A dog is currently present if they have arrived (arrivalDate is in the past or today)
+        // and haven't departed yet (departureDate is nil)
+        let now = Date()
+        let calendar = Calendar.current
+        
+        // Check if arrival date is today or in the past
+        let hasArrived = calendar.isDate(arrivalDate, inSameDayAs: now) || arrivalDate < now
+        
+        // Dog is present if they've arrived and haven't departed
+        return hasArrived && departureDate == nil
+    }
+    
+    var stayDuration: TimeInterval {
+        let endDate = departureDate ?? Date()
+        
+        // Ensure endDate is after arrivalDate to prevent negative durations
+        guard endDate > arrivalDate else { return 0 }
+        
+        return endDate.timeIntervalSince(arrivalDate)
+    }
+    
+    var formattedStayDuration: String {
+        guard let departureDate = departureDate else { return "" }
+        
+        // Ensure departureDate is after arrivalDate to prevent negative durations
+        guard departureDate > arrivalDate else { return "" }
+        
+        let components = Calendar.current.dateComponents([.hour, .minute], from: arrivalDate, to: departureDate)
+        if let hours = components.hour, let minutes = components.minute {
+            // Ensure we have valid non-negative values
+            let safeHours = max(0, hours)
+            let safeMinutes = max(0, minutes)
+            
+            if safeHours > 0 {
+                return "\(safeHours)h \(safeMinutes)m"
+            } else {
+                return "\(safeMinutes)m"
+            }
+        }
+        return ""
     }
     
     var breakfastCount: Int {
@@ -267,188 +333,15 @@ final class Dog: Codable {
         return count
     }
     
-    var isCurrentlyPresent: Bool {
-        let calendar = Calendar.current
-        let hasArrived = calendar.dateComponents([.hour, .minute], from: arrivalDate).hour != 0 ||
-                        calendar.dateComponents([.hour, .minute], from: arrivalDate).minute != 0
-        return hasArrived && departureDate == nil
+    var peeCount: Int {
+        let count = pottyRecords.filter { $0.type == .pee }.count
+        print("peeCount for \(name): \(count) (total records: \(pottyRecords.count))")
+        return count
     }
     
-    var stayDuration: TimeInterval {
-        let endDate = departureDate ?? Date()
-        return endDate.timeIntervalSince(arrivalDate)
-    }
-    
-    var formattedStayDuration: String {
-        guard let departureDate = departureDate else { return "" }
-        let components = Calendar.current.dateComponents([.hour, .minute], from: arrivalDate, to: departureDate)
-        if let hours = components.hour, let minutes = components.minute {
-            if hours > 0 {
-                return "\(hours)h \(minutes)m"
-            } else {
-                return "\(minutes)m"
-            }
-        }
-        return ""
-    }
-    
-    enum CodingKeys: String, CodingKey {
-        case id, name, ownerName, arrivalDate, departureDate, isBoarding, boardingEndDate
-        case medications, specialInstructions, allergiesAndFeedingInstructions, needsWalking, walkingNotes
-        case isDaycareFed, notes, profilePictureData, updatedAt, createdAt
-        case feedingRecords, medicationRecords, pottyRecords
-    }
-    
-    convenience init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let idString = try container.decode(String.self, forKey: .id)
-        let id = UUID(uuidString: idString) ?? UUID()
-        let name = try container.decode(String.self, forKey: .name)
-        let ownerName = try container.decodeIfPresent(String.self, forKey: .ownerName)
-        let arrivalDate = try container.decode(Date.self, forKey: .arrivalDate)
-        let isBoarding = try container.decode(Bool.self, forKey: .isBoarding)
-        let medications = try container.decodeIfPresent(String.self, forKey: .medications)
-        let specialInstructions = try container.decodeIfPresent(String.self, forKey: .specialInstructions)
-        let allergiesAndFeedingInstructions = try container.decodeIfPresent(String.self, forKey: .allergiesAndFeedingInstructions)
-        let needsWalking = try container.decode(Bool.self, forKey: .needsWalking)
-        let walkingNotes = try container.decodeIfPresent(String.self, forKey: .walkingNotes)
-        let isDaycareFed = try container.decode(Bool.self, forKey: .isDaycareFed)
-        let notes = try container.decodeIfPresent(String.self, forKey: .notes)
-        let profilePictureData = try container.decodeIfPresent(Data.self, forKey: .profilePictureData)
-        
-        self.init(
-            id: id,
-            name: name,
-            ownerName: ownerName,
-            arrivalDate: arrivalDate,
-            isBoarding: isBoarding,
-            medications: medications,
-            specialInstructions: specialInstructions,
-            allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
-            needsWalking: needsWalking,
-            walkingNotes: walkingNotes,
-            isDaycareFed: isDaycareFed,
-            notes: notes,
-            profilePictureData: profilePictureData
-        )
-        
-        // Decode optional properties
-        self.departureDate = try container.decodeIfPresent(Date.self, forKey: .departureDate)
-        self.boardingEndDate = try container.decodeIfPresent(Date.self, forKey: .boardingEndDate)
-        self.updatedAt = try container.decode(Date.self, forKey: .updatedAt)
-        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
-        
-        // Decode relationships
-        self.feedingRecords = try container.decode([FeedingRecord].self, forKey: .feedingRecords)
-        self.medicationRecords = try container.decode([MedicationRecord].self, forKey: .medicationRecords)
-        self.pottyRecords = try container.decode([PottyRecord].self, forKey: .pottyRecords)
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id.uuidString, forKey: .id)
-        try container.encode(name, forKey: .name)
-        try container.encodeIfPresent(ownerName, forKey: .ownerName)
-        try container.encode(arrivalDate, forKey: .arrivalDate)
-        try container.encode(isBoarding, forKey: .isBoarding)
-        try container.encodeIfPresent(medications, forKey: .medications)
-        try container.encodeIfPresent(specialInstructions, forKey: .specialInstructions)
-        try container.encodeIfPresent(allergiesAndFeedingInstructions, forKey: .allergiesAndFeedingInstructions)
-        try container.encode(needsWalking, forKey: .needsWalking)
-        try container.encodeIfPresent(walkingNotes, forKey: .walkingNotes)
-        try container.encode(isDaycareFed, forKey: .isDaycareFed)
-        try container.encodeIfPresent(notes, forKey: .notes)
-        try container.encodeIfPresent(profilePictureData, forKey: .profilePictureData)
-        try container.encodeIfPresent(departureDate, forKey: .departureDate)
-        try container.encodeIfPresent(boardingEndDate, forKey: .boardingEndDate)
-        try container.encode(updatedAt, forKey: .updatedAt)
-        try container.encode(createdAt, forKey: .createdAt)
-        try container.encode(feedingRecords, forKey: .feedingRecords)
-        try container.encode(medicationRecords, forKey: .medicationRecords)
-        try container.encode(pottyRecords, forKey: .pottyRecords)
-    }
-}
-
-extension WalkingRecord: Codable {
-    enum CodingKeys: String, CodingKey {
-        case timestamp, notes, recordedBy
-    }
-    
-    convenience init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let timestamp = try container.decode(Date.self, forKey: .timestamp)
-        let notes = try container.decodeIfPresent(String.self, forKey: .notes)
-        let recordedBy = try container.decodeIfPresent(String.self, forKey: .recordedBy)
-        self.init(timestamp: timestamp, notes: notes, recordedBy: recordedBy)
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encodeIfPresent(notes, forKey: .notes)
-        try container.encodeIfPresent(recordedBy, forKey: .recordedBy)
-    }
-}
-
-extension FeedingRecord: Codable {
-    enum CodingKeys: String, CodingKey {
-        case timestamp, type, recordedBy
-    }
-    
-    convenience init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let timestamp = try container.decode(Date.self, forKey: .timestamp)
-        let type = try container.decode(FeedingType.self, forKey: .type)
-        let recordedBy = try container.decodeIfPresent(String.self, forKey: .recordedBy)
-        self.init(timestamp: timestamp, type: type, recordedBy: recordedBy)
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encode(type, forKey: .type)
-        try container.encodeIfPresent(recordedBy, forKey: .recordedBy)
-    }
-}
-
-extension MedicationRecord: Codable {
-    enum CodingKeys: String, CodingKey {
-        case timestamp, notes, recordedBy
-    }
-    
-    convenience init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let timestamp = try container.decode(Date.self, forKey: .timestamp)
-        let notes = try container.decodeIfPresent(String.self, forKey: .notes)
-        let recordedBy = try container.decodeIfPresent(String.self, forKey: .recordedBy)
-        self.init(timestamp: timestamp, notes: notes, recordedBy: recordedBy)
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encodeIfPresent(notes, forKey: .notes)
-        try container.encodeIfPresent(recordedBy, forKey: .recordedBy)
-    }
-}
-
-extension PottyRecord: Codable {
-    enum CodingKeys: String, CodingKey {
-        case timestamp, type, recordedBy
-    }
-    
-    convenience init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let timestamp = try container.decode(Date.self, forKey: .timestamp)
-        let type = try container.decode(PottyType.self, forKey: .type)
-        let recordedBy = try container.decodeIfPresent(String.self, forKey: .recordedBy)
-        self.init(timestamp: timestamp, type: type, recordedBy: recordedBy)
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(timestamp, forKey: .timestamp)
-        try container.encode(type, forKey: .type)
-        try container.encodeIfPresent(recordedBy, forKey: .recordedBy)
+    var poopCount: Int {
+        let count = pottyRecords.filter { $0.type == .poop }.count
+        print("poopCount for \(name): \(count) (total records: \(pottyRecords.count))")
+        return count
     }
 } 

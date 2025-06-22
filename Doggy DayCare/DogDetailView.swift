@@ -1,416 +1,422 @@
 import SwiftUI
-import SwiftData
 
 struct DogDetailView: View {
-    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var dataManager: DataManager
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var authService = AuthenticationService.shared
-    @Bindable var dog: Dog
-    
+    let dog: Dog
     @State private var showingEditSheet = false
-    @State private var showingDeleteAlert = false
-    @State private var showingDepartureSheet = false
-    @State private var showingBoardingSheet = false
+    @State private var showingCheckOutAlert = false
+    @State private var showingBoardSheet = false
     @State private var showingExtendStaySheet = false
-    @State private var departureDate = Date()
+    @State private var showingDeleteAlert = false
     @State private var boardingEndDate = Date()
-    @State private var newBoardingEndDate = Date()
+    @State private var showingImageZoom = false
     
-    private var canEdit: Bool {
-        authService.currentUser?.isOwner ?? false
-    }
+    private let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM/dd/yy"
+        return formatter
+    }()
     
-    private var canDelete: Bool {
-        authService.currentUser?.isOwner ?? false
-    }
-    
-    private var canSetDeparture: Bool {
-        authService.currentUser?.isOwner ?? false
-    }
-    
-    private var canModifyRecords: Bool {
-        // Staff can modify records for current day's dogs
-        if let user = authService.currentUser, !user.isOwner {
-            return Calendar.current.isDateInToday(dog.arrivalDate) && dog.isCurrentlyPresent
-        }
-        return true // Owners can modify all records
-    }
+    private let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter
+    }()
     
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Dog Information") {
-                    // Profile Picture
-                    if let imageData = dog.profilePictureData, let uiImage = UIImage(data: imageData) {
-                        HStack {
-                            Spacer()
+        List {
+            // Profile Picture Section
+            Section {
+                VStack(spacing: 12) {
+                    HStack {
+                        Spacer()
+                        
+                        if let imageData = dog.profilePictureData, let uiImage = UIImage(data: imageData) {
                             Image(uiImage: uiImage)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
                                 .frame(width: 80, height: 80)
                                 .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.gray, lineWidth: 1))
-                            Spacer()
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    
-                    LabeledContent("Name", value: dog.name)
-                    
-                    if let ownerName = dog.ownerName, !ownerName.isEmpty {
-                        LabeledContent("Owner", value: ownerName)
-                    }
-                }
-                
-                Section("Stay Information") {
-                    LabeledContent("Arrival", value: dog.arrivalDate.formatted(date: .abbreviated, time: .shortened))
-                    if let departureDate = dog.departureDate {
-                        LabeledContent("Departure", value: departureDate.formatted(date: .abbreviated, time: .shortened))
-                    }
-                    LabeledContent("Duration", value: dog.formattedStayDuration)
-                    LabeledContent("Type", value: dog.isBoarding ? "Boarding" : "Daycare")
-                    LabeledContent("Feeding", value: dog.isDaycareFed ? "Daycare Fed" : "Own Food")
-                    
-                    if dog.isCurrentlyPresent {
-                        if !dog.isBoarding {
-                            Button {
-                                showingBoardingSheet = true
-                            } label: {
-                                Label("Board", systemImage: "house.fill")
-                            }
+                                .overlay(Circle().stroke(Color.gray, lineWidth: 2))
+                                .onTapGesture {
+                                    showingImageZoom = true
+                                }
                         } else {
-                            // Extend Stay button for boarding dogs
-                            Button {
-                                newBoardingEndDate = dog.boardingEndDate ?? Date()
-                                showingExtendStaySheet = true
-                            } label: {
-                                Label("Extend Stay", systemImage: "house.fill")
-                            }
+                            Image(systemName: "camera.circle.fill")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 80, height: 80)
+                                .foregroundColor(.gray)
                         }
                         
+                        Spacer()
+                    }
+                    
+                    Text(dog.name)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                }
+                .padding(.vertical, 8)
+            }
+            
+            // Basic Information Section
+            Section("Basic Information") {
+                InfoRow(title: "Stay Type", value: dog.isBoarding ? "Boarding" : "Daycare")
+                InfoRow(title: "Feeding Type", value: dog.isDaycareFed ? "Daycare Fed" : "Own Food")
+                
+                InfoRow(title: "Arrival Date", value: dateFormatter.string(from: dog.arrivalDate))
+                
+                if let departureDate = dog.departureDate {
+                    InfoRow(title: "Departure Date", value: dateFormatter.string(from: departureDate))
+                }
+                
+                if let boardingEndDate = dog.boardingEndDate {
+                    InfoRow(title: "Boarding End Date", value: dateFormatter.string(from: boardingEndDate))
+                }
+                
+                InfoRow(title: "Stay Duration", value: dog.formattedStayDuration)
+            }
+            
+            // Action Buttons Section (only for present dogs)
+            if dog.isCurrentlyPresent {
+                Section {
+                    // Board button for daycare dogs
+                    if !dog.isBoarding {
                         Button {
-                            withAnimation {
-                                dog.departureDate = Date()
-                                dog.updatedAt = Date()
-                                try? modelContext.save()
+                            boardingEndDate = dog.boardingEndDate ?? Date()
+                            showingBoardSheet = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "house.fill")
+                                    .foregroundStyle(.blue)
+                                Text("Board")
+                                    .foregroundStyle(.blue)
                             }
-                            dismiss()
-                        } label: {
-                            Label("Check Out", systemImage: "checkmark.circle")
                         }
-                    } else if dog.departureDate != nil {
+                    }
+                    
+                    // Extend Stay button for boarding dogs
+                    if dog.isBoarding {
                         Button {
-                            showingDepartureSheet = true
+                            boardingEndDate = dog.boardingEndDate ?? Date()
+                            showingExtendStaySheet = true
                         } label: {
-                            Label("Edit Departure Time", systemImage: "clock")
+                            HStack {
+                                Image(systemName: "calendar.badge.plus")
+                                    .foregroundStyle(.blue)
+                                Text("Extend Stay")
+                                    .foregroundStyle(.blue)
+                            }
+                        }
+                    }
+                    
+                    // Check Out button
+                    Button {
+                        showingCheckOutAlert = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.blue)
+                            Text("Check Out")
+                                .foregroundStyle(.blue)
                         }
                     }
                 }
-                
-                Section {
-                    Toggle("Needs Walking", isOn: $dog.needsWalking)
-                        .onChange(of: dog.needsWalking) { _, newValue in
-                            dog.recordStatusChange("Walking status", newValue: newValue)
-                        }
-                    
-                    if dog.needsWalking {
-                        if let notes = dog.walkingNotes, !notes.isEmpty {
-                            Text(notes)
-                                .font(.subheadline)
-                        }
-                        
-                        if !dog.pottyRecords.isEmpty {
-                            ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
-                                HStack {
-                                    if record.type == .pee {
-                                        Image(systemName: "drop.fill")
-                                            .foregroundStyle(.yellow)
-                                    } else if record.type == .poop {
-                                        Text("💩")
-                                    } else if record.type == .nothing {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .foregroundStyle(.red)
-                                    } else {
-                                        Image(systemName: "questionmark.circle")
-                                            .foregroundStyle(.gray)
+            }
+            
+            // Walking Section
+            if dog.needsWalking || !dog.walkingRecords.isEmpty {
+                Section("Walking Information") {
+                    if !dog.walkingRecords.isEmpty {
+                        ForEach(dog.walkingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                            HStack {
+                                Image(systemName: "figure.walk")
+                                    .foregroundStyle(.blue)
+                                VStack(alignment: .leading) {
+                                    Text("Walk")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    if let notes = record.notes {
+                                        Text(notes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
                                     }
+                                }
+                                Spacer()
+                                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    
+                    // Individual potty instances
+                    if !dog.pottyRecords.isEmpty {
+                        ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                            HStack {
+                                if record.type == .pee {
+                                    Image(systemName: "drop.fill")
+                                        .foregroundStyle(.yellow)
+                                } else if record.type == .poop {
+                                    Text("💩")
+                                } else if record.type == .nothing {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.red)
+                                }
+                                VStack(alignment: .leading) {
                                     Text(record.type.rawValue.capitalized)
                                         .font(.subheadline)
-                                    Spacer()
-                                    Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
+                                        .fontWeight(.medium)
                                 }
-                                .padding(.vertical, 2)
-                            }
-                            .onDelete { indexSet in
-                                guard canModifyRecords else { return }
-                                let sortedRecords = dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp })
-                                for index in indexSet {
-                                    if let recordToDelete = sortedRecords[safe: index] {
-                                        dog.removePottyRecord(at: recordToDelete.timestamp, modifiedBy: authService.currentUser)
-                                    }
-                                }
-                                try? modelContext.save()
-                            }
-                        }
-                        
-                        HStack(spacing: 12) {
-                            HStack {
-                                Image(systemName: "drop.fill")
-                                    .foregroundStyle(.yellow)
-                                Text("\(dog.peeCount)")
-                            }
-                            HStack {
-                                Text("💩")
-                                Text("\(dog.poopCount)")
-                            }
-                        }
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    }
-                } header: {
-                    Text("Walking Information")
-                }
-                
-                if dog.medications != nil && !dog.medications!.isEmpty {
-                    Section("Medications") {
-                        Text(dog.medications!)
-                        
-                        if !dog.medicationRecords.isEmpty {
-                            ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
-                                HStack {
-                                    Image(systemName: "pills.fill")
-                                        .foregroundStyle(.purple)
-                                    if let notes = record.notes, !notes.isEmpty {
-                                        Text(notes)
-                                            .font(.subheadline)
-                                    } else {
-                                        Text("Medication administered")
-                                            .font(.subheadline)
-                                    }
-                                    Spacer()
-                                    Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.vertical, 2)
-                            }
-                            .onDelete { indexSet in
-                                guard canModifyRecords else { return }
-                                let sortedRecords = dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp })
-                                for index in indexSet {
-                                    if let recordToDelete = sortedRecords[safe: index] {
-                                        dog.medicationRecords.removeAll { $0.timestamp == recordToDelete.timestamp }
-                                        dog.updatedAt = Date()
-                                        dog.lastModifiedBy = authService.currentUser
-                                    }
-                                }
-                                try? modelContext.save()
+                                Spacer()
+                                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
+                    
+                    // Potty counts
+                    HStack(spacing: 16) {
+                        HStack {
+                            Image(systemName: "drop.fill")
+                                .foregroundStyle(.yellow)
+                            Text("\(dog.peeCount)")
+                                .font(.headline)
+                                .foregroundStyle(.blue)
+                        }
+                        
+                        HStack {
+                            Text("💩")
+                            Text("\(dog.poopCount)")
+                                .font(.headline)
+                                .foregroundStyle(.blue)
+                        }
+                        
+                        Spacer()
+                    }
+                    .font(.caption)
                 }
-                
+            }
+            
+            // Feeding Section
+            if dog.isDaycareFed || !dog.feedingRecords.isEmpty {
                 Section("Feeding Information") {
                     if !dog.feedingRecords.isEmpty {
-                        ForEach(dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
+                        ForEach(dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
                             HStack {
                                 Image(systemName: iconForFeedingType(record.type))
                                     .foregroundStyle(colorForFeedingType(record.type))
-                                Text(record.type.rawValue.capitalized)
-                                    .font(.subheadline)
+                                VStack(alignment: .leading) {
+                                    Text(record.type.rawValue.capitalized)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                }
                                 Spacer()
-                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.subheadline)
+                                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                            .padding(.vertical, 2)
-                        }
-                        .onDelete { indexSet in
-                            guard canModifyRecords else { return }
-                            let sortedRecords = dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp })
-                            for index in indexSet {
-                                if let recordToDelete = sortedRecords[safe: index] {
-                                    dog.feedingRecords.removeAll { $0.timestamp == recordToDelete.timestamp }
-                                    dog.updatedAt = Date()
-                                    dog.lastModifiedBy = authService.currentUser
-                                }
-                            }
-                            try? modelContext.save()
                         }
                     }
                     
+                    // Feeding counts
                     HStack(spacing: 16) {
                         HStack {
                             Image(systemName: "sunrise.fill")
                                 .foregroundStyle(.orange)
                             Text("\(dog.breakfastCount)")
+                                .font(.headline)
+                                .foregroundStyle(.blue)
                         }
+                        
                         HStack {
                             Image(systemName: "sun.max.fill")
                                 .foregroundStyle(.yellow)
                             Text("\(dog.lunchCount)")
+                                .font(.headline)
+                                .foregroundStyle(.blue)
                         }
+                        
                         HStack {
                             Image(systemName: "sunset.fill")
                                 .foregroundStyle(.red)
                             Text("\(dog.dinnerCount)")
+                                .font(.headline)
+                                .foregroundStyle(.blue)
                         }
+                        
                         HStack {
                             Image(systemName: "pawprint.fill")
                                 .foregroundStyle(.brown)
                             Text("\(dog.snackCount)")
+                                .font(.headline)
+                                .foregroundStyle(.blue)
                         }
+                        
+                        Spacer()
                     }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 8)
+                    .font(.caption)
                 }
-                
-                if let notes = dog.notes, !notes.isEmpty {
-                    Section("Additional Notes") {
-                        Text(notes)
+            }
+            
+            // Medications Section
+            if let medications = dog.medications, !medications.isEmpty || !dog.medicationRecords.isEmpty {
+                Section("Medications") {
+                    if let medications = dog.medications, !medications.isEmpty {
+                        Text(medications)
+                            .font(.body)
                     }
-                }
-                
-                if let allergiesAndFeeding = dog.allergiesAndFeedingInstructions, !allergiesAndFeeding.isEmpty {
-                    Section("Allergies and Feeding Instructions") {
-                        Text(allergiesAndFeeding)
-                    }
-                }
-                
-                if canDelete {
-                    Section {
-                        Button(role: .destructive) {
-                            showingDeleteAlert = true
-                        } label: {
-                            Label("Delete Dog", systemImage: "trash")
+                    
+                    if !dog.medicationRecords.isEmpty {
+                        ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                            HStack {
+                                Image(systemName: "pills")
+                                    .foregroundStyle(.purple)
+                                VStack(alignment: .leading) {
+                                    Text("Medication")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    if let notes = record.notes {
+                                        Text(notes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
             }
-            .navigationTitle(dog.name)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if canEdit {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Edit") {
-                            showingEditSheet = true
-                        }
-                    }
+            
+            // Notes Section
+            if let notes = dog.notes, !notes.isEmpty {
+                Section("Notes") {
+                    Text(notes)
+                        .font(.body)
+                }
+            }
+            
+            // Walking Notes Section
+            if let walkingNotes = dog.walkingNotes, !walkingNotes.isEmpty {
+                Section("Walking Notes") {
+                    Text(walkingNotes)
+                        .font(.body)
+                }
+            }
+            
+            // Allergies & Feeding Instructions Section
+            if let allergiesAndFeedingInstructions = dog.allergiesAndFeedingInstructions, !allergiesAndFeedingInstructions.isEmpty {
+                Section("Allergies & Feeding Instructions") {
+                    Text(allergiesAndFeedingInstructions)
+                        .font(.body)
+                }
+            }
+            
+            // Danger Zone Section
+            Section {
+                Button("Delete Dog") {
+                    showingDeleteAlert = true
+                }
+                .foregroundStyle(.red)
+            } header: {
+                Text("Danger Zone")
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Edit") {
+                    showingEditSheet = true
                 }
             }
         }
         .sheet(isPresented: $showingEditSheet) {
-            DogFormView(dog: dog)
-        }
-        .sheet(isPresented: $showingDepartureSheet) {
             NavigationStack {
-                Form {
-                    DatePicker("Departure Time", selection: $departureDate)
-                        .onChange(of: departureDate) { _, newValue in
-                            // Auto-close the sheet when a date is selected
-                            dog.departureDate = newValue
-                            dog.updatedAt = Date()
-                            dog.lastModifiedBy = authService.currentUser
-                            showingDepartureSheet = false
-                        }
-                }
-                .navigationTitle("Set Departure")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") {
-                            showingDepartureSheet = false
-                        }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") {
-                            dog.departureDate = departureDate
-                            dog.updatedAt = Date()
-                            dog.lastModifiedBy = authService.currentUser
-                            showingDepartureSheet = false
-                        }
-                    }
-                }
+                DogFormView(dog: dog)
             }
-            .presentationDetents([.height(200)])
         }
-        .sheet(isPresented: $showingBoardingSheet) {
+        .sheet(isPresented: $showingBoardSheet) {
             NavigationStack {
-                Form {
-                    Section {
-                        DatePicker("Expected Departure Date", selection: $boardingEndDate, displayedComponents: .date)
-                    } footer: {
-                        Text("This will convert \(dog.name) from daycare to boarding. The dog will remain in boarding until the expected departure date.")
-                    }
-                }
-                .navigationTitle("Convert to Boarding")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") {
-                            showingBoardingSheet = false
-                        }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Convert") {
-                            dog.isBoarding = true
-                            dog.boardingEndDate = boardingEndDate
-                            dog.updatedAt = Date()
-                            dog.lastModifiedBy = authService.currentUser
-                            try? modelContext.save()
-                            showingBoardingSheet = false
-                            dismiss()
-                        }
-                    }
-                }
+                BoardDogView(dog: dog, endDate: $boardingEndDate)
             }
-            .presentationDetents([.medium])
         }
         .sheet(isPresented: $showingExtendStaySheet) {
             NavigationStack {
-                Form {
-                    Section {
-                        DatePicker("New Expected Departure Date", selection: $newBoardingEndDate, displayedComponents: .date)
-                    } footer: {
-                        Text("This will extend \(dog.name)'s boarding stay until the new expected departure date.")
+                ExtendStayView(dog: dog, endDate: $boardingEndDate)
+            }
+        }
+        .overlay {
+            if showingImageZoom, let imageData = dog.profilePictureData, let uiImage = UIImage(data: imageData) {
+                Color.black.opacity(0.8)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        showingImageZoom = false
                     }
-                }
-                .navigationTitle("Extend Stay")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") {
-                            showingExtendStaySheet = false
+                    .overlay {
+                        VStack {
+                            Spacer()
+                            
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxWidth: UIScreen.main.bounds.width * 0.8, maxHeight: UIScreen.main.bounds.height * 0.6)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .shadow(radius: 20)
+                            
+                            Spacer()
+                            
+                            Button("Close") {
+                                showingImageZoom = false
+                            }
+                            .foregroundStyle(.white)
+                            .padding()
+                            .background(.blue)
+                            .clipShape(Capsule())
+                            .padding(.bottom, 50)
                         }
                     }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Extend") {
-                            dog.boardingEndDate = newBoardingEndDate
-                            dog.updatedAt = Date()
-                            dog.lastModifiedBy = authService.currentUser
-                            try? modelContext.save()
-                            showingExtendStaySheet = false
-                        }
-                    }
+            }
+        }
+        .alert("Check Out", isPresented: $showingCheckOutAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Check Out", role: .destructive) {
+                Task {
+                    await checkOut()
                 }
             }
-            .presentationDetents([.medium])
+        } message: {
+            Text("Are you sure you want to check out \(dog.name)?")
         }
         .alert("Delete Dog", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
-                deleteDog()
+                Task {
+                    await deleteDog()
+                }
             }
         } message: {
             Text("Are you sure you want to delete \(dog.name)? This action cannot be undone.")
         }
     }
     
-    private func deleteDog() {
-        modelContext.delete(dog)
+    // MARK: - Action Functions
+    
+    private func checkOut() async {
+        var updatedDog = dog
+        updatedDog.departureDate = Date()
+        updatedDog.updatedAt = Date()
+        await dataManager.updateDog(updatedDog)
+        dismiss()
+    }
+    
+    private func deleteDog() async {
+        await dataManager.deleteDog(dog)
         dismiss()
     }
     
@@ -433,39 +439,187 @@ struct DogDetailView: View {
     }
 }
 
-extension Array {
-    subscript(safe index: Index) -> Element? {
-        indices.contains(index) ? self[index] : nil
-    }
-}
-
-// MARK: - Test View for Development
-#if DEBUG
-struct DogDetailTestView: View {
-    let dog: Dog
+struct InfoRow: View {
+    let title: String
+    let value: String
     
     var body: some View {
-        DogDetailView(dog: dog)
+        HStack {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .fontWeight(.medium)
+        }
     }
 }
-#endif
+
+struct StatusBadge: View {
+    let title: String
+    let color: Color
+    
+    var body: some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(.medium)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.2))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+    }
+}
+
+struct BoardDogView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var dataManager: DataManager
+    let dog: Dog
+    @Binding var endDate: Date
+    @State private var isLoading = false
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Dog: \(dog.name)")
+                        .font(.headline)
+                    
+                    Text("Currently: Daycare")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                
+                Section("Boarding End Date") {
+                    DatePicker("End Date", selection: $endDate, displayedComponents: .date)
+                }
+            }
+            .navigationTitle("Convert to Boarding")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Convert") {
+                        Task {
+                            await convertToBoarding()
+                        }
+                    }
+                    .disabled(isLoading)
+                }
+            }
+            .overlay {
+                if isLoading {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .overlay {
+                            ProgressView("Converting...")
+                                .padding()
+                                .background(.regularMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                }
+            }
+        }
+    }
+    
+    private func convertToBoarding() async {
+        isLoading = true
+        var updatedDog = dog
+        updatedDog.isBoarding = true
+        updatedDog.boardingEndDate = endDate
+        updatedDog.updatedAt = Date()
+        await dataManager.updateDog(updatedDog)
+        isLoading = false
+        dismiss()
+    }
+}
+
+struct ExtendStayView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var dataManager: DataManager
+    let dog: Dog
+    @Binding var endDate: Date
+    @State private var isLoading = false
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Dog: \(dog.name)")
+                        .font(.headline)
+                    
+                    if let currentEndDate = dog.boardingEndDate {
+                        Text("Current end date: \(currentEndDate.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                Section("New End Date") {
+                    DatePicker("End Date", selection: $endDate, displayedComponents: .date)
+                }
+            }
+            .navigationTitle("Extend Stay")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Extend") {
+                        Task {
+                            await extendStay()
+                        }
+                    }
+                    .disabled(isLoading)
+                }
+            }
+            .overlay {
+                if isLoading {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .overlay {
+                            ProgressView("Extending...")
+                                .padding()
+                                .background(.regularMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                }
+            }
+        }
+    }
+    
+    private func extendStay() async {
+        isLoading = true
+        var updatedDog = dog
+        updatedDog.boardingEndDate = endDate
+        updatedDog.updatedAt = Date()
+        await dataManager.updateDog(updatedDog)
+        isLoading = false
+        dismiss()
+    }
+}
 
 #Preview {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: Dog.self, User.self, configurations: config)
-    
-    // Create a sample dog for preview
     let sampleDog = Dog(
-        id: UUID(),
-        name: "Max",
+        name: "Buddy",
+        ownerName: "John Doe",
         arrivalDate: Date(),
-        isBoarding: true,
+        isBoarding: false,
         medications: "Heart medication",
-        specialInstructions: "Needs extra attention"
+        allergiesAndFeedingInstructions: "No chicken",
+        needsWalking: true,
+        walkingNotes: "Likes to chase squirrels",
+        isDaycareFed: true,
+        notes: "Very friendly dog"
     )
     
-    container.mainContext.insert(sampleDog)
-    
-    return DogDetailView(dog: sampleDog)
-        .modelContainer(container)
+    NavigationStack {
+        DogDetailView(dog: sampleDog)
+    }
 } 

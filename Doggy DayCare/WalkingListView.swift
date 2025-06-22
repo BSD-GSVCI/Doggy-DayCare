@@ -1,360 +1,316 @@
 import SwiftUI
-import SwiftData
 
 struct WalkingListView: View {
-    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject var dataManager: DataManager
     @StateObject private var authService = AuthenticationService.shared
-    @Query(sort: \Dog.name) private var allDogs: [Dog]
+    
     @State private var searchText = ""
-    @State private var showingPottyAlert = false
+    @State private var showingAddWalking = false
     @State private var selectedDog: Dog?
-    @State private var selectedFilter: WalkingFilter = .alphabetical
+    @State private var selectedFilter: WalkingFilter = .all
+    @State private var selectedSort: WalkingSort = .alphabetical
     
     enum WalkingFilter {
+        case all
+        case recentActivity
+    }
+    
+    enum WalkingSort {
         case alphabetical
         case recentActivity
-        
-        var title: String {
-            switch self {
-            case .alphabetical: return "Alphabetical"
-            case .recentActivity: return "Recent Activity"
-            }
-        }
-    }
-    
-    private var canModifyRecords: Bool {
-        // Staff can only modify records for current day's dogs
-        if let user = authService.currentUser, !user.isOwner {
-            return true // Staff can add records for any dog that needs walking
-        }
-        return true // Owners can modify all records
-    }
-    
-    private var walkingDogs: [Dog] {
-        let presentDogs = filteredDogs.filter { dog in
-            let isPresent = dog.isCurrentlyPresent
-            let isArrivingToday = Calendar.current.isDateInToday(dog.arrivalDate)
-            let hasArrived = Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).hour != 0 ||
-                            Calendar.current.dateComponents([.hour, .minute], from: dog.arrivalDate).minute != 0
-            let isFutureBooking = Calendar.current.startOfDay(for: dog.arrivalDate) > Calendar.current.startOfDay(for: Date())
-            
-            return (isPresent || (isArrivingToday && !hasArrived)) && !isFutureBooking && dog.needsWalking
-        }
-        
-        // Sort based on selected filter
-        return presentDogs.sorted(by: { (dog1: Dog, dog2: Dog) -> Bool in
-            switch selectedFilter {
-            case .alphabetical:
-                return dog1.name.localizedCaseInsensitiveCompare(dog2.name) == .orderedAscending
-                
-            case .recentActivity:
-                let threeHoursAgo = Date().addingTimeInterval(-3 * 60 * 60) // 3 hours ago
-                let dog1LastPotty = dog1.pottyRecords
-                    .filter { $0.timestamp > threeHoursAgo }
-                    .sorted { $0.timestamp > $1.timestamp }
-                    .first?.timestamp
-                let dog2LastPotty = dog2.pottyRecords
-                    .filter { $0.timestamp > threeHoursAgo }
-                    .sorted { $0.timestamp > $1.timestamp }
-                    .first?.timestamp
-                
-                // If both have had potty in the last 3 hours, sort by time (most recent first)
-                if let time1 = dog1LastPotty, let time2 = dog2LastPotty {
-                    return time1 > time2
-                }
-                // If only one has had potty in the last 3 hours, put the one who hasn't first
-                if (dog1LastPotty != nil) != (dog2LastPotty != nil) {
-                    return dog1LastPotty == nil
-                }
-                // If neither has had potty in the last 3 hours, sort alphabetically
-                return dog1.name.localizedCaseInsensitiveCompare(dog2.name) == .orderedAscending
-            }
-        })
-    }
-    
-    private var daycareDogs: [Dog] {
-        walkingDogs.filter { !$0.isBoarding }
-    }
-    
-    private var boardingDogs: [Dog] {
-        walkingDogs.filter { $0.isBoarding }
     }
     
     private var filteredDogs: [Dog] {
-        if searchText.isEmpty {
-            return allDogs
-        } else {
-            return allDogs.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+        let dogs = dataManager.dogs.filter { dog in
+            if !searchText.isEmpty {
+                return dog.name.localizedCaseInsensitiveContains(searchText)
+            }
+            return true
         }
+        
+        return dogs.filter { dog in
+            dog.isCurrentlyPresent && dog.needsWalking
+        }
+    }
+    
+    private var daycareDogs: [Dog] {
+        let dogs = filteredDogs.filter { !$0.isBoarding }
+        return selectedSort == .recentActivity ? dogs.sorted { dog1, dog2 in
+            let dog1Recent = dog1.walkingRecords.contains { record in
+                record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
+            }
+            let dog2Recent = dog2.walkingRecords.contains { record in
+                record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
+            }
+            return dog1Recent && !dog2Recent
+        } : dogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+    
+    private var boardingDogs: [Dog] {
+        let dogs = filteredDogs.filter { $0.isBoarding }
+        return selectedSort == .recentActivity ? dogs.sorted { dog1, dog2 in
+            let dog1Recent = dog1.walkingRecords.contains { record in
+                record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
+            }
+            let dog2Recent = dog2.walkingRecords.contains { record in
+                record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
+            }
+            return dog1Recent && !dog2Recent
+        } : dogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
     var body: some View {
         NavigationStack {
             List {
-                if walkingDogs.isEmpty {
-                    ContentUnavailableView(
-                        "No Dogs Need Walking",
-                        systemImage: "figure.walk",
-                        description: Text("Enable walking for dogs in the main list")
-                    )
-                } else {
-                    Section {
-                        if daycareDogs.isEmpty {
-                            Text("No daycare dogs need walking")
-                                .foregroundStyle(.secondary)
-                                .italic()
-                        } else {
-                            ForEach(daycareDogs) { dog in
-                                DogWalkingRow(dog: dog, showingPottyAlert: showingPottyAlert(for:))
-                            }
-                        }
-                    } header: {
-                        Text("Daycare")
+                if daycareDogs.isEmpty && boardingDogs.isEmpty {
+                    ContentUnavailableView {
+                        Label("No Dogs Need Walking", systemImage: "figure.walk")
+                    } description: {
+                        Text("Dogs that need walking will appear here.")
                     }
-                    .listSectionSpacing(20)
-                    
-                    Section {
-                        if boardingDogs.isEmpty {
-                            Text("No boarding dogs need walking")
-                                .foregroundStyle(.secondary)
-                                .italic()
-                        } else {
-                            ForEach(boardingDogs) { dog in
-                                DogWalkingRow(dog: dog, showingPottyAlert: showingPottyAlert(for:))
+                } else {
+                    if !daycareDogs.isEmpty {
+                        Section {
+                            ForEach(daycareDogs) { dog in
+                                DogWalkingRow(dog: dog)
                             }
+                        } header: {
+                            Text("DAYCARE")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.primary)
+                                .textCase(nil)
                         }
-                    } header: {
-                        Text("Boarding")
+                        .listSectionSpacing(20)
+                    }
+                    
+                    if !boardingDogs.isEmpty {
+                        Section {
+                            ForEach(boardingDogs) { dog in
+                                DogWalkingRow(dog: dog)
+                            }
+                        } header: {
+                            Text("BOARDING")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.primary)
+                                .textCase(nil)
+                        }
+                        .listSectionSpacing(20)
                     }
                 }
             }
-            .searchable(text: $searchText, prompt: "Search dogs by name")
             .navigationTitle("Walking List")
-            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, prompt: "Search dogs")
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
-                        Picker("Sort By", selection: $selectedFilter) {
-                            Text("Alphabetical").tag(WalkingFilter.alphabetical)
-                            Text("Recent Activity").tag(WalkingFilter.recentActivity)
+                        Button("Alphabetical") {
+                            selectedSort = .alphabetical
+                        }
+                        Button("Recent Activity") {
+                            selectedSort = .recentActivity
                         }
                     } label: {
-                        Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
+                        Image(systemName: "line.3.horizontal.circle")
                     }
-                    .menuStyle(.borderlessButton)
                 }
             }
-        }
-        .onAppear {
-            print("WalkingListView appeared")
-        }
-        .alert("Record Potty", isPresented: $showingPottyAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Pee") {
+            .sheet(isPresented: $showingAddWalking) {
                 if let dog = selectedDog {
-                    addPottyRecord(for: dog, type: .pee)
+                    AddWalkingView(dog: dog)
                 }
             }
-            Button("Poop") {
-                if let dog = selectedDog {
-                    addPottyRecord(for: dog, type: .poop)
-                }
-            }
-            Button("Both") {
-                if let dog = selectedDog {
-                    addPottyRecord(for: dog, type: .both)
-                }
-            }
-            Button("Nothing") {
-                if let dog = selectedDog {
-                    addPottyRecord(for: dog, type: .nothing)
-                }
-            }
-        } message: {
-            if let dog = selectedDog {
-                Text("What did \(dog.name) do?")
-            }
-        }
-    }
-    
-    private func showingPottyAlert(for dog: Dog) {
-        print("Showing potty alert for \(dog.name)")
-        selectedDog = dog
-        showingPottyAlert = true
-    }
-    
-    private func addPottyRecord(for dog: Dog, type: PottyRecord.PottyType) {
-        print("Adding \(type) record for \(dog.name)")
-        guard canModifyRecords else { 
-            print("Cannot modify records for \(dog.name)")
-            return 
-        }
-        
-        switch type {
-        case .both:
-            // Create two separate records - one for pee and one for poop
-            let peeRecord = PottyRecord(timestamp: Date(), type: .pee, recordedBy: authService.currentUser?.name)
-            let poopRecord = PottyRecord(timestamp: Date(), type: .poop, recordedBy: authService.currentUser?.name)
-            
-            modelContext.insert(peeRecord)
-            modelContext.insert(poopRecord)
-            
-            peeRecord.dog = dog
-            poopRecord.dog = dog
-            
-            dog.pottyRecords.append(peeRecord)
-            dog.pottyRecords.append(poopRecord)
-            
-        case .nothing:
-            // Create a single "nothing" record that doesn't count toward totals
-            let record = PottyRecord(timestamp: Date(), type: .nothing, recordedBy: authService.currentUser?.name)
-            modelContext.insert(record)
-            record.dog = dog
-            dog.pottyRecords.append(record)
-            
-        default:
-            // Regular single record for pee or poop
-            let record = PottyRecord(timestamp: Date(), type: type, recordedBy: authService.currentUser?.name)
-            modelContext.insert(record)
-            record.dog = dog
-            dog.pottyRecords.append(record)
-        }
-        
-        // Force a save to ensure the relationship is persisted
-        dog.updatedAt = Date()
-        dog.lastModifiedBy = authService.currentUser
-        
-        do {
-            try modelContext.save()
-            print("Successfully saved potty record for \(dog.name)")
-            print("Dog \(dog.name) now has \(dog.pottyRecords.count) potty records")
-            print("Record array contents: \(dog.pottyRecords.map { "\($0.type) at \($0.timestamp)" })")
-        } catch {
-            print("Error saving potty record: \(error)")
         }
     }
 }
 
-private struct DogWalkingRow: View {
-    @Environment(\.modelContext) private var modelContext
-    @StateObject private var authService = AuthenticationService.shared
-    @Bindable var dog: Dog
-    let showingPottyAlert: (Dog) -> Void
-    @State private var showingEditAlert = false
-    @State private var showingDeleteAlert = false
-    @State private var selectedRecord: PottyRecord?
-    @State private var selectedType: PottyRecord.PottyType?
-    @State private var showingNotes = false
-    @State private var notes = ""
-    
-    private var canModifyRecords: Bool {
-        // Staff can only modify records for current day's dogs
-        if let user = authService.currentUser, !user.isOwner {
-            return Calendar.current.isDateInToday(dog.arrivalDate) && dog.isCurrentlyPresent
-        }
-        return true // Owners can modify all records
-    }
+struct WalkingFilterButton: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        Button(action: action) {
+            Text(title)
+                .font(.caption)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isSelected ? Color.blue : Color.gray.opacity(0.2))
+                .foregroundStyle(isSelected ? .white : .primary)
+                .clipShape(Capsule())
+        }
+    }
+}
+
+struct DogWalkingRow: View {
+    @EnvironmentObject var dataManager: DataManager
+    @StateObject private var authService = AuthenticationService.shared
+    let dog: Dog
+    @State private var showingDeleteAlert = false
+    @State private var showingDeletePottyAlert = false
+    @State private var pottyRecordToDelete: PottyRecord?
+    @State private var showingPottyPopup = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(dog.name)
-                    .font(.headline)
-                    .onTapGesture {
-                        showingPottyAlert(dog)
-                    }
-                Spacer()
-                if let notes = dog.walkingNotes {
-                    Button {
-                        self.notes = notes
-                        showingNotes = true
-                    } label: {
-                        Image(systemName: "note.text")
-                            .foregroundStyle(.blue)
+                VStack(alignment: .leading) {
+                    Text(dog.name)
+                        .font(.headline)
+                    if let walkingNotes = dog.walkingNotes, !walkingNotes.isEmpty {
+                        Text(walkingNotes)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
+                
+                Spacer()
             }
             
-            HStack(spacing: 12) {
+            // Potty counts
+            HStack(spacing: 16) {
                 HStack {
                     Image(systemName: "drop.fill")
                         .foregroundStyle(.yellow)
                     Text("\(dog.peeCount)")
+                        .font(.headline)
+                        .foregroundStyle(.blue)
                 }
+                
                 HStack {
                     Text("💩")
                     Text("\(dog.poopCount)")
+                        .font(.headline)
+                        .foregroundStyle(.blue)
                 }
+                
+                Spacer()
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
             
+            // Individual potty instances grid
             if !dog.pottyRecords.isEmpty {
-                let columns = [
-                    GridItem(.adaptive(minimum: 100, maximum: 120), spacing: 8)
-                ]
-                
-                LazyVGrid(columns: columns, spacing: 8) {
-                    ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.timestamp) { record in
-                        PottyRecordGridItem(dog: dog, record: record)
-                            .disabled(!canModifyRecords)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 4) {
+                    ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                        PottyInstanceView(record: record) {
+                            pottyRecordToDelete = record
+                            showingDeletePottyAlert = true
+                        }
                     }
                 }
-                .padding(.top, 4)
-            } else {
-                Color.clear
-                    .frame(height: 0)
+            }
+            
+            if !dog.walkingRecords.isEmpty {
+                Text("Last walked: \(dog.walkingRecords.last?.timestamp.formatted(date: .abbreviated, time: .shortened) ?? "Never")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)
-        .sheet(isPresented: $showingNotes) {
-            NavigationStack {
-                Form {
-                    Section {
-                        Text(notes)
-                    } header: {
-                        Text("Walking Notes")
-                    }
-                }
-                .navigationTitle("\(dog.name)'s Notes")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") {
-                            showingNotes = false
+        .contentShape(Rectangle())
+        .onTapGesture {
+            showingPottyPopup = true
+        }
+        .contextMenu {
+            if !dog.pottyRecords.isEmpty {
+                ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                    if record.type != .nothing {
+                        Button("Delete \(record.type.rawValue) at \(record.timestamp.formatted(date: .omitted, time: .shortened))", role: .destructive) {
+                            deletePottyRecord(record)
                         }
                     }
                 }
             }
         }
+        .alert("Record Potty Activity", isPresented: $showingPottyPopup) {
+            Button("Peed") { addPottyRecord(.pee) }
+            Button("Pooped") { addPottyRecord(.poop) }
+            Button("Both") { addPottyRecord(.both) }
+            Button("None") { addPottyRecord(.nothing) }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Record potty activity for \(dog.name)")
+        }
+        .alert("Delete Last Walk", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                deleteLastWalk()
+            }
+        } message: {
+            Text("Are you sure you want to delete the last walk for \(dog.name)?")
+        }
+        .alert("Delete Potty Record", isPresented: $showingDeletePottyAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                if let record = pottyRecordToDelete {
+                    deletePottyRecord(record)
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete this potty record?")
+        }
+    }
+    
+    private func addWalkingRecord() {
+        var updatedDog = dog
+        updatedDog.addWalkingRecord(notes: nil, recordedBy: authService.currentUser)
+        
+        Task {
+            await dataManager.updateDog(updatedDog)
+        }
+    }
+    
+    private func deleteLastWalk() {
+        var updatedDog = dog
+        if let lastWalk = updatedDog.walkingRecords.last {
+            updatedDog.removeWalkingRecord(at: lastWalk.timestamp, modifiedBy: authService.currentUser)
+            
+            Task {
+                await dataManager.updateDog(updatedDog)
+            }
+        }
+    }
+    
+    private func deletePottyRecord(_ record: PottyRecord) {
+        Task {
+            await dataManager.deletePottyRecord(record, from: dog)
+        }
+    }
+    
+    private func addPottyRecord(_ type: PottyRecord.PottyType) {
+        var updatedDog = dog
+        
+        switch type {
+        case .both:
+            let peeRecord = PottyRecord(timestamp: Date(), type: .pee, recordedBy: authService.currentUser?.name)
+            let poopRecord = PottyRecord(timestamp: Date(), type: .poop, recordedBy: authService.currentUser?.name)
+            updatedDog.pottyRecords.append(peeRecord)
+            updatedDog.pottyRecords.append(poopRecord)
+        case .nothing:
+            let record = PottyRecord(timestamp: Date(), type: .nothing, recordedBy: authService.currentUser?.name)
+            updatedDog.pottyRecords.append(record)
+        default:
+            let record = PottyRecord(timestamp: Date(), type: type, recordedBy: authService.currentUser?.name)
+            updatedDog.pottyRecords.append(record)
+        }
+        
+        updatedDog.updatedAt = Date()
+        updatedDog.lastModifiedBy = authService.currentUser
+        
+        Task {
+            await dataManager.updateDog(updatedDog)
+        }
     }
 }
 
-private struct PottyRecordGridItem: View {
-    @Environment(\.modelContext) private var modelContext
-    @StateObject private var authService = AuthenticationService.shared
-    let dog: Dog
+struct PottyInstanceView: View {
     let record: PottyRecord
-    
-    @State private var showingEditAlert = false
-    @State private var showingDeleteAlert = false
-    @State private var selectedType: PottyRecord.PottyType?
-    
-    private var canModifyRecords: Bool {
-        // Staff can only modify records for current day's dogs
-        if let user = authService.currentUser, !user.isOwner {
-            return Calendar.current.isDateInToday(dog.arrivalDate) && dog.isCurrentlyPresent
-        }
-        return true // Owners can modify all records
-    }
+    let onDelete: () -> Void
     
     var body: some View {
-        Button {
-            guard canModifyRecords else { return }
-            showingEditAlert = true
-            selectedType = record.type
-        } label: {
-            HStack {
+        Button(action: onDelete) {
+            HStack(spacing: 4) {
                 if record.type == .pee {
                     Image(systemName: "drop.fill")
                         .foregroundStyle(.yellow)
@@ -363,58 +319,97 @@ private struct PottyRecordGridItem: View {
                 } else if record.type == .nothing {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.red)
-                } else {
-                    // This shouldn't happen, but just in case
-                    Image(systemName: "questionmark.circle")
-                        .foregroundStyle(.gray)
                 }
+                
                 Text(record.timestamp.formatted(date: .omitted, time: .shortened))
-                    .font(.caption)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 6)
             .padding(.vertical, 4)
-            .background(Color.secondary.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.gray.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
         }
-        .buttonStyle(.plain)
-        .disabled(!canModifyRecords)
-        .contextMenu {
-            if canModifyRecords {
-                Button(role: .destructive) {
-                    showingDeleteAlert = true
-                } label: {
-                    Label("Delete", systemImage: "trash")
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct AddWalkingView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var dataManager: DataManager
+    let dog: Dog
+    
+    @State private var notes = ""
+    @State private var isLoading = false
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Dog: \(dog.name)")
+                        .font(.headline)
+                    
+                    if let walkingNotes = dog.walkingNotes, !walkingNotes.isEmpty {
+                        Text("Walking Notes: \(walkingNotes)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                Section("Walk Details") {
+                    TextField("Notes (optional)", text: $notes, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+            }
+            .navigationTitle("Record Walk")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Record") {
+                        Task {
+                            await recordWalk()
+                        }
+                    }
+                    .disabled(isLoading)
+                }
+            }
+            .overlay {
+                if isLoading {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .overlay {
+                            ProgressView("Recording...")
+                                .padding()
+                                .background(.regularMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
                 }
             }
         }
-        .alert("Edit Potty Record", isPresented: $showingEditAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Pee") {
-                dog.updatePottyRecord(at: record.timestamp, type: .pee, modifiedBy: authService.currentUser)
-            }
-            Button("Poop") {
-                dog.updatePottyRecord(at: record.timestamp, type: .poop, modifiedBy: authService.currentUser)
-            }
-            Button("Nothing") {
-                dog.updatePottyRecord(at: record.timestamp, type: .nothing, modifiedBy: authService.currentUser)
-            }
-        } message: {
-            Text("Change record type for \(dog.name)?")
-        }
-        .alert("Delete Potty Record", isPresented: $showingDeleteAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                dog.removePottyRecord(at: record.timestamp, modifiedBy: authService.currentUser)
-            }
-        } message: {
-            Text("Are you sure you want to delete this record?")
-        }
+    }
+    
+    private func recordWalk() async {
+        isLoading = true
+        
+        var updatedDog = dog
+        updatedDog.addWalkingRecord(notes: notes.isEmpty ? nil : notes, recordedBy: AuthenticationService.shared.currentUser)
+        
+        await dataManager.updateDog(updatedDog)
+        
+        isLoading = false
+        dismiss()
     }
 }
 
 #Preview {
-    NavigationStack {
-        WalkingListView()
-    }
-    .modelContainer(for: Dog.self, inMemory: true)
+    WalkingListView()
+        .environmentObject(DataManager.shared)
 } 

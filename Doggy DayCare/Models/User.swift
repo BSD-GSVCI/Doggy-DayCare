@@ -1,8 +1,6 @@
 import Foundation
-import SwiftData
 
-@Model
-final class User {
+struct User: Codable, Identifiable {
     var id: String
     var name: String
     var email: String?  // Optional for staff
@@ -18,10 +16,6 @@ final class User {
     var scheduledDays: [Int]?  // Array of weekday indices (1-7, where 1 is Sunday, 2 is Monday, etc.)
     var scheduleStartTime: Date?
     var scheduleEndTime: Date?
-    
-    // Relationships
-    @Relationship(deleteRule: .cascade, inverse: \DogChange.modifiedBy)
-    var changes: [DogChange]?
     
     // Permissions
     var canAddDogs: Bool
@@ -103,7 +97,7 @@ final class User {
         }
     }
     
-    func promoteToOwner(email: String, password: String) {
+    mutating func promoteToOwner(email: String, password: String) {
         guard !isOwner else { return }  // Already an owner
         
         // Update owner status and permissions
@@ -125,57 +119,49 @@ final class User {
         updatedAt = Date()
     }
     
-    func deactivate() {
+    mutating func deactivate() {
         // Prevent deactivating original owner
         guard !isOriginalOwner else { return }
         isActive = false
         updatedAt = Date()
     }
     
-    func activate() {
+    mutating func activate() {
         isActive = true
         updatedAt = Date()
     }
     
-    func updateWorkingStatus(_ isWorking: Bool) {
+    mutating func updateWorkingStatus(_ isWorking: Bool) {
         isWorkingToday = isWorking
         updatedAt = Date()
     }
     
-    func updateLastLogin() {
+    mutating func updateLastLogin() {
         lastLogin = Date()
     }
 }
 
 // MARK: - Change Tracking
-@Model
-final class DogChange {
+struct DogChange: Codable, Identifiable {
+    var id = UUID()
     var timestamp: Date
     var changeType: ChangeType
     var fieldName: String
     var oldValue: String?
     var newValue: String?
     
-    // Relationships
-    var dog: Dog?
-    var modifiedBy: User?
-    
     init(
         timestamp: Date = Date(),
         changeType: ChangeType,
         fieldName: String,
         oldValue: String? = nil,
-        newValue: String? = nil,
-        dog: Dog? = nil,
-        modifiedBy: User? = nil
+        newValue: String? = nil
     ) {
         self.timestamp = timestamp
         self.changeType = changeType
         self.fieldName = fieldName
         self.oldValue = oldValue
         self.newValue = newValue
-        self.dog = dog
-        self.modifiedBy = modifiedBy
     }
 }
 
