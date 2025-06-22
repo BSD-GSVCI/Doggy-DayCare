@@ -67,6 +67,7 @@ class CloudKitService: ObservableObject {
         static let profilePictureData = "profilePictureData"
         static let createdAt = "createdAt"
         static let updatedAt = "updatedAt"
+        static let isArrivalTimeSet = "isArrivalTimeSet"
         
         // Audit fields
         static let createdBy = "createdBy"
@@ -352,6 +353,7 @@ class CloudKitService: ObservableObject {
         record[DogFields.profilePictureData] = dog.profilePictureData
         record[DogFields.createdAt] = dog.createdAt
         record[DogFields.updatedAt] = dog.updatedAt
+        record[DogFields.isArrivalTimeSet] = dog.isArrivalTimeSet ? 1 : 0
         
         // Audit fields
         guard let currentUser = currentUser else {
@@ -472,6 +474,7 @@ class CloudKitService: ObservableObject {
         record[DogFields.notes] = dog.notes
         record[DogFields.profilePictureData] = dog.profilePictureData
         record[DogFields.updatedAt] = Date()
+        record[DogFields.isArrivalTimeSet] = dog.isArrivalTimeSet ? 1 : 0
         
         // Update audit fields
         guard let currentUser = currentUser else {
@@ -1236,6 +1239,7 @@ struct CloudKitDog {
     var profilePictureData: Data?
     var createdAt: Date
     var updatedAt: Date
+    var isArrivalTimeSet: Bool
     
     // Records
     var feedingRecords: [FeedingRecord] = []
@@ -1274,7 +1278,8 @@ struct CloudKitDog {
         feedingRecords: [FeedingRecord] = [],
         medicationRecords: [MedicationRecord] = [],
         pottyRecords: [PottyRecord] = [],
-        walkingRecords: [WalkingRecord] = []
+        walkingRecords: [WalkingRecord] = [],
+        isArrivalTimeSet: Bool = true
     ) {
         self.id = id
         self.name = name
@@ -1296,6 +1301,7 @@ struct CloudKitDog {
         self.walkingRecords = walkingRecords
         self.createdAt = Date()
         self.updatedAt = Date()
+        self.isArrivalTimeSet = isArrivalTimeSet
     }
     
     init(from record: CKRecord) {
@@ -1315,6 +1321,14 @@ struct CloudKitDog {
         self.profilePictureData = record[CloudKitService.DogFields.profilePictureData] as? Data
         self.createdAt = record[CloudKitService.DogFields.createdAt] as? Date ?? Date()
         self.updatedAt = record[CloudKitService.DogFields.updatedAt] as? Date ?? Date()
+        
+        // For existing records that don't have isArrivalTimeSet field, default to true
+        // Only set to false if the field exists and is explicitly set to false
+        if record[CloudKitService.DogFields.isArrivalTimeSet] != nil {
+            self.isArrivalTimeSet = (record[CloudKitService.DogFields.isArrivalTimeSet] as? Int64 ?? 1) == 1
+        } else {
+            self.isArrivalTimeSet = true
+        }
         
         // Initialize empty records - these will be loaded separately
         self.feedingRecords = []

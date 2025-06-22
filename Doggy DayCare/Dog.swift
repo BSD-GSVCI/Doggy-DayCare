@@ -109,6 +109,7 @@ struct Dog: Codable, Identifiable {
     var createdBy: User?
     var lastModifiedBy: User?
     var visitCount: Int = 1  // Track total visits for this dog
+    var isArrivalTimeSet: Bool = true  // Track if arrival time has been set
     
     // Records
     var feedingRecords: [FeedingRecord] = []
@@ -129,7 +130,8 @@ struct Dog: Codable, Identifiable {
         walkingNotes: String? = nil,
         isDaycareFed: Bool = false,
         notes: String? = nil,
-        profilePictureData: Data? = nil
+        profilePictureData: Data? = nil,
+        isArrivalTimeSet: Bool = true
     ) {
         self.id = id
         self.name = name
@@ -148,6 +150,7 @@ struct Dog: Codable, Identifiable {
         self.createdAt = Date()
         self.createdBy = nil
         self.lastModifiedBy = nil
+        self.isArrivalTimeSet = isArrivalTimeSet
     }
     
     mutating func addPottyRecord(type: PottyRecord.PottyType, recordedBy: User? = nil) {

@@ -137,24 +137,32 @@ class AutomationService: ObservableObject {
                 var updatedDog = dog
                 var needsUpdate = false
                 
+                // Check if this is a future booking that should transition to main page
+                if !dog.isArrivalTimeSet && Calendar.current.isDate(dog.arrivalDate, inSameDayAs: today) {
+                    print("Transitioning future booking '\(dog.name)' to main page (arrival date: \(dog.arrivalDate.formatted()))")
+                    // Keep the arrival date but mark that arrival time needs to be set
+                    // The dog will now appear in the main page with a red background
+                    needsUpdate = true
+                }
+                
                 if dog.isBoarding {
                     if let boardingEndDate = dog.boardingEndDate {
-                        // Only convert to daycare if boarding end date is today
+                        // Convert to daycare if boarding end date is today
                         if Calendar.current.isDate(boardingEndDate, inSameDayAs: today) {
-                            print("Converting boarding dog '\(dog.name)' to daycare (boarding end date: \(boardingEndDate.formatted()))")
+                            print("🔄 Converting boarding dog '\(dog.name)' to daycare (boarding end date: \(boardingEndDate.formatted()))")
                             updatedDog.isBoarding = false
                             updatedDog.boardingEndDate = nil
                             needsUpdate = true
                         } else {
-                            print("Keeping '\(dog.name)' as boarding (end date: \(boardingEndDate.formatted()))")
+                            print("📅 Keeping '\(dog.name)' as boarding (end date: \(boardingEndDate.formatted()), today: \(today.formatted()))")
                         }
                     } else {
-                        print("Keeping '\(dog.name)' as boarding (no end date set)")
+                        print("⚠️ Keeping '\(dog.name)' as boarding (no end date set)")
                     }
                 } else if !dog.isBoarding && dog.isCurrentlyPresent {
                     // Only clear departure time for daycare dogs that are currently present
                     if dog.departureDate != nil {
-                        print("Clearing departure time for daycare dog '\(dog.name)'")
+                        print("🔄 Clearing departure time for daycare dog '\(dog.name)'")
                         updatedDog.departureDate = nil
                         needsUpdate = true
                     }

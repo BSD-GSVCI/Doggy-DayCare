@@ -102,7 +102,8 @@ class DataManager: ObservableObject {
                 walkingNotes: dog.walkingNotes,
                 isDaycareFed: dog.isDaycareFed,
                 notes: dog.notes,
-                profilePictureData: dog.profilePictureData
+                profilePictureData: dog.profilePictureData,
+                isArrivalTimeSet: dog.isArrivalTimeSet
             )
             // Copy all the records
             updatedDog.feedingRecords = dog.feedingRecords
@@ -168,7 +169,8 @@ class DataManager: ObservableObject {
             walkingNotes: dog.walkingNotes,
             isDaycareFed: dog.isDaycareFed,
             notes: dog.notes,
-            profilePictureData: dog.profilePictureData
+            profilePictureData: dog.profilePictureData,
+            isArrivalTimeSet: dog.isArrivalTimeSet
         )
         updatedDog.boardingEndDate = newEndDate
         updatedDog.departureDate = dog.departureDate
@@ -400,7 +402,8 @@ extension CloudKitDog {
             walkingNotes: walkingNotes,
             isDaycareFed: isDaycareFed,
             notes: notes,
-            profilePictureData: profilePictureData
+            profilePictureData: profilePictureData,
+            isArrivalTimeSet: isArrivalTimeSet
         )
         
         // Copy additional properties
@@ -453,7 +456,8 @@ extension Dog {
             feedingRecords: feedingRecords,
             medicationRecords: medicationRecords,
             pottyRecords: pottyRecords,
-            walkingRecords: walkingRecords
+            walkingRecords: walkingRecords,
+            isArrivalTimeSet: isArrivalTimeSet
         )
     }
 }
