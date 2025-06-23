@@ -332,6 +332,7 @@ struct FutureBookingEditView: View {
     @State private var allergiesAndFeedingInstructions: String
     @State private var notes: String
     @State private var isLoading = false
+    @State private var isArrivalTimeSet: Bool
     
     init(dog: Dog) {
         self.dog = dog
@@ -339,6 +340,7 @@ struct FutureBookingEditView: View {
         self._ownerName = State(initialValue: dog.ownerName ?? "")
         self._arrivalDate = State(initialValue: dog.arrivalDate)
         self._isBoarding = State(initialValue: dog.isBoarding)
+        self._isArrivalTimeSet = State(initialValue: dog.isArrivalTimeSet)
         
         // For boarding end date, use existing value if available, otherwise use a reasonable default
         let defaultBoardingEndDate: Date
@@ -365,6 +367,23 @@ struct FutureBookingEditView: View {
                     TextField("Name", text: $name)
                     TextField("Owner Name", text: $ownerName)
                     DatePicker("Arrival Date", selection: $arrivalDate, displayedComponents: .date)
+                    
+                    // Add toggle for setting arrival time
+                    Toggle("Set Arrival Time", isOn: $isArrivalTimeSet)
+                        .onChange(of: isArrivalTimeSet) { _, newValue in
+                            if newValue {
+                                // When enabling arrival time, set the arrival date to today with current time
+                                let now = Date()
+                                let calendar = Calendar.current
+                                let today = calendar.startOfDay(for: now)
+                                let currentTime = calendar.dateComponents([.hour, .minute], from: now)
+                                arrivalDate = calendar.date(bySettingHour: currentTime.hour ?? 9, minute: currentTime.minute ?? 0, second: 0, of: today) ?? now
+                            }
+                        }
+                    
+                    if isArrivalTimeSet {
+                        DatePicker("Arrival Time", selection: $arrivalDate, displayedComponents: [.date, .hourAndMinute])
+                    }
                 }
                 
                 Section("Stay Type") {
@@ -441,7 +460,7 @@ struct FutureBookingEditView: View {
         updatedDog.walkingNotes = walkingNotes.isEmpty ? nil : walkingNotes
         updatedDog.isDaycareFed = isDaycareFed
         updatedDog.notes = notes.isEmpty ? nil : notes
-        updatedDog.isArrivalTimeSet = false // Keep as false for future bookings
+        updatedDog.isArrivalTimeSet = isArrivalTimeSet // Use the state value instead of forcing false
         updatedDog.updatedAt = Date()
         
         await dataManager.updateDog(updatedDog)

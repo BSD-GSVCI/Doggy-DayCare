@@ -10,9 +10,35 @@ class DataManager: ObservableObject {
     @Published var errorMessage: String?
     
     private let cloudKitService = CloudKitService.shared
+    private var refreshTimer: Timer?
     
     private init() {
         print("📱 DataManager initialized")
+        startPeriodicRefresh()
+    }
+    
+    deinit {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        print("🔄 DataManager: Stopped periodic refresh timer")
+    }
+    
+    // MARK: - Periodic Refresh
+    
+    private func startPeriodicRefresh() {
+        // Refresh data every minute to handle midnight transitions and other time-based updates
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                await self?.fetchDogs()
+            }
+        }
+        print("🔄 DataManager: Started periodic refresh timer")
+    }
+    
+    private func stopPeriodicRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        print("🔄 DataManager: Stopped periodic refresh timer")
     }
     
     // MARK: - Authentication
@@ -27,7 +53,11 @@ class DataManager: ObservableObject {
     // MARK: - Dog Management
     
     func fetchDogs() async {
-        isLoading = true
+        // Don't show loading indicator for background refreshes
+        let shouldShowLoading = !isLoading
+        if shouldShowLoading {
+            isLoading = true
+        }
         errorMessage = nil
         
         print("🔍 DataManager: Starting fetchDogs...")
@@ -40,13 +70,17 @@ class DataManager: ObservableObject {
             
             await MainActor.run {
                 self.dogs = localDogs
-                self.isLoading = false
+                if shouldShowLoading {
+                    self.isLoading = false
+                }
                 print("✅ DataManager: Set \(localDogs.count) dogs in local array")
             }
         } catch {
             await MainActor.run {
                 self.errorMessage = "Failed to fetch dogs: \(error.localizedDescription)"
-                self.isLoading = false
+                if shouldShowLoading {
+                    self.isLoading = false
+                }
                 print("❌ DataManager: Failed to fetch dogs: \(error)")
             }
         }
@@ -374,6 +408,7 @@ class DataManager: ObservableObject {
     // MARK: - Data Refresh
     
     func refreshData() async {
+        print("🔄 DataManager: Manual refresh requested")
         await fetchDogs()
         await fetchUsers()
     }

@@ -9,7 +9,9 @@ struct DogDetailView: View {
     @State private var showingBoardSheet = false
     @State private var showingExtendStaySheet = false
     @State private var showingDeleteAlert = false
+    @State private var showingSetArrivalTimeSheet = false
     @State private var boardingEndDate = Date()
+    @State private var newArrivalTime = Date()
     @State private var showingImageZoom = false
     
     private let dateFormatter: DateFormatter = {
@@ -81,6 +83,21 @@ struct DogDetailView: View {
             // Action Buttons Section (only for present dogs)
             if dog.isCurrentlyPresent {
                 Section {
+                    // Set Arrival Time button for dogs that have arrived but don't have arrival time set
+                    if Calendar.current.isDateInToday(dog.arrivalDate) && !dog.isArrivalTimeSet {
+                        Button {
+                            newArrivalTime = Date()
+                            showingSetArrivalTimeSheet = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "clock.badge.checkmark")
+                                    .foregroundStyle(.green)
+                                Text("Set Arrival Time")
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                    }
+                    
                     // Board button for daycare dogs
                     if !dog.isBoarding {
                         Button {
@@ -351,6 +368,11 @@ struct DogDetailView: View {
                 ExtendStayView(dog: dog, endDate: $boardingEndDate)
             }
         }
+        .sheet(isPresented: $showingSetArrivalTimeSheet) {
+            NavigationStack {
+                SetArrivalTimeView(dog: dog, newArrivalTime: $newArrivalTime)
+            }
+        }
         .overlay {
             if showingImageZoom, let imageData = dog.profilePictureData, let uiImage = UIImage(data: imageData) {
                 Color.black.opacity(0.8)
@@ -598,6 +620,75 @@ struct ExtendStayView: View {
         isLoading = true
         var updatedDog = dog
         updatedDog.boardingEndDate = endDate
+        updatedDog.updatedAt = Date()
+        await dataManager.updateDog(updatedDog)
+        isLoading = false
+        dismiss()
+    }
+}
+
+struct SetArrivalTimeView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var dataManager: DataManager
+    let dog: Dog
+    @Binding var newArrivalTime: Date
+    @State private var isLoading = false
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Dog: \(dog.name)")
+                        .font(.headline)
+                    
+                    Text("Set the actual arrival time for today")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                
+                Section("Arrival Time") {
+                    DatePicker("Arrival Time", selection: $newArrivalTime, displayedComponents: [.date, .hourAndMinute])
+                        .datePickerStyle(.wheel)
+                        .labelsHidden()
+                }
+            }
+            .navigationTitle("Set Arrival Time")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Set Time") {
+                        Task {
+                            await setArrivalTime()
+                        }
+                    }
+                    .disabled(isLoading)
+                }
+            }
+            .overlay {
+                if isLoading {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .overlay {
+                            ProgressView("Setting arrival time...")
+                                .padding()
+                                .background(.regularMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                }
+            }
+        }
+    }
+    
+    private func setArrivalTime() async {
+        isLoading = true
+        var updatedDog = dog
+        updatedDog.arrivalDate = newArrivalTime
+        updatedDog.isArrivalTimeSet = true
         updatedDog.updatedAt = Date()
         await dataManager.updateDog(updatedDog)
         isLoading = false

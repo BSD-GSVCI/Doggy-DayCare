@@ -397,6 +397,7 @@ private struct UserInfoView: View {
 
 // MARK: - Dogs List View
 private struct DogsListView: View {
+    @EnvironmentObject var dataManager: DataManager
     let daycareDogs: [Dog]
     let boardingDogs: [Dog]
     let departedDogs: [Dog]
@@ -467,6 +468,9 @@ private struct DogsListView: View {
                         .textCase(nil)
                 }
             }
+        }
+        .refreshable {
+            await dataManager.refreshData()
         }
     }
 }
