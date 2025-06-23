@@ -9,43 +9,81 @@ class BackupService {
     
     func exportDogs(_ dogs: [Dog], filename: String? = nil) async throws -> URL {
         let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        dateFormatter.dateFormat = "MM/dd/yy"
         
-        var csvString = "ID,Name,Arrival Date,Departure Date,Is Boarding,Boarding End Date,Is Daycare Fed,Needs Walking,Walking Notes,Special Instructions,Medications,Notes,Feeding Records,Medication Records,Potty Records\n"
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "h:mm a"
+        
+        var csvString = "Dog Name,Owner Name,Arrival Date & Time,Departure Date & Time,Service Type,Boarding End Date,Stay Duration,Needs Walking,Walking Notes,Medications,Special Instructions,Allergies & Feeding Instructions,Is Daycare Fed,Notes,Feeding Records,Medication Records,Potty Records\n"
         
         for dog in dogs {
-            // Format records
+            // Format dates properly
+            let arrivalDateString: String
+            if dog.isArrivalTimeSet {
+                arrivalDateString = "\(dateFormatter.string(from: dog.arrivalDate)) at \(timeFormatter.string(from: dog.arrivalDate))"
+            } else {
+                arrivalDateString = "\(dateFormatter.string(from: dog.arrivalDate)) - No arrival time set"
+            }
+            
+            let departureDateString = dog.departureDate != nil ? 
+                "\(dateFormatter.string(from: dog.departureDate!)) at \(timeFormatter.string(from: dog.departureDate!))" : ""
+            
+            let boardingEndDateString = dog.boardingEndDate != nil ? 
+                dateFormatter.string(from: dog.boardingEndDate!) : ""
+            
+            let serviceType = dog.isBoarding ? "Boarding" : "Daycare"
+            
+            // Calculate stay duration
+            let stayDuration: String
+            if let departureDate = dog.departureDate {
+                let duration = departureDate.timeIntervalSince(dog.arrivalDate)
+                let hours = Int(duration) / 3600
+                let minutes = Int(duration) % 3600 / 60
+                stayDuration = "\(hours)h \(minutes)m"
+            } else {
+                let duration = Date().timeIntervalSince(dog.arrivalDate)
+                let hours = Int(duration) / 3600
+                let minutes = Int(duration) % 3600 / 60
+                stayDuration = "\(hours)h \(minutes)m"
+            }
+            
+            // Format records in a readable way
             let feedingRecords = dog.feedingRecords.map { record in
-                "\(record.type.rawValue)@\(dateFormatter.string(from: record.timestamp))"
-            }.joined(separator: "|")
+                "\(record.type.rawValue) at \(timeFormatter.string(from: record.timestamp))"
+            }.joined(separator: "; ")
             
             let medicationRecords = dog.medicationRecords.map { record in
-                "\(dateFormatter.string(from: record.timestamp))\(record.notes.map { " - \($0)" } ?? "")"
-            }.joined(separator: "|")
+                let base = timeFormatter.string(from: record.timestamp)
+                if let notes = record.notes, !notes.isEmpty {
+                    return "\(base) - \(notes)"
+                } else {
+                    return base
+                }
+            }.joined(separator: "; ")
             
             let pottyRecords = dog.pottyRecords.map { record in
-                "\(record.type.rawValue)@\(dateFormatter.string(from: record.timestamp))"
-            }.joined(separator: "|")
+                "\(record.type.rawValue) at \(timeFormatter.string(from: record.timestamp))"
+            }.joined(separator: "; ")
             
-            // Create row values
-            let id = dog.id.uuidString
-            let name = dog.name
-            let arrivalDate = dateFormatter.string(from: dog.arrivalDate)
-            let departureDate = dog.departureDate.map { dateFormatter.string(from: $0) } ?? ""
-            let isBoarding = String(dog.isBoarding)
-            let boardingEndDate = dog.boardingEndDate.map { dateFormatter.string(from: $0) } ?? ""
-            let isDaycareFed = String(dog.isDaycareFed)
-            let needsWalking = String(dog.needsWalking)
-            let walkingNotes = dog.walkingNotes ?? ""
-            let specialInstructions = dog.specialInstructions ?? ""
-            let medications = dog.medications ?? ""
-            let notes = dog.notes ?? ""
-            
-            // Combine values into row
+            // Create row values in DogDetailView order
             let rowValues = [
-                id, name, arrivalDate, departureDate, isBoarding, boardingEndDate,
-                isDaycareFed, needsWalking, walkingNotes, specialInstructions,
-                medications, notes, feedingRecords, medicationRecords, pottyRecords
+                dog.name,
+                dog.ownerName ?? "",
+                arrivalDateString,
+                departureDateString,
+                serviceType,
+                boardingEndDateString,
+                stayDuration,
+                dog.needsWalking ? "Yes" : "No",
+                dog.walkingNotes ?? "",
+                dog.medications ?? "",
+                dog.specialInstructions ?? "",
+                dog.allergiesAndFeedingInstructions ?? "",
+                dog.isDaycareFed ? "Yes" : "No",
+                dog.notes ?? "",
+                feedingRecords.isEmpty ? "None" : feedingRecords,
+                medicationRecords.isEmpty ? "None" : medicationRecords,
+                pottyRecords.isEmpty ? "None" : pottyRecords
             ]
             
             // Escape and quote values
@@ -57,11 +95,48 @@ class BackupService {
         }
         
         let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let fileName = filename ?? "dogs_export_\(dateFormatter.string(from: Date())).csv"
+        
+        // Create a clean filename without invalid characters
+        let cleanDateFormatter = DateFormatter()
+        cleanDateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let cleanDateString = cleanDateFormatter.string(from: Date())
+        let fileName = filename ?? "DoggyDayCare_Export_\(cleanDateString).csv"
+        
         let fileURL = documentsDirectory.appendingPathComponent(fileName)
         
         try csvString.write(to: fileURL, atomically: true, encoding: .utf8)
-        return fileURL
+        
+        // Verify the file was created successfully
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            throw NSError(domain: "BackupService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create export file"])
+        }
+        
+        // Verify the file is readable
+        guard FileManager.default.isReadableFile(atPath: fileURL.path) else {
+            throw NSError(domain: "BackupService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Export file is not readable"])
+        }
+        
+        // Get file attributes to verify it's not empty
+        let fileAttributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+        let fileSize = fileAttributes[.size] as? Int64 ?? 0
+        
+        print("✅ File created successfully at: \(fileURL.path)")
+        print("✅ File size: \(fileSize) bytes")
+        
+        if fileSize == 0 {
+            throw NSError(domain: "BackupService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Export file is empty"])
+        }
+        
+        // Copy to temporary directory for better sharing
+        let tempDirectory = FileManager.default.temporaryDirectory
+        let tempFileName = "DoggyDayCare_Export_\(cleanDateString).csv"
+        let tempFileURL = tempDirectory.appendingPathComponent(tempFileName)
+        
+        try FileManager.default.copyItem(at: fileURL, to: tempFileURL)
+        
+        print("✅ File copied to temp directory: \(tempFileURL.path)")
+        
+        return tempFileURL
     }
     
     private func exportDogToCSV(_ dog: Dog) -> String {

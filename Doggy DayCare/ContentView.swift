@@ -95,11 +95,20 @@ struct ContentView: View {
     @StateObject private var authService = AuthenticationService.shared
     @State private var showingAddDog = false
     @State private var showingStaffManagement = false
-    @State private var showingShareSheet = false
     @State private var showingLogoutConfirmation = false
-    @State private var exportURL: URL?
     @State private var searchText = ""
     @State private var selectedFilter: DogFilter = .all
+    
+    enum ExportState {
+        case idle
+        case alertShown
+        case sheetPending
+        case sheetShown
+    }
+    
+    @State private var exportState: ExportState = .idle
+    @State private var exportURL: URL?
+    @State private var isExportReady = false
     
     enum DogFilter {
         case all
@@ -143,6 +152,11 @@ struct ContentView: View {
     private var departedDogs: [Dog] {
         filteredDogs.filter { $0.departureDate != nil && Calendar.current.isDateInToday($0.departureDate!) }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+    
+    private var visibleDogs: [Dog] {
+        // Combine all dogs that are actually visible on the main page
+        return daycareDogs + boardingDogs + departedDogs
     }
     
     private let shortDateFormatter: DateFormatter = {
@@ -236,10 +250,49 @@ struct ContentView: View {
                         
                         Button {
                             Task {
+                                await MainActor.run {
+                                    exportState = .alertShown
+                                    print("🔄 Export started - alert shown")
+                                }
+                                
+                                // Record start time for minimum display duration
+                                let startTime = Date()
+                                
                                 do {
-                                    exportURL = try await BackupService.shared.exportDogs(dataManager.dogs)
-                                    showingShareSheet = true
+                                    print("Starting export...")
+                                    print("Visible dogs count: \(visibleDogs.count)")
+                                    let url = try await BackupService.shared.exportDogs(visibleDogs)
+                                    print("Export completed, URL: \(url.absoluteString)")
+                                    
+                                    // Calculate how long the export took
+                                    let exportDuration = Date().timeIntervalSince(startTime)
+                                    let minimumDisplayTime: TimeInterval = 1.0 // 1 second minimum
+                                    
+                                    // If export was faster than minimum, wait for the remainder
+                                    if exportDuration < minimumDisplayTime {
+                                        let remainingTime = minimumDisplayTime - exportDuration
+                                        try await Task.sleep(nanoseconds: UInt64(remainingTime * 1_000_000_000))
+                                    }
+                                    
+                                    await MainActor.run {
+                                        exportURL = url
+                                        isExportReady = true
+                                        exportState = .sheetPending
+                                        print("Export ready, transitioning to sheet")
+                                    }
+                                    
+                                    // Small delay to ensure clean transition
+                                    try await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+                                    
+                                    await MainActor.run {
+                                        exportState = .sheetShown
+                                        print("Sheet should now be visible")
+                                    }
                                 } catch {
+                                    await MainActor.run {
+                                        exportState = .idle
+                                        print("❌ Export failed - back to idle")
+                                    }
                                     print("Export error: \(error)")
                                 }
                             }
@@ -267,10 +320,19 @@ struct ContentView: View {
                     StaffManagementView()
                 }
             }
-            .sheet(isPresented: $showingShareSheet) {
-                if let url = exportURL {
-                    ShareSheet(activityItems: [url])
+            .sheet(isPresented: Binding(
+                get: { exportState == .sheetShown },
+                set: { newValue in
+                    if newValue && exportState == .sheetPending {
+                        exportState = .sheetShown
+                    } else if !newValue && exportState == .sheetShown {
+                        exportState = .idle
+                        isExportReady = false
+                        exportURL = nil
+                    }
                 }
+            )) {
+                ExportSheet(url: $exportURL, isReady: $isExportReady)
             }
             .alert("Sign Out", isPresented: $showingLogoutConfirmation) {
                 Button("Cancel", role: .cancel) { }
@@ -279,6 +341,11 @@ struct ContentView: View {
                 }
             } message: {
                 Text("Are you sure you want to sign out?")
+            }
+            .overlay {
+                if exportState == .alertShown {
+                    ExportingOverlay()
+                }
             }
         }
     }
@@ -355,7 +422,10 @@ private struct DogsListView: View {
                 Section {
                     ForEach(daycareDogs) { dog in
                         DogRow(dog: dog)
-                            .listRowBackground(Color.clear)
+                            .listRowBackground(
+                                Calendar.current.isDateInToday(dog.arrivalDate) && !dog.isArrivalTimeSet ? 
+                                Color.red.opacity(0.1) : Color.clear
+                            )
                     }
                 } header: {
                     Text("DAYCARE \(daycareDogs.count)")
@@ -371,7 +441,10 @@ private struct DogsListView: View {
                 Section {
                     ForEach(boardingDogs) { dog in
                         DogRow(dog: dog)
-                            .listRowBackground(Color.clear)
+                            .listRowBackground(
+                                Calendar.current.isDateInToday(dog.arrivalDate) && !dog.isArrivalTimeSet ? 
+                                Color.red.opacity(0.1) : Color.clear
+                            )
                     }
                 } header: {
                     Text("BOARDING \(boardingDogs.count)")
@@ -401,15 +474,114 @@ private struct DogsListView: View {
     }
 }
 
+// MARK: - Export Sheet
+private struct ExportSheet: View {
+    @Binding var url: URL?
+    @Binding var isReady: Bool
+    
+    var body: some View {
+        VStack {
+            if let url = url {
+                Text("Export Ready!")
+                    .font(.headline)
+                    .padding()
+                
+                Text("File: \(url.lastPathComponent)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                Text("URL: \(url.absoluteString)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom)
+                
+                ShareSheet(activityItems: [url])
+                    .presentationDetents([.medium, .large])
+            } else {
+                Text("Export failed - no file to share")
+                    .padding()
+                
+                Text("URL is nil")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                Text("isReady: \(isReady)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 // MARK: - Share Sheet
 struct ShareSheet: UIViewControllerRepresentable {
     let activityItems: [Any]
     
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        
+        // Configure for better file sharing
+        controller.excludedActivityTypes = [
+            .assignToContact,
+            .addToReadingList,
+            .openInIBooks,
+            .markupAsPDF,
+            .saveToCameraRoll,
+            .postToFacebook,
+            .postToTwitter,
+            .postToWeibo,
+            .postToVimeo,
+            .postToTencentWeibo,
+            .postToFlickr
+        ]
+        
+        // Set completion handler to log any issues
+        controller.completionWithItemsHandler = { (activityType, completed, returnedItems, error) in
+            if let error = error {
+                print("❌ ShareSheet error: \(error)")
+            } else if completed {
+                print("✅ ShareSheet completed successfully")
+            } else {
+                print("⚠️ ShareSheet was cancelled")
+            }
+        }
+        
+        return controller
     }
     
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Exporting Overlay
+struct ExportingOverlay: View {
+    var body: some View {
+        ZStack {
+            // Semi-transparent background
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+            
+            // Loading content
+            VStack(spacing: 16) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .foregroundStyle(.white)
+                
+                Text("Exporting...")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                
+                Text("Please wait while we prepare your export file")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+            }
+            .padding(24)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.black.opacity(0.8))
+            )
+        }
+    }
 }
 
 #Preview {

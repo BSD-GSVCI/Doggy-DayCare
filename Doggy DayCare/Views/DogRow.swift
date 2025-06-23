@@ -46,9 +46,17 @@ struct DogRow: View {
                         
                         // Arrival and departure times
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("\(shortDateFormatter.string(from: dog.arrivalDate)) \(shortTimeFormatter.string(from: dog.arrivalDate))")
-                                .font(.caption)
-                                .foregroundStyle(.green)
+                            if dog.isArrivalTimeSet {
+                                // Show date and time for dogs that have arrived
+                                Text("\(shortDateFormatter.string(from: dog.arrivalDate)) \(shortTimeFormatter.string(from: dog.arrivalDate))")
+                                    .font(.caption)
+                                    .foregroundStyle(.green)
+                            } else {
+                                // Show only date for future bookings
+                                Text("\(shortDateFormatter.string(from: dog.arrivalDate)) - No arrival time set")
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            }
                             
                             if let departureDate = dog.departureDate {
                                 Text("\(shortDateFormatter.string(from: departureDate)) \(shortTimeFormatter.string(from: departureDate))")
