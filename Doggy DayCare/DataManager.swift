@@ -492,7 +492,13 @@ extension CloudKitUser {
             isOwner: isOwner,
             isActive: isActive,
             isWorkingToday: isWorkingToday,
-            isOriginalOwner: isOriginalOwner
+            isOriginalOwner: isOriginalOwner,
+            scheduledDays: scheduledDays?.map { Int($0) },
+            scheduleStartTime: scheduleStartTime,
+            scheduleEndTime: scheduleEndTime,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            lastLogin: lastLogin
         )
     }
 }
@@ -532,7 +538,10 @@ extension User {
             isOwner: isOwner,
             isActive: isActive,
             isWorkingToday: isWorkingToday,
-            isOriginalOwner: isOriginalOwner
+            isOriginalOwner: isOriginalOwner,
+            scheduledDays: scheduledDays?.map { Int64($0) },
+            scheduleStartTime: scheduleStartTime,
+            scheduleEndTime: scheduleEndTime
         )
     }
 } 

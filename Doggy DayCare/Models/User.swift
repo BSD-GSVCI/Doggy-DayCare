@@ -62,7 +62,7 @@ struct User: Codable, Identifiable {
         return false
     }
     
-    init(id: String, name: String, email: String? = nil, isOwner: Bool = false, isActive: Bool = true, isWorkingToday: Bool = false, isOriginalOwner: Bool = false) {
+    init(id: String, name: String, email: String? = nil, isOwner: Bool = false, isActive: Bool = true, isWorkingToday: Bool = false, isOriginalOwner: Bool = false, scheduledDays: [Int]? = nil, scheduleStartTime: Date? = nil, scheduleEndTime: Date? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), lastLogin: Date? = nil) {
         self.id = id
         self.name = name
         self.email = email
@@ -70,14 +70,12 @@ struct User: Codable, Identifiable {
         self.isActive = isActive
         self.isWorkingToday = isWorkingToday
         self.isOriginalOwner = isOriginalOwner
-        self.createdAt = Date()
-        self.updatedAt = Date()
-        
-        // Initialize schedule properties
-        self.scheduledDays = nil
-        self.scheduleStartTime = nil
-        self.scheduleEndTime = nil
-        
+        self.scheduledDays = scheduledDays
+        self.scheduleStartTime = scheduleStartTime
+        self.scheduleEndTime = scheduleEndTime
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.lastLogin = lastLogin
         // Set permissions based on role
         if isOwner {
             self.canAddDogs = true
@@ -87,10 +85,9 @@ struct User: Codable, Identifiable {
             self.canManageFeeding = true
             self.canManageWalking = true
         } else {
-            // Give staff members full access
             self.canAddDogs = true
             self.canAddFutureBookings = true
-            self.canManageStaff = false  // Only owners can manage staff
+            self.canManageStaff = false
             self.canManageMedications = true
             self.canManageFeeding = true
             self.canManageWalking = true

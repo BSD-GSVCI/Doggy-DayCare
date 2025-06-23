@@ -1152,7 +1152,19 @@ struct CloudKitUser {
         isOwner: Bool = false,
         isActive: Bool = true,
         isWorkingToday: Bool = false,
-        isOriginalOwner: Bool = false
+        isOriginalOwner: Bool = false,
+        scheduledDays: [Int64]? = nil,
+        scheduleStartTime: Date? = nil,
+        scheduleEndTime: Date? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        lastLogin: Date? = nil,
+        canAddDogs: Bool = true,
+        canAddFutureBookings: Bool = true,
+        canManageStaff: Bool = false,
+        canManageMedications: Bool = true,
+        canManageFeeding: Bool = true,
+        canManageWalking: Bool = true
     ) {
         self.id = id
         self.name = name
@@ -1161,29 +1173,18 @@ struct CloudKitUser {
         self.isActive = isActive
         self.isWorkingToday = isWorkingToday
         self.isOriginalOwner = isOriginalOwner
-        self.createdAt = Date()
-        self.updatedAt = Date()
-        self.lastLogin = nil
-        self.scheduledDays = nil
-        self.scheduleStartTime = nil
-        self.scheduleEndTime = nil
-        
-        // Set permissions based on role
-        if isOwner {
-            self.canAddDogs = true
-            self.canAddFutureBookings = true
-            self.canManageStaff = true
-            self.canManageMedications = true
-            self.canManageFeeding = true
-            self.canManageWalking = true
-        } else {
-            self.canAddDogs = true
-            self.canAddFutureBookings = true
-            self.canManageStaff = false
-            self.canManageMedications = true
-            self.canManageFeeding = true
-            self.canManageWalking = true
-        }
+        self.scheduledDays = scheduledDays
+        self.scheduleStartTime = scheduleStartTime
+        self.scheduleEndTime = scheduleEndTime
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.lastLogin = lastLogin
+        self.canAddDogs = canAddDogs
+        self.canAddFutureBookings = canAddFutureBookings
+        self.canManageStaff = canManageStaff
+        self.canManageMedications = canManageMedications
+        self.canManageFeeding = canManageFeeding
+        self.canManageWalking = canManageWalking
     }
     
     init(from record: CKRecord) {
