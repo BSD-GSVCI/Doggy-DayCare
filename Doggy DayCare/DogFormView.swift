@@ -432,6 +432,11 @@ struct ImportDatabaseView: View {
         }
         .sorted { $0.name < $1.name }
         
+        print("Available owners:")
+        for owner in allDogs {
+            print("- \(owner.name) (\(owner.ownerName ?? "no owner"), active: \(owner.isCurrentlyPresent))")
+        }
+        
         isLoading = false
     }
 }

@@ -11,6 +11,7 @@ import CloudKit
 @main
 struct Doggy_DayCareApp: App {
     @StateObject private var dataManager = DataManager.shared
+    @StateObject private var authService = AuthenticationService.shared
     @State private var isInitialized = false
     @State private var initializationError: String?
     
@@ -64,9 +65,15 @@ struct Doggy_DayCareApp: App {
                         }
                     }
                 } else {
-                    // Show main app
-                    ContentView()
-                        .environmentObject(dataManager)
+                    if authService.currentUser == nil {
+                        LoginView()
+                            .environmentObject(dataManager)
+                            .environmentObject(authService)
+                    } else {
+                        ContentView()
+                            .environmentObject(dataManager)
+                            .environmentObject(authService)
+                    }
                 }
             }
         }

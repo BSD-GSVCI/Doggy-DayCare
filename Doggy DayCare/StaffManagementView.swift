@@ -100,31 +100,6 @@ struct StaffManagementView: View {
                     }
                 }
                 
-                if let owner = originalOwner {
-                    Section("Original Owner") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text(owner.name)
-                                    .font(.headline)
-                                Spacer()
-                                if owner.isActive {
-                                    Text("Active")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    Text("Inactive")
-                                        .font(.caption)
-                                        .foregroundStyle(.red)
-                                }
-                            }
-                            
-                            Text("This account has full access to all features and cannot be deleted.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                
                 if !promotedOwners.isEmpty {
                     Section("Promoted Owners") {
                         ForEach(promotedOwners) { user in
@@ -158,6 +133,30 @@ struct StaffManagementView: View {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+                if let owner = originalOwner {
+                    Section("Original Owner") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(owner.name)
+                                    .font(.headline)
+                                Spacer()
+                                if owner.isActive {
+                                    Text("Active")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text("Inactive")
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                }
+                            }
+                            
+                            Text("This account has full access to all features and cannot be deleted.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -361,8 +360,6 @@ struct StaffScheduleView: View {
     let staff: User
     
     @State private var selectedDays: Set<Int> = []
-    @State private var startTime = Date()
-    @State private var endTime = Date()
     
     private let weekdays = [
         (1, "Sunday"),
@@ -398,11 +395,6 @@ struct StaffScheduleView: View {
                         .foregroundStyle(.primary)
                     }
                 }
-                
-                Section("Working Hours") {
-                    DatePicker("Start Time", selection: $startTime, displayedComponents: .hourAndMinute)
-                    DatePicker("End Time", selection: $endTime, displayedComponents: .hourAndMinute)
-                }
             }
             .navigationTitle("Schedule Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -423,12 +415,6 @@ struct StaffScheduleView: View {
                 if let days = staff.scheduledDays {
                     selectedDays = Set(days)
                 }
-                if let start = staff.scheduleStartTime {
-                    startTime = start
-                }
-                if let end = staff.scheduleEndTime {
-                    endTime = end
-                }
             }
         }
     }
@@ -437,10 +423,12 @@ struct StaffScheduleView: View {
         Task {
             var updatedStaff = staff
             updatedStaff.scheduledDays = Array(selectedDays).sorted()
-            updatedStaff.scheduleStartTime = startTime
-            updatedStaff.scheduleEndTime = endTime
+            updatedStaff.scheduleStartTime = nil
+            updatedStaff.scheduleEndTime = nil
             updatedStaff.updatedAt = Date()
             await dataManager.updateUser(updatedStaff)
+            // Refresh users from CloudKit to ensure latest data is loaded
+            await dataManager.fetchUsers()
             await MainActor.run {
                 dismiss()
             }

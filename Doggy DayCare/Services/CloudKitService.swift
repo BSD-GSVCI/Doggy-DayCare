@@ -122,69 +122,56 @@ class CloudKitService: ObservableObject {
     func authenticate() async throws {
         isLoading = true
         errorMessage = nil
-        
         do {
             let userRecordID = try await container.userRecordID()
             let userRecord = try await privateDatabase.record(for: userRecordID)
-            
+
             // Set up CloudKit schema first
             await setupCloudKitSchema()
-            
-            // Test schema access
             await testSchemaAccess()
-            
+
+            // Fetch all users to check for original owner
+            let allUsers = try await fetchAllUsers()
+            let originalOwner = allUsers.first(where: { $0.isOriginalOwner })
+
             // Check if user exists in our system
-            do {
-                if let existingUser = try await fetchUser(by: userRecordID.recordName) {
-                    currentUser = existingUser
-                    isAuthenticated = true
-                    print("✅ User authenticated: \(existingUser.name)")
-                } else {
-                    // Create new user record
-                    let newUser = CloudKitUser(
-                        id: userRecordID.recordName,
-                        name: userRecord["name"] as? String ?? "Unknown User",
-                        email: userRecord["email"] as? String,
-                        isOwner: false,
-                        isActive: true,
-                        isWorkingToday: false,
-                        isOriginalOwner: false
-                    )
-                    
-                    let createdUser = try await createUser(newUser)
-                    currentUser = createdUser
-                    isAuthenticated = true
-                    print("✅ New user created and authenticated: \(createdUser.name)")
+            if let existingUser = try await fetchUser(by: userRecordID.recordName) {
+                currentUser = existingUser
+                isAuthenticated = true
+                print("✅ User authenticated: \(existingUser.name)")
+            } else if originalOwner == nil {
+                // Only allow creation if no original owner exists
+                guard let name = userRecord["name"] as? String, !name.trimmingCharacters(in: .whitespaces).isEmpty else {
+                    errorMessage = "Your iCloud account does not have a name set. Please set your name in iCloud settings before using this app."
+                    isAuthenticated = false
+                    print("❌ Cannot create user: iCloud name is missing.")
+                    return
                 }
-            } catch let error as CKError {
-                // Handle schema not set up yet
-                if error.code == .invalidArguments {
-                    print("⚠️ CloudKit schema not set up yet. Creating default user...")
-                    
-                    // Create a default user for now
-                    let defaultUser = CloudKitUser(
-                        id: userRecordID.recordName,
-                        name: userRecord["name"] as? String ?? "Unknown User",
-                        email: userRecord["email"] as? String,
-                        isOwner: true, // Make first user an owner
-                        isActive: true,
-                        isWorkingToday: true,
-                        isOriginalOwner: true
-                    )
-                    
-                    currentUser = defaultUser
-                    isAuthenticated = true
-                    print("✅ Default user created (schema not set up): \(defaultUser.name)")
-                } else {
-                    throw error
-                }
+                // Create new original owner
+                let newUser = CloudKitUser(
+                    id: userRecordID.recordName,
+                    name: name,
+                    email: userRecord["email"] as? String,
+                    isOwner: true,
+                    isActive: true,
+                    isWorkingToday: true,
+                    isOriginalOwner: true
+                )
+                let createdUser = try await createUser(newUser)
+                currentUser = createdUser
+                isAuthenticated = true
+                print("✅ New original owner created and authenticated: \(createdUser.name)")
+            } else {
+                // Do not create a new user if an original owner already exists
+                errorMessage = "An original owner already exists for this business. Please contact the owner to be added as staff."
+                isAuthenticated = false
+                print("❌ Cannot create user: original owner already exists.")
             }
         } catch {
             errorMessage = "Authentication failed: \(error.localizedDescription)"
             print("❌ Authentication error: \(error)")
             throw error
         }
-        
         isLoading = false
     }
     
