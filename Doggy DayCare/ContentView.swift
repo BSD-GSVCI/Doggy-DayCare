@@ -390,7 +390,8 @@ private struct UserInfoView: View {
                     }
                 }
             }
-            .padding(.top)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
         }
     }
 }

@@ -110,7 +110,7 @@ struct User: Codable, Identifiable {
         canManageWalking = true
         
         // Store the new owner password
-        let passwordKey = "owner_password_\(email)"
+        let passwordKey = "owner_password_\(email.lowercased())"
         UserDefaults.standard.set(password, forKey: passwordKey)
         
         updatedAt = Date()
