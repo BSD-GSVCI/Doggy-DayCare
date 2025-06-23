@@ -144,7 +144,7 @@ struct DogDetailView: View {
                                     }
                                 }
                                 Spacer()
-                                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -170,7 +170,7 @@ struct DogDetailView: View {
                                         .fontWeight(.medium)
                                 }
                                 Spacer()
-                                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -214,7 +214,7 @@ struct DogDetailView: View {
                                         .fontWeight(.medium)
                                 }
                                 Spacer()
-                                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -285,7 +285,7 @@ struct DogDetailView: View {
                                     }
                                 }
                                 Spacer()
-                                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }

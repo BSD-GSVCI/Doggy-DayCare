@@ -281,9 +281,6 @@ struct ContentView: View {
                                         print("Export ready, transitioning to sheet")
                                     }
                                     
-                                    // Small delay to ensure clean transition
-                                    try await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
-                                    
                                     await MainActor.run {
                                         exportState = .sheetShown
                                         print("Sheet should now be visible")

@@ -170,17 +170,24 @@ struct DogWalkingRow: View {
             
             // Potty counts
             HStack(spacing: 16) {
+                let todaysPottyRecords = dog.pottyRecords.filter { record in
+                    Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
+                }
+                
+                let todaysPeeCount = todaysPottyRecords.filter { $0.type == .pee }.count
+                let todaysPoopCount = todaysPottyRecords.filter { $0.type == .poop }.count
+                
                 HStack {
                     Image(systemName: "drop.fill")
                         .foregroundStyle(.yellow)
-                    Text("\(dog.peeCount)")
+                    Text("\(todaysPeeCount)")
                         .font(.headline)
                         .foregroundStyle(.blue)
                 }
                 
                 HStack {
                     Text("💩")
-                    Text("\(dog.poopCount)")
+                    Text("\(todaysPoopCount)")
                         .font(.headline)
                         .foregroundStyle(.blue)
                 }
@@ -191,11 +198,17 @@ struct DogWalkingRow: View {
             
             // Individual potty instances grid
             if !dog.pottyRecords.isEmpty {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 4) {
-                    ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
-                        PottyInstanceView(record: record) {
-                            pottyRecordToDelete = record
-                            showingDeletePottyAlert = true
+                let todaysPottyRecords = dog.pottyRecords.filter { record in
+                    Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
+                }
+                
+                if !todaysPottyRecords.isEmpty {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 4) {
+                        ForEach(todaysPottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                            PottyInstanceView(record: record) {
+                                pottyRecordToDelete = record
+                                showingDeletePottyAlert = true
+                            }
                         }
                     }
                 }
@@ -214,7 +227,11 @@ struct DogWalkingRow: View {
         }
         .contextMenu {
             if !dog.pottyRecords.isEmpty {
-                ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                let todaysPottyRecords = dog.pottyRecords.filter { record in
+                    Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
+                }
+                
+                ForEach(todaysPottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
                     if record.type != .nothing {
                         Button("Delete \(record.type.rawValue) at \(record.timestamp.formatted(date: .omitted, time: .shortened))", role: .destructive) {
                             deletePottyRecord(record)

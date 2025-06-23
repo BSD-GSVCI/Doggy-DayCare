@@ -24,6 +24,7 @@ struct DogFormView: View {
     @State private var showingImportDatabase = false
     @State private var showingDuplicateAlert = false
     @State private var duplicateDog: Dog?
+    @State private var bypassDuplicateCheck = false
     
     let dog: Dog?
     
@@ -204,6 +205,7 @@ struct DogFormView: View {
             Button("Cancel", role: .cancel) { }
             Button("Use Imported Data") {
                 if let duplicateDog = duplicateDog {
+                    bypassDuplicateCheck = true
                     loadDogFromImport(duplicateDog)
                 }
             }
@@ -215,18 +217,26 @@ struct DogFormView: View {
     }
     
     private func loadDogFromImport(_ importedDog: Dog) {
-        // Check for duplicates
-        let existingDogs = dataManager.dogs.filter { dog in
-            dog.name.lowercased() == importedDog.name.lowercased() &&
-            (dog.ownerName?.lowercased() == importedDog.ownerName?.lowercased() || 
-             (dog.ownerName == nil && importedDog.ownerName == nil))
+        // Check for duplicates (unless bypassing)
+        if !bypassDuplicateCheck {
+            // When importing from database, only check against currently present dogs
+            // This allows importing departed dogs for new visits
+            let existingDogs = dataManager.dogs.filter { dog in
+                dog.isCurrentlyPresent && // Only check currently present dogs
+                dog.name.lowercased() == importedDog.name.lowercased() &&
+                (dog.ownerName?.lowercased() == importedDog.ownerName?.lowercased() || 
+                 (dog.ownerName == nil && importedDog.ownerName == nil))
+            }
+            
+            if !existingDogs.isEmpty {
+                duplicateDog = existingDogs.first
+                showingDuplicateAlert = true
+                return
+            }
         }
         
-        if !existingDogs.isEmpty {
-            duplicateDog = existingDogs.first
-            showingDuplicateAlert = true
-            return
-        }
+        // Reset the bypass flag
+        bypassDuplicateCheck = false
         
         // Load the imported data
         name = importedDog.name
@@ -300,6 +310,7 @@ struct ImportDatabaseView: View {
     @State private var searchText = ""
     @State private var isLoading = false
     @State private var importedDogs: [Dog] = []
+    @State private var zoomedDog: Dog?
     
     let onImport: (Dog) -> Void
     
@@ -318,7 +329,9 @@ struct ImportDatabaseView: View {
                 } else {
                     List {
                         ForEach(filteredDogs) { dog in
-                            ImportedDogRow(dog: dog) {
+                            ImportedDogRow(dog: dog, onZoom: {
+                                zoomedDog = dog
+                            }) {
                                 onImport(dog)
                                 dismiss()
                             }
@@ -334,6 +347,38 @@ struct ImportDatabaseView: View {
                     Button("Cancel") {
                         dismiss()
                     }
+                }
+            }
+            .overlay {
+                if let dog = zoomedDog, let imageData = dog.profilePictureData, let uiImage = UIImage(data: imageData) {
+                    Color.black.opacity(0.8)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            zoomedDog = nil
+                        }
+                        .overlay {
+                            VStack {
+                                Spacer()
+                                
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(maxWidth: UIScreen.main.bounds.width * 0.8, maxHeight: UIScreen.main.bounds.height * 0.6)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .shadow(radius: 20)
+                                
+                                Spacer()
+                                
+                                Button("Close") {
+                                    zoomedDog = nil
+                                }
+                                .foregroundStyle(.white)
+                                .padding()
+                                .background(.blue)
+                                .clipShape(Capsule())
+                                .padding(.bottom, 50)
+                            }
+                        }
                 }
             }
         }
@@ -359,10 +404,13 @@ struct ImportDatabaseView: View {
         // Get all dogs from the database (including departed ones)
         let allDogs = await dataManager.getAllDogs()
         
+        // Filter out currently present dogs - only show departed dogs for import
+        let departedDogs = allDogs.filter { !$0.isCurrentlyPresent }
+        
         // Group by name and owner to find unique dogs with visit counts
         var dogGroups: [String: [Dog]] = [:]
         
-        for dog in allDogs {
+        for dog in departedDogs {
             let key = "\(dog.name.lowercased())_\(dog.ownerName?.lowercased() ?? "")"
             if dogGroups[key] == nil {
                 dogGroups[key] = []
@@ -387,45 +435,51 @@ struct ImportDatabaseView: View {
 
 struct ImportedDogRow: View {
     let dog: Dog
+    let onZoom: () -> Void
     let onImport: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading) {
-                    Text(dog.name)
-                        .font(.headline)
-                    if let ownerName = dog.ownerName {
-                        Text("Owner: \(ownerName)")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+        HStack(spacing: 12) {
+            // Profile Picture
+            if let imageData = dog.profilePictureData, let uiImage = UIImage(data: imageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 50, height: 50)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color.gray, lineWidth: 1))
+                    .onTapGesture {
+                        onZoom()
                     }
-                }
-                
-                Spacer()
-                
-                VStack(alignment: .trailing) {
-                    Text("\(dog.visitCount) visits")
-                        .font(.caption)
-                        .foregroundStyle(.blue)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.blue.opacity(0.1))
-                        .clipShape(Capsule())
+            } else {
+                Image(systemName: "camera.circle.fill")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 50, height: 50)
+                    .foregroundColor(.gray)
+            }
+            
+            // Name and Owner
+            VStack(alignment: .leading, spacing: 2) {
+                Text(dog.name)
+                    .font(.headline)
+                if let ownerName = dog.ownerName {
+                    Text("Owner: \(ownerName)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
             }
             
-            if let medications = dog.medications, !medications.isEmpty {
-                Text("Medications: \(medications)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Spacer()
             
-            if let allergiesAndFeedingInstructions = dog.allergiesAndFeedingInstructions, !allergiesAndFeedingInstructions.isEmpty {
-                Text("Feeding: \(allergiesAndFeedingInstructions)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            // Visit Count
+            Text("\(dog.visitCount) visits")
+                .font(.caption)
+                .foregroundStyle(.blue)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.blue.opacity(0.1))
+                .clipShape(Capsule())
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())

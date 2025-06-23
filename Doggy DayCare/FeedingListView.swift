@@ -233,10 +233,19 @@ struct DogFeedingRow: View {
             
             // Feeding counts
             HStack(spacing: 16) {
+                let todaysFeedingRecords = dog.feedingRecords.filter { record in
+                    Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
+                }
+                
+                let todaysBreakfastCount = todaysFeedingRecords.filter { $0.type == .breakfast }.count
+                let todaysLunchCount = todaysFeedingRecords.filter { $0.type == .lunch }.count
+                let todaysDinnerCount = todaysFeedingRecords.filter { $0.type == .dinner }.count
+                let todaysSnackCount = todaysFeedingRecords.filter { $0.type == .snack }.count
+                
                 HStack {
                     Image(systemName: "sunrise.fill")
                         .foregroundStyle(.orange)
-                    Text("\(dog.breakfastCount)")
+                    Text("\(todaysBreakfastCount)")
                         .font(.headline)
                         .foregroundStyle(.blue)
                 }
@@ -244,7 +253,7 @@ struct DogFeedingRow: View {
                 HStack {
                     Image(systemName: "sun.max.fill")
                         .foregroundStyle(.yellow)
-                    Text("\(dog.lunchCount)")
+                    Text("\(todaysLunchCount)")
                         .font(.headline)
                         .foregroundStyle(.blue)
                 }
@@ -252,7 +261,7 @@ struct DogFeedingRow: View {
                 HStack {
                     Image(systemName: "sunset.fill")
                         .foregroundStyle(.red)
-                    Text("\(dog.dinnerCount)")
+                    Text("\(todaysDinnerCount)")
                         .font(.headline)
                         .foregroundStyle(.blue)
                 }
@@ -260,7 +269,7 @@ struct DogFeedingRow: View {
                 HStack {
                     Image(systemName: "pawprint.fill")
                         .foregroundStyle(.brown)
-                    Text("\(dog.snackCount)")
+                    Text("\(todaysSnackCount)")
                         .font(.headline)
                         .foregroundStyle(.blue)
                 }
@@ -271,11 +280,17 @@ struct DogFeedingRow: View {
             
             // Individual feeding instances grid
             if !dog.feedingRecords.isEmpty {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 4) {
-                    ForEach(dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
-                        FeedingInstanceView(record: record) {
-                            feedingRecordToDelete = record
-                            showingDeleteFeedingAlert = true
+                let todaysFeedingRecords = dog.feedingRecords.filter { record in
+                    Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
+                }
+                
+                if !todaysFeedingRecords.isEmpty {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 4) {
+                        ForEach(todaysFeedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                            FeedingInstanceView(record: record) {
+                                feedingRecordToDelete = record
+                                showingDeleteFeedingAlert = true
+                            }
                         }
                     }
                 }
@@ -288,7 +303,11 @@ struct DogFeedingRow: View {
         }
         .contextMenu {
             if !dog.feedingRecords.isEmpty {
-                ForEach(dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                let todaysFeedingRecords = dog.feedingRecords.filter { record in
+                    Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
+                }
+                
+                ForEach(todaysFeedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
                     Button("Delete \(record.type.rawValue) at \(record.timestamp.formatted(date: .omitted, time: .shortened))", role: .destructive) {
                         deleteFeedingRecord(record)
                     }

@@ -145,11 +145,18 @@ struct DogMedicationRow: View {
                     .foregroundStyle(.secondary)
             }
             
-            HStack {
+            // Medication count
+            HStack(spacing: 16) {
+                let todaysMedicationRecords = dog.medicationRecords.filter { record in
+                    Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
+                }
+                
+                let todaysMedicationCount = todaysMedicationRecords.count
+                
                 HStack {
                     Image(systemName: "pills.fill")
                         .foregroundStyle(.purple)
-                    Text("\(dog.medicationCount)")
+                    Text("\(todaysMedicationCount)")
                         .font(.headline)
                         .foregroundStyle(.blue)
                 }
@@ -160,31 +167,37 @@ struct DogMedicationRow: View {
             
             // Individual medication instances list
             if !dog.medicationRecords.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
-                        HStack {
-                            Image(systemName: "pills.fill")
-                                .foregroundStyle(.purple)
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                let todaysMedicationRecords = dog.medicationRecords.filter { record in
+                    Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
+                }
+                
+                if !todaysMedicationRecords.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(todaysMedicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                            HStack {
+                                Image(systemName: "pills.fill")
+                                    .foregroundStyle(.purple)
                                 
-                                if let notes = record.notes, !notes.isEmpty {
-                                    Text(notes)
-                                        .font(.caption2)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.caption)
                                         .foregroundStyle(.secondary)
-                                        .lineLimit(2)
+                                    
+                                    if let notes = record.notes, !notes.isEmpty {
+                                        Text(notes)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                    }
                                 }
+                                
+                                Spacer()
                             }
-                            
-                            Spacer()
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.gray.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.gray.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
                     }
                 }
             }
@@ -196,7 +209,11 @@ struct DogMedicationRow: View {
         }
         .contextMenu {
             if !dog.medicationRecords.isEmpty {
-                ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                let todaysMedicationRecords = dog.medicationRecords.filter { record in
+                    Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
+                }
+                
+                ForEach(todaysMedicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
                     Button("Delete medication at \(record.timestamp.formatted(date: .omitted, time: .shortened))", role: .destructive) {
                         deleteMedicationRecord(record)
                     }

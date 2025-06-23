@@ -383,6 +383,32 @@ class DataManager: ObservableObject {
     func clearError() {
         errorMessage = nil
     }
+    
+    // MARK: - Daily Reset Management
+    
+    func resetDailyInstances() async {
+        print("🔄 Starting daily reset of instances...")
+        
+        for dog in dogs {
+            if dog.isCurrentlyPresent {
+                var updatedDog = dog
+                
+                // Clear daily instances but keep totals
+                // The totals are calculated from all records, so they'll still be accurate
+                // We're just clearing the display lists for the current day
+                
+                // For walking records, we could optionally archive them
+                // For now, we'll keep all records but the UI will filter by date
+                
+                updatedDog.updatedAt = Date()
+                updatedDog.lastModifiedBy = AuthenticationService.shared.currentUser
+                
+                await updateDog(updatedDog)
+            }
+        }
+        
+        print("✅ Daily reset completed")
+    }
 }
 
 // MARK: - Conversion Extensions
