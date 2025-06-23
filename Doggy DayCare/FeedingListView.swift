@@ -35,8 +35,17 @@ struct FeedingListView: View {
         }
     }
     
+    private func mostRecentFeedingTimestamp(for dog: Dog, type: FeedingRecord.FeedingType) -> Date? {
+        let today = Calendar.current.startOfDay(for: Date())
+        return dog.feedingRecords
+            .filter { $0.type == type && Calendar.current.isDate($0.timestamp, inSameDayAs: today) }
+            .map { $0.timestamp }
+            .sorted(by: >)
+            .first
+    }
+
     private var daycareDogs: [Dog] {
-        let dogs = filteredDogs.filter { !$0.isBoarding }
+        let dogs = filteredDogs.filter { $0.shouldBeTreatedAsDaycare }
         return selectedFilter == .recentActivity ? dogs.sorted { dog1, dog2 in
             let dog1Recent = dog1.feedingRecords.contains { record in
                 record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
@@ -44,18 +53,57 @@ struct FeedingListView: View {
             let dog2Recent = dog2.feedingRecords.contains { record in
                 record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
             }
-            return dog1Recent && !dog2Recent
+            return (dog1Recent ? 1 : 0, dog1.name) < (dog2Recent ? 1 : 0, dog2.name)
         } : dogs.sorted { dog1, dog2 in
-            // Sort based on selected filter
             switch selectedFilter {
             case .breakfast:
-                return dog1.breakfastCount == 0 && dog2.breakfastCount > 0
+                let t1 = mostRecentFeedingTimestamp(for: dog1, type: .breakfast)
+                let t2 = mostRecentFeedingTimestamp(for: dog2, type: .breakfast)
+                return (
+                    t1 == nil ? 0 : 1,
+                    t1 ?? Date.distantPast,
+                    dog1.name
+                ) < (
+                    t2 == nil ? 0 : 1,
+                    t2 ?? Date.distantPast,
+                    dog2.name
+                )
             case .lunch:
-                return dog1.lunchCount == 0 && dog2.lunchCount > 0
+                let t1 = mostRecentFeedingTimestamp(for: dog1, type: .lunch)
+                let t2 = mostRecentFeedingTimestamp(for: dog2, type: .lunch)
+                return (
+                    t1 == nil ? 0 : 1,
+                    t1 ?? Date.distantPast,
+                    dog1.name
+                ) < (
+                    t2 == nil ? 0 : 1,
+                    t2 ?? Date.distantPast,
+                    dog2.name
+                )
             case .dinner:
-                return dog1.dinnerCount == 0 && dog2.dinnerCount > 0
+                let t1 = mostRecentFeedingTimestamp(for: dog1, type: .dinner)
+                let t2 = mostRecentFeedingTimestamp(for: dog2, type: .dinner)
+                return (
+                    t1 == nil ? 0 : 1,
+                    t1 ?? Date.distantPast,
+                    dog1.name
+                ) < (
+                    t2 == nil ? 0 : 1,
+                    t2 ?? Date.distantPast,
+                    dog2.name
+                )
             case .snack:
-                return dog1.snackCount == 0 && dog2.snackCount > 0
+                let t1 = mostRecentFeedingTimestamp(for: dog1, type: .snack)
+                let t2 = mostRecentFeedingTimestamp(for: dog2, type: .snack)
+                return (
+                    t1 == nil ? 0 : 1,
+                    t1 ?? Date.distantPast,
+                    dog1.name
+                ) < (
+                    t2 == nil ? 0 : 1,
+                    t2 ?? Date.distantPast,
+                    dog2.name
+                )
             default:
                 return dog1.name.localizedCaseInsensitiveCompare(dog2.name) == .orderedAscending
             }
@@ -63,7 +111,7 @@ struct FeedingListView: View {
     }
     
     private var boardingDogs: [Dog] {
-        let dogs = filteredDogs.filter { $0.isBoarding }
+        let dogs = filteredDogs.filter { !$0.shouldBeTreatedAsDaycare }
         return selectedFilter == .recentActivity ? dogs.sorted { dog1, dog2 in
             let dog1Recent = dog1.feedingRecords.contains { record in
                 record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
@@ -71,18 +119,57 @@ struct FeedingListView: View {
             let dog2Recent = dog2.feedingRecords.contains { record in
                 record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
             }
-            return dog1Recent && !dog2Recent
+            return (dog1Recent ? 1 : 0, dog1.name) < (dog2Recent ? 1 : 0, dog2.name)
         } : dogs.sorted { dog1, dog2 in
-            // Sort based on selected filter
             switch selectedFilter {
             case .breakfast:
-                return dog1.breakfastCount == 0 && dog2.breakfastCount > 0
+                let t1 = mostRecentFeedingTimestamp(for: dog1, type: .breakfast)
+                let t2 = mostRecentFeedingTimestamp(for: dog2, type: .breakfast)
+                return (
+                    t1 == nil ? 0 : 1,
+                    t1 ?? Date.distantPast,
+                    dog1.name
+                ) < (
+                    t2 == nil ? 0 : 1,
+                    t2 ?? Date.distantPast,
+                    dog2.name
+                )
             case .lunch:
-                return dog1.lunchCount == 0 && dog2.lunchCount > 0
+                let t1 = mostRecentFeedingTimestamp(for: dog1, type: .lunch)
+                let t2 = mostRecentFeedingTimestamp(for: dog2, type: .lunch)
+                return (
+                    t1 == nil ? 0 : 1,
+                    t1 ?? Date.distantPast,
+                    dog1.name
+                ) < (
+                    t2 == nil ? 0 : 1,
+                    t2 ?? Date.distantPast,
+                    dog2.name
+                )
             case .dinner:
-                return dog1.dinnerCount == 0 && dog2.dinnerCount > 0
+                let t1 = mostRecentFeedingTimestamp(for: dog1, type: .dinner)
+                let t2 = mostRecentFeedingTimestamp(for: dog2, type: .dinner)
+                return (
+                    t1 == nil ? 0 : 1,
+                    t1 ?? Date.distantPast,
+                    dog1.name
+                ) < (
+                    t2 == nil ? 0 : 1,
+                    t2 ?? Date.distantPast,
+                    dog2.name
+                )
             case .snack:
-                return dog1.snackCount == 0 && dog2.snackCount > 0
+                let t1 = mostRecentFeedingTimestamp(for: dog1, type: .snack)
+                let t2 = mostRecentFeedingTimestamp(for: dog2, type: .snack)
+                return (
+                    t1 == nil ? 0 : 1,
+                    t1 ?? Date.distantPast,
+                    dog1.name
+                ) < (
+                    t2 == nil ? 0 : 1,
+                    t2 ?? Date.distantPast,
+                    dog2.name
+                )
             default:
                 return dog1.name.localizedCaseInsensitiveCompare(dog2.name) == .orderedAscending
             }
@@ -132,7 +219,7 @@ struct FeedingListView: View {
                                     .buttonStyle(PlainButtonStyle())
                                 }
                             } header: {
-                                Text("DAYCARE")
+                                Text("DAYCARE \(daycareDogs.count)")
                                     .font(.headline)
                                     .fontWeight(.bold)
                                     .foregroundStyle(.primary)
@@ -150,7 +237,7 @@ struct FeedingListView: View {
                                     .buttonStyle(PlainButtonStyle())
                                 }
                             } header: {
-                                Text("BOARDING")
+                                Text("BOARDING \(boardingDogs.count)")
                                     .font(.headline)
                                     .fontWeight(.bold)
                                     .foregroundStyle(.primary)
@@ -167,13 +254,31 @@ struct FeedingListView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
-                        Button("Alphabetical") {
+                        Button {
                             selectedFilter = .alphabetical
+                        } label: {
+                            Label("Alphabetical", systemImage: selectedFilter == .alphabetical ? "checkmark" : "")
                         }
-                        Button("Breakfast") { selectedFilter = .breakfast }
-                        Button("Lunch") { selectedFilter = .lunch }
-                        Button("Dinner") { selectedFilter = .dinner }
-                        Button("Snack") { selectedFilter = .snack }
+                        Button {
+                            selectedFilter = .breakfast
+                        } label: {
+                            Label("Breakfast", systemImage: selectedFilter == .breakfast ? "checkmark" : "")
+                        }
+                        Button {
+                            selectedFilter = .lunch
+                        } label: {
+                            Label("Lunch", systemImage: selectedFilter == .lunch ? "checkmark" : "")
+                        }
+                        Button {
+                            selectedFilter = .dinner
+                        } label: {
+                            Label("Dinner", systemImage: selectedFilter == .dinner ? "checkmark" : "")
+                        }
+                        Button {
+                            selectedFilter = .snack
+                        } label: {
+                            Label("Snack", systemImage: selectedFilter == .snack ? "checkmark" : "")
+                        }
                     } label: {
                         Image(systemName: "line.3.horizontal.circle")
                     }

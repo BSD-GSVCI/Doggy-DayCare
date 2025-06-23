@@ -33,29 +33,26 @@ struct WalkingListView: View {
         }
     }
     
+    private func hadRecentPotty(for dog: Dog) -> Bool {
+        let threeHoursAgo = Date().addingTimeInterval(-3 * 3600)
+        return dog.pottyRecords.contains { $0.timestamp > threeHoursAgo }
+    }
+    
     private var daycareDogs: [Dog] {
-        let dogs = filteredDogs.filter { !$0.isBoarding }
+        let dogs = filteredDogs.filter { $0.shouldBeTreatedAsDaycare }
         return selectedSort == .recentActivity ? dogs.sorted { dog1, dog2 in
-            let dog1Recent = dog1.walkingRecords.contains { record in
-                record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
-            }
-            let dog2Recent = dog2.walkingRecords.contains { record in
-                record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
-            }
-            return dog1Recent && !dog2Recent
+            let dog1Recent = hadRecentPotty(for: dog1)
+            let dog2Recent = hadRecentPotty(for: dog2)
+            return (dog1Recent ? 1 : 0, dog1.name) < (dog2Recent ? 1 : 0, dog2.name)
         } : dogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
     private var boardingDogs: [Dog] {
-        let dogs = filteredDogs.filter { $0.isBoarding }
+        let dogs = filteredDogs.filter { !$0.shouldBeTreatedAsDaycare }
         return selectedSort == .recentActivity ? dogs.sorted { dog1, dog2 in
-            let dog1Recent = dog1.walkingRecords.contains { record in
-                record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
-            }
-            let dog2Recent = dog2.walkingRecords.contains { record in
-                record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
-            }
-            return dog1Recent && !dog2Recent
+            let dog1Recent = hadRecentPotty(for: dog1)
+            let dog2Recent = hadRecentPotty(for: dog2)
+            return (dog1Recent ? 1 : 0, dog1.name) < (dog2Recent ? 1 : 0, dog2.name)
         } : dogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
@@ -75,7 +72,7 @@ struct WalkingListView: View {
                                 DogWalkingRow(dog: dog)
                             }
                         } header: {
-                            Text("DAYCARE")
+                            Text("DAYCARE \(daycareDogs.count)")
                                 .font(.headline)
                                 .fontWeight(.bold)
                                 .foregroundStyle(.primary)
@@ -90,7 +87,7 @@ struct WalkingListView: View {
                                 DogWalkingRow(dog: dog)
                             }
                         } header: {
-                            Text("BOARDING")
+                            Text("BOARDING \(boardingDogs.count)")
                                 .font(.headline)
                                 .fontWeight(.bold)
                                 .foregroundStyle(.primary)
@@ -105,11 +102,15 @@ struct WalkingListView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
-                        Button("Alphabetical") {
+                        Button {
                             selectedSort = .alphabetical
+                        } label: {
+                            Label("Alphabetical", systemImage: selectedSort == .alphabetical ? "checkmark" : "")
                         }
-                        Button("Recent Activity") {
+                        Button {
                             selectedSort = .recentActivity
+                        } label: {
+                            Label("Recent Activity", systemImage: selectedSort == .recentActivity ? "checkmark" : "")
                         }
                     } label: {
                         Image(systemName: "line.3.horizontal.circle")

@@ -56,21 +56,56 @@ struct MedicationsListView: View {
         } : filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
+    private var daycareDogs: [Dog] {
+        dogsNeedingMedication.filter { $0.shouldBeTreatedAsDaycare }
+    }
+    private var boardingDogs: [Dog] {
+        dogsNeedingMedication.filter { !$0.shouldBeTreatedAsDaycare }
+    }
+    
     var body: some View {
         NavigationStack {
             List {
-                if dogsNeedingMedication.isEmpty {
+                if daycareDogs.isEmpty && boardingDogs.isEmpty {
                     ContentUnavailableView {
                         Label("No Dogs Need Medication", systemImage: "pills")
                     } description: {
                         Text("Dogs that need medication will appear here.")
                     }
                 } else {
-                    ForEach(dogsNeedingMedication) { dog in
-                        NavigationLink(destination: DogDetailView(dog: dog)) {
-                            DogMedicationRow(dog: dog)
+                    if !daycareDogs.isEmpty {
+                        Section {
+                            ForEach(daycareDogs) { dog in
+                                NavigationLink(destination: DogDetailView(dog: dog)) {
+                                    DogMedicationRow(dog: dog)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        } header: {
+                            Text("DAYCARE \(daycareDogs.count)")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.primary)
+                                .textCase(nil)
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .listSectionSpacing(20)
+                    }
+                    if !boardingDogs.isEmpty {
+                        Section {
+                            ForEach(boardingDogs) { dog in
+                                NavigationLink(destination: DogDetailView(dog: dog)) {
+                                    DogMedicationRow(dog: dog)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+                        } header: {
+                            Text("BOARDING \(boardingDogs.count)")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.primary)
+                                .textCase(nil)
+                        }
+                        .listSectionSpacing(20)
                     }
                 }
             }
