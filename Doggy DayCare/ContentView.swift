@@ -131,21 +131,21 @@ struct ContentView: View {
         case .all:
             return filtered
         case .daycare:
-            return filtered.filter { $0.isCurrentlyPresent && !$0.isBoarding }
+            return filtered.filter { $0.isCurrentlyPresent && $0.shouldBeTreatedAsDaycare }
         case .boarding:
-            return filtered.filter { $0.isCurrentlyPresent && $0.isBoarding }
+            return filtered.filter { $0.isCurrentlyPresent && !$0.shouldBeTreatedAsDaycare }
         case .departed:
             return filtered.filter { $0.departureDate != nil && Calendar.current.isDateInToday($0.departureDate!) }
         }
     }
     
     private var daycareDogs: [Dog] {
-        filteredDogs.filter { $0.isCurrentlyPresent && !$0.isBoarding }
+        filteredDogs.filter { $0.isCurrentlyPresent && $0.shouldBeTreatedAsDaycare }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
     private var boardingDogs: [Dog] {
-        filteredDogs.filter { $0.isCurrentlyPresent && $0.isBoarding }
+        filteredDogs.filter { $0.isCurrentlyPresent && !$0.shouldBeTreatedAsDaycare }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     

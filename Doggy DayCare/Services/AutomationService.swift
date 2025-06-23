@@ -85,8 +85,9 @@ class AutomationService: ObservableObject {
     private func checkDaycareDepartures() async {
         do {
             let cloudKitService = CloudKitService.shared
-            let allDogs = try await cloudKitService.fetchDogs()
-            let daycareDogs = allDogs.filter { !$0.isBoarding && $0.isCurrentlyPresent }
+            let allCloudKitDogs = try await cloudKitService.fetchDogs()
+            let allDogs = allCloudKitDogs.map { $0.toDog() }
+            let daycareDogs = allDogs.filter { $0.shouldBeTreatedAsDaycare && $0.isCurrentlyPresent }
             
             if !daycareDogs.isEmpty {
                 let dogNames = daycareDogs.map { $0.name }.joined(separator: ", ")
@@ -128,7 +129,8 @@ class AutomationService: ObservableObject {
     private func handleMidnightTransition() async {
         do {
             let cloudKitService = CloudKitService.shared
-            let allDogs = try await cloudKitService.fetchDogs()
+            let allCloudKitDogs = try await cloudKitService.fetchDogs()
+            let allDogs = allCloudKitDogs.map { $0.toDog() }
             
             let today = Date()
             print("Starting midnight transition for \(today.formatted())")
@@ -147,19 +149,13 @@ class AutomationService: ObservableObject {
                 
                 if dog.isBoarding {
                     if let boardingEndDate = dog.boardingEndDate {
-                        // Convert to daycare if boarding end date is today
-                        if Calendar.current.isDate(boardingEndDate, inSameDayAs: today) {
-                            print("🔄 Converting boarding dog '\(dog.name)' to daycare (boarding end date: \(boardingEndDate.formatted()))")
-                            updatedDog.isBoarding = false
-                            updatedDog.boardingEndDate = nil
-                            needsUpdate = true
-                        } else {
-                            print("📅 Keeping '\(dog.name)' as boarding (end date: \(boardingEndDate.formatted()), today: \(today.formatted()))")
-                        }
+                        // Note: Boarding dogs are now handled through shouldBeTreatedAsDaycare property
+                        // They remain boarding dogs but are displayed as daycare when their end date arrives
+                        print("📅 Boarding dog '\(dog.name)' (end date: \(boardingEndDate.formatted()), today: \(today.formatted()))")
                     } else {
-                        print("⚠️ Keeping '\(dog.name)' as boarding (no end date set)")
+                        print("⚠️ Boarding dog '\(dog.name)' (no end date set)")
                     }
-                } else if !dog.isBoarding && dog.isCurrentlyPresent {
+                } else if dog.shouldBeTreatedAsDaycare && dog.isCurrentlyPresent {
                     // Only clear departure time for daycare dogs that are currently present
                     if dog.departureDate != nil {
                         print("🔄 Clearing departure time for daycare dog '\(dog.name)'")
@@ -169,7 +165,7 @@ class AutomationService: ObservableObject {
                 }
                 
                 if needsUpdate {
-                    _ = try await cloudKitService.updateDog(updatedDog)
+                    _ = try await cloudKitService.updateDog(updatedDog.toCloudKitDog())
                 }
             }
             

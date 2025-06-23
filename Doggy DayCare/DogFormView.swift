@@ -401,16 +401,12 @@ struct ImportDatabaseView: View {
     private func loadImportedDogs() async {
         isLoading = true
         
-        // Get all dogs from the database (including departed ones)
+        // Get all dogs from the database (including departed and present)
         let allDogs = await dataManager.getAllDogs()
         
-        // Filter out currently present dogs - only show departed dogs for import
-        let departedDogs = allDogs.filter { !$0.isCurrentlyPresent }
-        
-        // Group by name and owner to find unique dogs with visit counts
+        // Group all dogs (present and departed) by name+owner
         var dogGroups: [String: [Dog]] = [:]
-        
-        for dog in departedDogs {
+        for dog in allDogs {
             let key = "\(dog.name.lowercased())_\(dog.ownerName?.lowercased() ?? "")"
             if dogGroups[key] == nil {
                 dogGroups[key] = []
@@ -418,13 +414,20 @@ struct ImportDatabaseView: View {
             dogGroups[key]?.append(dog)
         }
         
-        // Create imported dog entries with visit counts
+        // For each group, if any dog is currently present, skip showing this group in the import list
+        // Otherwise, show the most recent departed record, with the total visit count
         importedDogs = dogGroups.compactMap { _, dogs in
-            guard let firstDog = dogs.first else { return nil }
-            
-            var importedDog = firstDog
-            importedDog.visitCount = dogs.count
-            
+            // If any dog in the group is currently present, skip
+            if dogs.contains(where: { $0.isCurrentlyPresent }) {
+                return nil
+            }
+            // Find the most recent departed record
+            let departedDogs = dogs.filter { !$0.isCurrentlyPresent }
+            guard let mostRecent = departedDogs.sorted(by: { $0.arrivalDate > $1.arrivalDate }).first else {
+                return nil
+            }
+            var importedDog = mostRecent
+            importedDog.visitCount = dogs.count // Count all visits (present and past)
             return importedDog
         }
         .sorted { $0.name < $1.name }

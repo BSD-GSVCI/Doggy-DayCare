@@ -69,9 +69,16 @@ struct DogRow: View {
                         
                         // Boarding departure date pill
                         if dog.isBoarding, let boardingEndDate = dog.boardingEndDate {
-                            Text("until: \(shortDateFormatter.string(from: boardingEndDate))")
-                                .font(.caption)
-                                .foregroundStyle(.blue)
+                            HStack(spacing: 4) {
+                                Text("until: \(shortDateFormatter.string(from: boardingEndDate))")
+                                    .font(.caption)
+                                    .foregroundStyle(.blue)
+                                if dog.shouldBeTreatedAsDaycare {
+                                    Text("– is leaving today")
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
+                            }
                         }
                     }
                     

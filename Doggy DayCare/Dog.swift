@@ -276,6 +276,21 @@ struct Dog: Codable, Identifiable {
         return hasArrived && departureDate == nil
     }
     
+    var shouldBeTreatedAsDaycare: Bool {
+        // A boarding dog should be treated as daycare if their boarding end date has arrived
+        // This means they're effectively a daycare dog for their final day
+        guard isBoarding, let boardingEndDate = boardingEndDate else {
+            // If not boarding or no boarding end date, treat as normal
+            return !isBoarding
+        }
+        
+        let now = Date()
+        let calendar = Calendar.current
+        
+        // If boarding end date is today or in the past, treat as daycare
+        return calendar.isDate(boardingEndDate, inSameDayAs: now) || boardingEndDate < now
+    }
+    
     var stayDuration: TimeInterval {
         let endDate = departureDate ?? Date()
         
