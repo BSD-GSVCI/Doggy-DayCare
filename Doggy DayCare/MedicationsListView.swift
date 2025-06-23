@@ -76,10 +76,8 @@ struct MedicationsListView: View {
                     if !daycareDogs.isEmpty {
                         Section {
                             ForEach(daycareDogs) { dog in
-                                NavigationLink(destination: DogDetailView(dog: dog)) {
-                                    DogMedicationRow(dog: dog)
-                                }
-                                .buttonStyle(PlainButtonStyle())
+                                DogMedicationRow(dog: dog)
+                                    .buttonStyle(PlainButtonStyle())
                             }
                         } header: {
                             Text("DAYCARE \(daycareDogs.count)")
@@ -93,10 +91,8 @@ struct MedicationsListView: View {
                     if !boardingDogs.isEmpty {
                         Section {
                             ForEach(boardingDogs) { dog in
-                                NavigationLink(destination: DogDetailView(dog: dog)) {
-                                    DogMedicationRow(dog: dog)
-                                }
-                                .buttonStyle(PlainButtonStyle())
+                                DogMedicationRow(dog: dog)
+                                    .buttonStyle(PlainButtonStyle())
                             }
                         } header: {
                             Text("BOARDING \(boardingDogs.count)")
