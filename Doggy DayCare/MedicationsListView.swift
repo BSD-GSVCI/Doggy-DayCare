@@ -202,6 +202,14 @@ struct DogMedicationRow: View {
                     Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
                 }
                 
+                // Log medication records outside of ViewBuilder
+                let _ = {
+                    print("📋 Dog \(dog.name) has \(todaysMedicationRecords.count) today's medication records")
+                    for (index, record) in todaysMedicationRecords.enumerated() {
+                        print("📝 Record \(index + 1): timestamp=\(record.timestamp), notes=\(record.notes ?? "nil")")
+                    }
+                }()
+                
                 if !todaysMedicationRecords.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(todaysMedicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
@@ -255,10 +263,11 @@ struct DogMedicationRow: View {
             TextField("Notes (optional)", text: $medicationNotes)
             Button("Cancel", role: .cancel) { }
             Button("Record") {
+                let notesToSave = medicationNotes  // Capture the value before resetting
+                medicationNotes = ""  // Reset the state variable
                 Task {
-                    await addMedicationRecord(notes: medicationNotes)
+                    await addMedicationRecord(notes: notesToSave)
                 }
-                medicationNotes = ""
             }
         } message: {
             Text("Add notes for \(dog.name)'s medication")
@@ -284,10 +293,16 @@ struct DogMedicationRow: View {
     }
     
     private func addMedicationRecord(notes: String) async {
-        var updatedDog = dog
-        updatedDog.addMedicationRecord(notes: notes, recordedBy: authService.currentUser)
+        print("🔄 DogMedicationRow.addMedicationRecord called for \(dog.name)")
+        print("📝 Notes parameter: '\(notes)'")
+        print("📝 Notes isEmpty: \(notes.isEmpty)")
         
+        var updatedDog = dog
+        updatedDog.addMedicationRecord(notes: notes.isEmpty ? nil : notes, recordedBy: authService.currentUser)
+        
+        print("🔄 Calling dataManager.updateDog...")
         await dataManager.updateDog(updatedDog)
+        print("✅ Medication record added for \(dog.name)")
     }
     
     private func deleteLastMedication() {

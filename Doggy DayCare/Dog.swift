@@ -206,15 +206,22 @@ struct Dog: Codable, Identifiable {
     }
     
     mutating func addMedicationRecord(notes: String?, recordedBy: User? = nil) {
+        print("🔄 Adding medication record for \(name)")
+        print("📝 Notes: \(notes ?? "nil")")
+        print("👤 Recorded by: \(recordedBy?.name ?? "nil")")
+        
         let record = MedicationRecord(
             timestamp: Date(),
             notes: notes,
             recordedBy: recordedBy?.name
         )
+        
+        print("📋 Created medication record with notes: \(record.notes ?? "nil")")
         medicationRecords.append(record)
         updatedAt = Date()
         lastModifiedBy = recordedBy
-        print("Added medication record for \(name), total records: \(medicationRecords.count)")
+        print("✅ Added medication record for \(name), total records: \(medicationRecords.count)")
+        print("📝 Latest record notes: \(medicationRecords.last?.notes ?? "nil")")
     }
     
     mutating func removeMedicationRecord(at timestamp: Date, modifiedBy: User? = nil) {

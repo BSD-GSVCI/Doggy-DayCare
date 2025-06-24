@@ -430,10 +430,21 @@ struct DogDetailView: View {
     // MARK: - Action Functions
     
     private func checkOut() async {
+        print("🔄 Starting checkout process for dog: \(dog.name)")
+        print("📅 Current departure date: \(dog.departureDate?.description ?? "nil")")
+        
         var updatedDog = dog
         updatedDog.departureDate = Date()
         updatedDog.updatedAt = Date()
+        
+        print("📅 New departure date: \(updatedDog.departureDate?.description ?? "nil")")
+        print("🔄 Calling dataManager.updateDog...")
+        
         await dataManager.updateDog(updatedDog)
+        
+        print("✅ Checkout completed for dog: \(dog.name)")
+        print("📅 Final departure date: \(updatedDog.departureDate?.description ?? "nil")")
+        
         dismiss()
     }
     

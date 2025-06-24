@@ -343,7 +343,7 @@ class CloudKitService: ObservableObject {
         record[DogFields.isArrivalTimeSet] = dog.isArrivalTimeSet ? 1 : 0
         
         // Audit fields
-        guard let currentUser = currentUser else {
+        guard let currentUser = AuthenticationService.shared.currentUser else {
             throw CloudKitError.userNotAuthenticated
         }
         record[DogFields.createdBy] = currentUser.id
@@ -436,6 +436,9 @@ class CloudKitService: ObservableObject {
     }
     
     func updateDog(_ dog: CloudKitDog) async throws -> CloudKitDog {
+        print("🔄 CloudKitService.updateDog called for: \(dog.name)")
+        print("📅 CloudKit dog departure date: \(dog.departureDate?.description ?? "nil")")
+        
         let predicate = NSPredicate(format: "\(DogFields.id) == %@", dog.id)
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
         
@@ -443,8 +446,11 @@ class CloudKitService: ObservableObject {
         let records = result.matchResults.compactMap { try? $0.1.get() }
         
         guard let record = records.first else {
+            print("❌ Dog record not found in CloudKit")
             throw CloudKitError.recordNotFound
         }
+        
+        print("📅 Original record departure date: \(record[DogFields.departureDate]?.description ?? "nil")")
         
         // Update fields
         record[DogFields.name] = dog.name
@@ -463,14 +469,23 @@ class CloudKitService: ObservableObject {
         record[DogFields.updatedAt] = Date()
         record[DogFields.isArrivalTimeSet] = dog.isArrivalTimeSet ? 1 : 0
         
-        // Update audit fields
-        guard let currentUser = currentUser else {
+        print("📅 Updated record departure date: \(record[DogFields.departureDate]?.description ?? "nil")")
+        
+        // Update audit fields - get current user from AuthenticationService
+        guard let currentUser = AuthenticationService.shared.currentUser else {
+            print("❌ No authenticated user found in AuthenticationService")
             throw CloudKitError.userNotAuthenticated
         }
+        
+        print("👤 Using authenticated user: \(currentUser.name) (ID: \(currentUser.id))")
         record[DogFields.modifiedBy] = currentUser.id
         record[DogFields.modificationCount] = (record[DogFields.modificationCount] as? Int ?? 0) + 1
         
+        print("🔄 Saving record to CloudKit...")
         let saved = try await publicDatabase.save(record)
+        
+        print("✅ Record saved successfully")
+        print("📅 Saved record departure date: \(saved[DogFields.departureDate]?.description ?? "nil")")
         
         // Save individual records
         try await saveFeedingRecords(dog.feedingRecords, for: dog.id)
@@ -835,7 +850,7 @@ class CloudKitService: ObservableObject {
         record[DogChangeFields.dogID] = dogID
         record[DogChangeFields.createdAt] = Date()
         
-        guard let currentUser = currentUser else {
+        guard let currentUser = AuthenticationService.shared.currentUser else {
             throw CloudKitError.userNotAuthenticated
         }
         record[DogChangeFields.modifiedBy] = currentUser.id

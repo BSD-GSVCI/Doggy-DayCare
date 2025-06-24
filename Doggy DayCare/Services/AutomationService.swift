@@ -6,8 +6,10 @@ class AutomationService: ObservableObject {
     static let shared = AutomationService()
     private var timer: Timer?
     private var backupTimer: Timer?
+    private var midnightTimer: Timer?
     
     private init() {
+        print("🚀 AutomationService initializing...")
         setupNotifications()
         setupTimers()
     }
@@ -46,25 +48,31 @@ class AutomationService: ObservableObject {
     }
     
     private func setupBackupTimers() {
+        print("🕐 Setting up backup timers...")
+        
         // Instead of creating multiple timers, use a single timer that checks the time
-        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+        backupTimer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
             let calendar = Calendar.current
             let now = Date()
             let hour = calendar.component(.hour, from: now)
             let minute = calendar.component(.minute, from: now)
             
-            // Check if current time matches any backup time
+            print("🕐 Current time: \(hour):\(minute)")
+            
+            // Check if current time matches any backup time (with a 1-minute window)
             let shouldBackup = (hour == 12 && minute == 0) ||  // 12 PM
                              (hour == 18 && minute == 0) ||    // 6 PM
                              (hour == 23 && minute == 59)      // 11:59 PM
             
             if shouldBackup {
-                    Task {
-                        await self?.performAutomatedBackup()
+                print("🔄 Backup time reached! Triggering automated backup...")
+                Task {
+                    await self?.performAutomatedBackup()
                 }
             }
         }
-        RunLoop.main.add(timer, forMode: .common)
+        RunLoop.main.add(backupTimer!, forMode: .common)
+        print("✅ Backup timers set up successfully")
     }
     
     private func setupMidnightTransition() {
@@ -73,12 +81,12 @@ class AutomationService: ObservableObject {
         components.minute = 0
         
         if let nextMidnight = Calendar.current.nextDate(after: Date(), matching: components, matchingPolicy: .nextTime) {
-            let timer = Timer(fire: nextMidnight, interval: 86400, repeats: true) { [weak self] _ in
+            midnightTimer = Timer(fire: nextMidnight, interval: 86400, repeats: true) { [weak self] _ in
                 Task {
                     await self?.handleMidnightTransition()
                 }
             }
-            RunLoop.main.add(timer, forMode: .common)
+            RunLoop.main.add(midnightTimer!, forMode: .common)
         }
     }
     
@@ -110,19 +118,38 @@ class AutomationService: ObservableObject {
     }
     
     private func performAutomatedBackup() async {
+        print("🔄 Starting automated backup process...")
+        
+        // Only perform automatic backups for owners, not staff members
+        let authService = AuthenticationService.shared
+        guard let currentUser = authService.currentUser else {
+            print("❌ No current user found - skipping backup")
+            return
+        }
+        
+        print("👤 Current user: \(currentUser.name), isOwner: \(currentUser.isOwner)")
+        
+        guard currentUser.isOwner else {
+            print("⏭️ Skipping automatic backup - user is not an owner")
+            return
+        }
+        
         do {
+            print("📥 Fetching dogs from CloudKit...")
             let cloudKitService = CloudKitService.shared
             let allCloudKitDogs = try await cloudKitService.fetchDogs()
             let allDogs = allCloudKitDogs.map { $0.toDog() }
+            print("📊 Found \(allDogs.count) dogs to backup")
             
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm"
             let timestamp = dateFormatter.string(from: Date())
             
+            print("💾 Creating backup file...")
             let url = try await BackupService.shared.exportDogs(allDogs, filename: "backup_\(timestamp)")
-            print("Automated backup created at: \(url.path)")
+            print("✅ Automated backup created successfully at: \(url.path) for owner: \(currentUser.name)")
         } catch {
-            print("Error performing automated backup: \(error.localizedDescription)")
+            print("❌ Error performing automated backup: \(error.localizedDescription)")
         }
     }
     

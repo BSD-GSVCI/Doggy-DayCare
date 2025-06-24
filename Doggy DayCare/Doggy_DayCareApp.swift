@@ -58,6 +58,11 @@ struct Doggy_DayCareApp: App {
                         do {
                             try await dataManager.authenticate()
                             print("✅ CloudKit initialization completed successfully")
+                            
+                            // Initialize automation service for automatic backups
+                            _ = AutomationService.shared
+                            print("✅ Automation service initialized")
+                            
                             isInitialized = true
                         } catch {
                             print("❌ CloudKit initialization failed: \(error)")

@@ -120,6 +120,9 @@ class DataManager: ObservableObject {
     }
     
     func updateDog(_ dog: Dog) async {
+        print("🔄 DataManager.updateDog called for: \(dog.name)")
+        print("📅 Departure date being set: \(dog.departureDate?.description ?? "nil")")
+        
         isLoading = true
         errorMessage = nil
         do {
@@ -151,11 +154,22 @@ class DataManager: ObservableObject {
             updatedDog.createdAt = dog.createdAt
             updatedDog.createdBy = dog.createdBy
             updatedDog.lastModifiedBy = dog.lastModifiedBy
+            
+            print("📅 Updated dog departure date: \(updatedDog.departureDate?.description ?? "nil")")
+            print("🔄 Calling CloudKit update...")
+            
             _ = try await cloudKitService.updateDog(updatedDog.toCloudKitDog())
+            
+            print("✅ CloudKit update successful")
+            
             // Update local cache
             if let index = dogs.firstIndex(where: { $0.id == dog.id }) {
                 dogs[index] = updatedDog
+                print("✅ Local cache updated")
+            } else {
+                print("⚠️ Dog not found in local cache for update")
             }
+            
             await MainActor.run {
                 self.isLoading = false
             }
