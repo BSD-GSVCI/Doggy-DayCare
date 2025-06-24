@@ -297,21 +297,14 @@ struct DogMedicationRow: View {
         print("📝 Notes parameter: '\(notes)'")
         print("📝 Notes isEmpty: \(notes.isEmpty)")
         
-        var updatedDog = dog
-        updatedDog.addMedicationRecord(notes: notes.isEmpty ? nil : notes, recordedBy: authService.currentUser)
-        
-        print("🔄 Calling dataManager.updateDog...")
-        await dataManager.updateDog(updatedDog)
+        await dataManager.addMedicationRecord(to: dog, notes: notes.isEmpty ? nil : notes, recordedBy: authService.currentUser?.name)
         print("✅ Medication record added for \(dog.name)")
     }
     
     private func deleteLastMedication() {
-        var updatedDog = dog
-        if let lastMedication = updatedDog.medicationRecords.last {
-            updatedDog.removeMedicationRecord(at: lastMedication.timestamp, modifiedBy: authService.currentUser)
-            
+        if let lastMedication = dog.medicationRecords.last {
             Task {
-                await dataManager.updateDog(updatedDog)
+                await dataManager.deleteMedicationRecord(lastMedication, from: dog)
             }
         }
     }
@@ -428,10 +421,7 @@ struct AddMedicationView: View {
     private func recordMedication() async {
         isLoading = true
         
-        var updatedDog = dog
-        updatedDog.addMedicationRecord(notes: notes.isEmpty ? nil : notes, recordedBy: AuthenticationService.shared.currentUser)
-        
-        await dataManager.updateDog(updatedDog)
+        await dataManager.addMedicationRecord(to: dog, notes: notes.isEmpty ? nil : notes, recordedBy: AuthenticationService.shared.currentUser?.name)
         
         isLoading = false
         dismiss()

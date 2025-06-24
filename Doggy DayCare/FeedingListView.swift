@@ -445,21 +445,15 @@ struct DogFeedingRow: View {
     }
     
     private func addFeedingRecord(_ type: FeedingRecord.FeedingType) {
-        var updatedDog = dog
-        updatedDog.addFeedingRecord(type: type, recordedBy: authService.currentUser)
-        
         Task {
-            await dataManager.updateDog(updatedDog)
+            await dataManager.addFeedingRecord(to: dog, type: type, recordedBy: authService.currentUser?.name)
         }
     }
     
     private func deleteLastFeeding() {
-        var updatedDog = dog
-        if let lastFeeding = updatedDog.feedingRecords.last {
-            updatedDog.removeFeedingRecord(at: lastFeeding.timestamp, modifiedBy: authService.currentUser)
-            
+        if let lastFeeding = dog.feedingRecords.last {
             Task {
-                await dataManager.updateDog(updatedDog)
+                await dataManager.deleteFeedingRecord(lastFeeding, from: dog)
             }
         }
     }
@@ -598,10 +592,7 @@ struct AddFeedingView: View {
     private func recordFeeding() async {
         isLoading = true
         
-        var updatedDog = dog
-        updatedDog.addFeedingRecord(type: feedingType, recordedBy: AuthenticationService.shared.currentUser)
-        
-        await dataManager.updateDog(updatedDog)
+        await dataManager.addFeedingRecord(to: dog, type: feedingType, recordedBy: AuthenticationService.shared.currentUser?.name)
         
         isLoading = false
         dismiss()

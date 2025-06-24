@@ -10,35 +10,9 @@ class DataManager: ObservableObject {
     @Published var errorMessage: String?
     
     private let cloudKitService = CloudKitService.shared
-    private var refreshTimer: Timer?
     
     private init() {
         print("📱 DataManager initialized")
-        startPeriodicRefresh()
-    }
-    
-    deinit {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-        print("🔄 DataManager: Stopped periodic refresh timer")
-    }
-    
-    // MARK: - Periodic Refresh
-    
-    private func startPeriodicRefresh() {
-        // Refresh data every minute to handle midnight transitions and other time-based updates
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                await self?.fetchDogs()
-            }
-        }
-        print("🔄 DataManager: Started periodic refresh timer")
-    }
-    
-    private func stopPeriodicRefresh() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-        print("🔄 DataManager: Stopped periodic refresh timer")
     }
     
     // MARK: - Authentication
@@ -318,61 +292,124 @@ class DataManager: ObservableObject {
     func deleteFeedingRecord(_ record: FeedingRecord, from dog: Dog) async {
         isLoading = true
         errorMessage = nil
-        var updatedDog = dog
-        updatedDog.feedingRecords.removeAll { $0.id == record.id }
-        await updateDog(updatedDog)
         
-        // Also delete from CloudKit
+        print("🗑️ Attempting to delete feeding record: \(record.id) for dog: \(dog.name)")
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].feedingRecords.removeAll { $0.id == record.id }
+                self.dogs[index].updatedAt = Date()
+                print("✅ Removed feeding record from local cache")
+            } else {
+                print("⚠️ Dog not found in local cache")
+            }
+        }
+        
+        // Update CloudKit with only the deletion
         do {
             try await cloudKitService.deleteFeedingRecord(record, for: dog.id.uuidString)
+            print("✅ Feeding record deleted from CloudKit for \(dog.name)")
         } catch {
             print("❌ Failed to delete feeding record from CloudKit: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].feedingRecords.append(record)
+                    print("🔄 Reverted feeding record in local cache due to CloudKit failure")
+                }
+            }
         }
+        
+        isLoading = false
     }
     
     func deleteMedicationRecord(_ record: MedicationRecord, from dog: Dog) async {
         isLoading = true
         errorMessage = nil
-        var updatedDog = dog
-        updatedDog.medicationRecords.removeAll { $0.id == record.id }
-        await updateDog(updatedDog)
         
-        // Also delete from CloudKit
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].medicationRecords.removeAll { $0.id == record.id }
+                self.dogs[index].updatedAt = Date()
+            }
+        }
+        
+        // Update CloudKit with only the deletion
         do {
             try await cloudKitService.deleteMedicationRecord(record, for: dog.id.uuidString)
+            print("✅ Medication record deleted from CloudKit for \(dog.name)")
         } catch {
             print("❌ Failed to delete medication record from CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].medicationRecords.append(record)
+                }
+            }
         }
+        
+        isLoading = false
     }
     
     func deletePottyRecord(_ record: PottyRecord, from dog: Dog) async {
         isLoading = true
         errorMessage = nil
-        var updatedDog = dog
-        updatedDog.pottyRecords.removeAll { $0.id == record.id }
-        await updateDog(updatedDog)
         
-        // Also delete from CloudKit
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].pottyRecords.removeAll { $0.id == record.id }
+                self.dogs[index].updatedAt = Date()
+            }
+        }
+        
+        // Update CloudKit with only the deletion
         do {
             try await cloudKitService.deletePottyRecord(record, for: dog.id.uuidString)
+            print("✅ Potty record deleted from CloudKit for \(dog.name)")
         } catch {
             print("❌ Failed to delete potty record from CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].pottyRecords.append(record)
+                }
+            }
         }
+        
+        isLoading = false
     }
     
     func deleteWalkingRecord(_ record: WalkingRecord, from dog: Dog) async {
         isLoading = true
         errorMessage = nil
-        var updatedDog = dog
-        updatedDog.walkingRecords.removeAll { $0.id == record.id }
-        await updateDog(updatedDog)
         
-        // Also delete from CloudKit
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].walkingRecords.removeAll { $0.id == record.id }
+                self.dogs[index].updatedAt = Date()
+            }
+        }
+        
+        // Update CloudKit with only the deletion
         do {
             try await cloudKitService.deleteWalkingRecord(record, for: dog.id.uuidString)
+            print("✅ Walking record deleted from CloudKit for \(dog.name)")
         } catch {
             print("❌ Failed to delete walking record from CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].walkingRecords.append(record)
+                }
+            }
         }
+        
+        isLoading = false
     }
     
     // MARK: - Record Management
@@ -380,33 +417,186 @@ class DataManager: ObservableObject {
     func addPottyRecord(to dog: Dog, type: PottyRecord.PottyType, recordedBy: String?) async {
         isLoading = true
         errorMessage = nil
-        var updatedDog = dog
-        updatedDog.addPottyRecord(type: type, recordedBy: nil)
-        await updateDog(updatedDog)
+        
+        // Handle "both" case by creating two separate records
+        if type == .both {
+            // Create two separate records for pee and poop
+            let peeRecord = PottyRecord(
+                timestamp: Date(),
+                type: .pee,
+                recordedBy: recordedBy
+            )
+            
+            let poopRecord = PottyRecord(
+                timestamp: Date(),
+                type: .poop,
+                recordedBy: recordedBy
+            )
+            
+            // Update local cache immediately for responsive UI
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].pottyRecords.append(peeRecord)
+                    self.dogs[index].pottyRecords.append(poopRecord)
+                    self.dogs[index].updatedAt = Date()
+                }
+            }
+            
+            // Update CloudKit with both records
+            do {
+                try await cloudKitService.addPottyRecord(peeRecord, for: dog.id.uuidString)
+                try await cloudKitService.addPottyRecord(poopRecord, for: dog.id.uuidString)
+                print("✅ Both potty records added to CloudKit for \(dog.name)")
+            } catch {
+                print("❌ Failed to add potty records to CloudKit: \(error)")
+                // Revert local cache if CloudKit update failed
+                await MainActor.run {
+                    if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                        self.dogs[index].pottyRecords.removeLast() // Remove poop record
+                        self.dogs[index].pottyRecords.removeLast() // Remove pee record
+                    }
+                }
+            }
+        } else {
+            // Create the new record for single type
+            let newRecord = PottyRecord(
+                timestamp: Date(),
+                type: type,
+                recordedBy: recordedBy
+            )
+            
+            // Update local cache immediately for responsive UI
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].pottyRecords.append(newRecord)
+                    self.dogs[index].updatedAt = Date()
+                }
+            }
+            
+            // Update CloudKit with only the new record
+            do {
+                try await cloudKitService.addPottyRecord(newRecord, for: dog.id.uuidString)
+                print("✅ Potty record added to CloudKit for \(dog.name)")
+            } catch {
+                print("❌ Failed to add potty record to CloudKit: \(error)")
+                // Revert local cache if CloudKit update failed
+                await MainActor.run {
+                    if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                        self.dogs[index].pottyRecords.removeLast()
+                    }
+                }
+            }
+        }
+        
+        isLoading = false
     }
     
     func addFeedingRecord(to dog: Dog, type: FeedingRecord.FeedingType, recordedBy: String?) async {
         isLoading = true
         errorMessage = nil
-        var updatedDog = dog
-        updatedDog.addFeedingRecord(type: type, recordedBy: nil)
-        await updateDog(updatedDog)
+        
+        // Create the new record
+        let newRecord = FeedingRecord(
+            timestamp: Date(),
+            type: type,
+            recordedBy: recordedBy
+        )
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].feedingRecords.append(newRecord)
+                self.dogs[index].updatedAt = Date()
+            }
+        }
+        
+        // Update CloudKit with only the new record
+        do {
+            try await cloudKitService.addFeedingRecord(newRecord, for: dog.id.uuidString)
+            print("✅ Feeding record added to CloudKit for \(dog.name)")
+        } catch {
+            print("❌ Failed to add feeding record to CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].feedingRecords.removeLast()
+                }
+            }
+        }
+        
+        isLoading = false
     }
     
     func addMedicationRecord(to dog: Dog, notes: String?, recordedBy: String?) async {
         isLoading = true
         errorMessage = nil
-        var updatedDog = dog
-        updatedDog.addMedicationRecord(notes: notes, recordedBy: nil)
-        await updateDog(updatedDog)
+        
+        // Create the new record
+        let newRecord = MedicationRecord(
+            timestamp: Date(),
+            notes: notes,
+            recordedBy: recordedBy
+        )
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].medicationRecords.append(newRecord)
+                self.dogs[index].updatedAt = Date()
+            }
+        }
+        
+        // Update CloudKit with only the new record
+        do {
+            try await cloudKitService.addMedicationRecord(newRecord, for: dog.id.uuidString)
+            print("✅ Medication record added to CloudKit for \(dog.name)")
+        } catch {
+            print("❌ Failed to add medication record to CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].medicationRecords.removeLast()
+                }
+            }
+        }
+        
+        isLoading = false
     }
     
     func addWalkingRecord(to dog: Dog, notes: String?, recordedBy: String?) async {
         isLoading = true
         errorMessage = nil
-        var updatedDog = dog
-        updatedDog.addWalkingRecord(notes: notes, recordedBy: nil)
-        await updateDog(updatedDog)
+        
+        // Create the new record
+        let newRecord = WalkingRecord(
+            timestamp: Date(),
+            notes: notes,
+            recordedBy: recordedBy
+        )
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].walkingRecords.append(newRecord)
+                self.dogs[index].updatedAt = Date()
+            }
+        }
+        
+        // Update CloudKit with only the new record
+        do {
+            try await cloudKitService.addWalkingRecord(newRecord, for: dog.id.uuidString)
+            print("✅ Walking record added to CloudKit for \(dog.name)")
+        } catch {
+            print("❌ Failed to add walking record to CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].walkingRecords.removeLast()
+                }
+            }
+        }
+        
+        isLoading = false
     }
     
     // MARK: - Search and Filtering
@@ -457,6 +647,172 @@ class DataManager: ObservableObject {
         }
         
         print("✅ Daily reset completed")
+    }
+    
+    // MARK: - Optimized Dog Operations
+    
+    func checkoutDog(_ dog: Dog) async {
+        isLoading = true
+        errorMessage = nil
+        
+        print("🔄 Starting optimized checkout for dog: \(dog.name)")
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].departureDate = Date()
+                self.dogs[index].updatedAt = Date()
+                print("✅ Updated local cache for checkout")
+            }
+        }
+        
+        // Update CloudKit with only the checkout
+        do {
+            try await cloudKitService.checkoutDog(dog.id.uuidString)
+            print("✅ Checkout completed in CloudKit for \(dog.name)")
+        } catch {
+            print("❌ Failed to checkout dog in CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].departureDate = nil
+                    self.dogs[index].updatedAt = dog.updatedAt
+                    print("🔄 Reverted checkout in local cache due to CloudKit failure")
+                }
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    func extendBoardingOptimized(for dog: Dog, newEndDate: Date) async {
+        isLoading = true
+        errorMessage = nil
+        
+        print("🔄 Starting optimized extend boarding for dog: \(dog.name)")
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].boardingEndDate = newEndDate
+                self.dogs[index].updatedAt = Date()
+                print("✅ Updated local cache for extend boarding")
+            }
+        }
+        
+        // Update CloudKit with only the extended boarding
+        do {
+            try await cloudKitService.extendBoardingOptimized(dog.id.uuidString, newEndDate: newEndDate)
+            print("✅ Extend boarding completed in CloudKit for \(dog.name)")
+        } catch {
+            print("❌ Failed to extend boarding in CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].boardingEndDate = dog.boardingEndDate
+                    self.dogs[index].updatedAt = dog.updatedAt
+                    print("🔄 Reverted extend boarding in local cache due to CloudKit failure")
+                }
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    func boardDogOptimized(_ dog: Dog, endDate: Date) async {
+        isLoading = true
+        errorMessage = nil
+        
+        print("🔄 Starting optimized board conversion for dog: \(dog.name)")
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].isBoarding = true
+                self.dogs[index].boardingEndDate = endDate
+                self.dogs[index].updatedAt = Date()
+                print("✅ Updated local cache for board conversion")
+            }
+        }
+        
+        // Update CloudKit with only the board conversion
+        do {
+            try await cloudKitService.boardDogOptimized(dog.id.uuidString, endDate: endDate)
+            print("✅ Board conversion completed in CloudKit for \(dog.name)")
+        } catch {
+            print("❌ Failed to convert to boarding in CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].isBoarding = dog.isBoarding
+                    self.dogs[index].boardingEndDate = dog.boardingEndDate
+                    self.dogs[index].updatedAt = dog.updatedAt
+                    print("🔄 Reverted board conversion in local cache due to CloudKit failure")
+                }
+            }
+        }
+        
+        isLoading = false
+    }
+
+    func undoDepartureOptimized(for dog: Dog) async {
+        isLoading = true
+        errorMessage = nil
+        print("🔄 Starting optimized undo departure for dog: \(dog.name)")
+        // Update local cache immediately
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].departureDate = nil
+                self.dogs[index].updatedAt = Date()
+                print("✅ Local cache updated for undo departure")
+            }
+        }
+        // Update CloudKit
+        do {
+            try await cloudKitService.undoDepartureOptimized(dog.id.uuidString)
+            print("✅ Undo departure completed in CloudKit for \(dog.name)")
+        } catch {
+            print("❌ Failed to undo departure in CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].departureDate = dog.departureDate
+                    self.dogs[index].updatedAt = dog.updatedAt
+                    print("🔄 Reverted undo departure in local cache due to CloudKit failure")
+                }
+            }
+        }
+        isLoading = false
+    }
+
+    func editDepartureOptimized(for dog: Dog, newDate: Date) async {
+        isLoading = true
+        errorMessage = nil
+        print("🔄 Starting optimized edit departure for dog: \(dog.name)")
+        // Update local cache immediately
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].departureDate = newDate
+                self.dogs[index].updatedAt = Date()
+                print("✅ Local cache updated for edit departure")
+            }
+        }
+        // Update CloudKit
+        do {
+            try await cloudKitService.editDepartureOptimized(dog.id.uuidString, newDate: newDate)
+            print("✅ Edit departure completed in CloudKit for \(dog.name)")
+        } catch {
+            print("❌ Failed to edit departure in CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].departureDate = dog.departureDate
+                    self.dogs[index].updatedAt = dog.updatedAt
+                    print("🔄 Reverted edit departure in local cache due to CloudKit failure")
+                }
+            }
+        }
+        isLoading = false
     }
 }
 

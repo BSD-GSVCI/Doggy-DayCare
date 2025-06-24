@@ -271,21 +271,15 @@ struct DogWalkingRow: View {
     }
     
     private func addWalkingRecord() {
-        var updatedDog = dog
-        updatedDog.addWalkingRecord(notes: nil, recordedBy: authService.currentUser)
-        
         Task {
-            await dataManager.updateDog(updatedDog)
+            await dataManager.addWalkingRecord(to: dog, notes: nil, recordedBy: authService.currentUser?.name)
         }
     }
     
     private func deleteLastWalk() {
-        var updatedDog = dog
-        if let lastWalk = updatedDog.walkingRecords.last {
-            updatedDog.removeWalkingRecord(at: lastWalk.timestamp, modifiedBy: authService.currentUser)
-            
+        if let lastWalk = dog.walkingRecords.last {
             Task {
-                await dataManager.updateDog(updatedDog)
+                await dataManager.deleteWalkingRecord(lastWalk, from: dog)
             }
         }
     }
@@ -297,27 +291,8 @@ struct DogWalkingRow: View {
     }
     
     private func addPottyRecord(_ type: PottyRecord.PottyType) {
-        var updatedDog = dog
-        
-        switch type {
-        case .both:
-            let peeRecord = PottyRecord(timestamp: Date(), type: .pee, recordedBy: authService.currentUser?.name)
-            let poopRecord = PottyRecord(timestamp: Date(), type: .poop, recordedBy: authService.currentUser?.name)
-            updatedDog.pottyRecords.append(peeRecord)
-            updatedDog.pottyRecords.append(poopRecord)
-        case .nothing:
-            let record = PottyRecord(timestamp: Date(), type: .nothing, recordedBy: authService.currentUser?.name)
-            updatedDog.pottyRecords.append(record)
-        default:
-            let record = PottyRecord(timestamp: Date(), type: type, recordedBy: authService.currentUser?.name)
-            updatedDog.pottyRecords.append(record)
-        }
-        
-        updatedDog.updatedAt = Date()
-        updatedDog.lastModifiedBy = authService.currentUser
-        
         Task {
-            await dataManager.updateDog(updatedDog)
+            await dataManager.addPottyRecord(to: dog, type: type, recordedBy: authService.currentUser?.name)
         }
     }
 }
@@ -417,10 +392,7 @@ struct AddWalkingView: View {
     private func recordWalk() async {
         isLoading = true
         
-        var updatedDog = dog
-        updatedDog.addWalkingRecord(notes: notes.isEmpty ? nil : notes, recordedBy: AuthenticationService.shared.currentUser)
-        
-        await dataManager.updateDog(updatedDog)
+        await dataManager.addWalkingRecord(to: dog, notes: notes.isEmpty ? nil : notes, recordedBy: AuthenticationService.shared.currentUser?.name)
         
         isLoading = false
         dismiss()

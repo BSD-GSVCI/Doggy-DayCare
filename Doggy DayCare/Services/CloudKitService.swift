@@ -239,7 +239,7 @@ class CloudKitService: ObservableObject {
         
         // Audit fields
         record[UserFields.modifiedBy] = user.id
-        record[UserFields.modificationCount] = (record[UserFields.modificationCount] as? Int ?? 0) + 1
+        record[UserFields.modificationCount] = (record[UserFields.modificationCount] as? Int64 ?? 0) + 1
         
         let saved = try await publicDatabase.save(record)
         print("✅ User updated: \(user.name)")
@@ -479,7 +479,7 @@ class CloudKitService: ObservableObject {
         
         print("👤 Using authenticated user: \(currentUser.name) (ID: \(currentUser.id))")
         record[DogFields.modifiedBy] = currentUser.id
-        record[DogFields.modificationCount] = (record[DogFields.modificationCount] as? Int ?? 0) + 1
+        record[DogFields.modificationCount] = (record[DogFields.modificationCount] as? Int64 ?? 0) + 1
         
         print("🔄 Saving record to CloudKit...")
         let saved = try await publicDatabase.save(record)
@@ -694,15 +694,18 @@ class CloudKitService: ObservableObject {
             for record in records {
                 guard let timestamp = record[RecordFields.timestamp] as? Date,
                       let typeString = record[RecordFields.type] as? String,
-                      let type = FeedingRecord.FeedingType(rawValue: typeString) else {
+                      let type = FeedingRecord.FeedingType(rawValue: typeString),
+                      let idString = record[RecordFields.id] as? String,
+                      let id = UUID(uuidString: idString) else {
                     continue
                 }
                 
-                let feedingRecord = FeedingRecord(
+                var feedingRecord = FeedingRecord(
                     timestamp: timestamp,
                     type: type,
                     recordedBy: record[RecordFields.recordedBy] as? String
                 )
+                feedingRecord.id = id  // Preserve the original ID from CloudKit
                 feedingRecords.append(feedingRecord)
             }
             
@@ -730,15 +733,18 @@ class CloudKitService: ObservableObject {
             
             var medicationRecords: [MedicationRecord] = []
             for record in records {
-                guard let timestamp = record[RecordFields.timestamp] as? Date else {
+                guard let timestamp = record[RecordFields.timestamp] as? Date,
+                      let idString = record[RecordFields.id] as? String,
+                      let id = UUID(uuidString: idString) else {
                     continue
                 }
                 
-                let medicationRecord = MedicationRecord(
+                var medicationRecord = MedicationRecord(
                     timestamp: timestamp,
                     notes: record[RecordFields.notes] as? String,
                     recordedBy: record[RecordFields.recordedBy] as? String
                 )
+                medicationRecord.id = id  // Preserve the original ID from CloudKit
                 medicationRecords.append(medicationRecord)
             }
             
@@ -768,15 +774,18 @@ class CloudKitService: ObservableObject {
             for record in records {
                 guard let timestamp = record[RecordFields.timestamp] as? Date,
                       let typeString = record[RecordFields.type] as? String,
-                      let type = PottyRecord.PottyType(rawValue: typeString) else {
+                      let type = PottyRecord.PottyType(rawValue: typeString),
+                      let idString = record[RecordFields.id] as? String,
+                      let id = UUID(uuidString: idString) else {
                     continue
                 }
                 
-                let pottyRecord = PottyRecord(
+                var pottyRecord = PottyRecord(
                     timestamp: timestamp,
                     type: type,
                     recordedBy: record[RecordFields.recordedBy] as? String
                 )
+                pottyRecord.id = id  // Preserve the original ID from CloudKit
                 pottyRecords.append(pottyRecord)
             }
             
@@ -804,15 +813,18 @@ class CloudKitService: ObservableObject {
             
             var walkingRecords: [WalkingRecord] = []
             for record in records {
-                guard let timestamp = record[RecordFields.timestamp] as? Date else {
+                guard let timestamp = record[RecordFields.timestamp] as? Date,
+                      let idString = record[RecordFields.id] as? String,
+                      let id = UUID(uuidString: idString) else {
                     continue
                 }
                 
-                let walkingRecord = WalkingRecord(
+                var walkingRecord = WalkingRecord(
                     timestamp: timestamp,
                     notes: record[RecordFields.notes] as? String,
                     recordedBy: record[RecordFields.recordedBy] as? String
                 )
+                walkingRecord.id = id  // Preserve the original ID from CloudKit
                 walkingRecords.append(walkingRecord)
             }
             
@@ -1043,52 +1055,333 @@ class CloudKitService: ObservableObject {
     
     // MARK: - Individual Record Management
     
+    func addFeedingRecord(_ record: FeedingRecord, for dogID: String) async throws {
+        let ckRecord = CKRecord(recordType: RecordTypes.feedingRecord)
+        
+        ckRecord[RecordFields.id] = record.id.uuidString
+        ckRecord[RecordFields.timestamp] = record.timestamp
+        ckRecord[RecordFields.type] = record.type.rawValue
+        ckRecord[RecordFields.recordedBy] = record.recordedBy
+        ckRecord[RecordFields.dogID] = dogID
+        ckRecord[RecordFields.createdAt] = Date()
+        ckRecord[RecordFields.updatedAt] = Date()
+        
+        let savedRecord = try await publicDatabase.save(ckRecord)
+        print("✅ Feeding record saved to CloudKit: \(savedRecord.recordID.recordName)")
+    }
+    
+    func addMedicationRecord(_ record: MedicationRecord, for dogID: String) async throws {
+        let ckRecord = CKRecord(recordType: RecordTypes.medicationRecord)
+        
+        ckRecord[RecordFields.id] = record.id.uuidString
+        ckRecord[RecordFields.timestamp] = record.timestamp
+        ckRecord[RecordFields.notes] = record.notes
+        ckRecord[RecordFields.recordedBy] = record.recordedBy
+        ckRecord[RecordFields.dogID] = dogID
+        ckRecord[RecordFields.createdAt] = Date()
+        ckRecord[RecordFields.updatedAt] = Date()
+        
+        let savedRecord = try await publicDatabase.save(ckRecord)
+        print("✅ Medication record saved to CloudKit: \(savedRecord.recordID.recordName)")
+    }
+    
+    func addPottyRecord(_ record: PottyRecord, for dogID: String) async throws {
+        let ckRecord = CKRecord(recordType: RecordTypes.pottyRecord)
+        
+        ckRecord[RecordFields.id] = record.id.uuidString
+        ckRecord[RecordFields.timestamp] = record.timestamp
+        ckRecord[RecordFields.type] = record.type.rawValue
+        ckRecord[RecordFields.recordedBy] = record.recordedBy
+        ckRecord[RecordFields.dogID] = dogID
+        ckRecord[RecordFields.createdAt] = Date()
+        ckRecord[RecordFields.updatedAt] = Date()
+        
+        let savedRecord = try await publicDatabase.save(ckRecord)
+        print("✅ Potty record saved to CloudKit: \(savedRecord.recordID.recordName)")
+    }
+    
+    func addWalkingRecord(_ record: WalkingRecord, for dogID: String) async throws {
+        let ckRecord = CKRecord(recordType: RecordTypes.walkingRecord)
+        
+        ckRecord[RecordFields.id] = record.id.uuidString
+        ckRecord[RecordFields.timestamp] = record.timestamp
+        ckRecord[RecordFields.notes] = record.notes
+        ckRecord[RecordFields.recordedBy] = record.recordedBy
+        ckRecord[RecordFields.dogID] = dogID
+        ckRecord[RecordFields.createdAt] = Date()
+        ckRecord[RecordFields.updatedAt] = Date()
+        
+        let savedRecord = try await publicDatabase.save(ckRecord)
+        print("✅ Walking record saved to CloudKit: \(savedRecord.recordID.recordName)")
+    }
+    
     func deleteFeedingRecord(_ record: FeedingRecord, for dogID: String) async throws {
-        let predicate = NSPredicate(format: "\(RecordFields.id) == %@", record.id.uuidString)
+        print("🔍 CloudKit: Searching for feeding record with ID: \(record.id) for dog: \(dogID)")
+        
+        let predicate = NSPredicate(format: "\(RecordFields.id) == %@ AND \(RecordFields.dogID) == %@", record.id.uuidString, dogID)
         let query = CKQuery(recordType: RecordTypes.feedingRecord, predicate: predicate)
+        
         let result = try await publicDatabase.records(matching: query)
         let records = result.matchResults.compactMap { try? $0.1.get() }
         
-        for record in records {
-            try await publicDatabase.deleteRecord(withID: record.recordID)
+        print("🔍 CloudKit: Found \(records.count) matching feeding records")
+        
+        guard let recordToDelete = records.first else {
+            print("❌ CloudKit: No feeding record found to delete")
+            throw CloudKitError.recordNotFound
         }
-        print("✅ Deleted feeding record for dog: \(dogID)")
+        
+        print("🗑️ CloudKit: Deleting feeding record with CloudKit ID: \(recordToDelete.recordID)")
+        try await publicDatabase.deleteRecord(withID: recordToDelete.recordID)
+        print("✅ Feeding record deleted from CloudKit: \(record.id)")
     }
     
     func deleteMedicationRecord(_ record: MedicationRecord, for dogID: String) async throws {
-        let predicate = NSPredicate(format: "\(RecordFields.id) == %@", record.id.uuidString)
+        let predicate = NSPredicate(format: "\(RecordFields.id) == %@ AND \(RecordFields.dogID) == %@", record.id.uuidString, dogID)
         let query = CKQuery(recordType: RecordTypes.medicationRecord, predicate: predicate)
+        
         let result = try await publicDatabase.records(matching: query)
         let records = result.matchResults.compactMap { try? $0.1.get() }
         
-        for record in records {
-            try await publicDatabase.deleteRecord(withID: record.recordID)
+        guard let recordToDelete = records.first else {
+            throw CloudKitError.recordNotFound
         }
-        print("✅ Deleted medication record for dog: \(dogID)")
+        
+        try await publicDatabase.deleteRecord(withID: recordToDelete.recordID)
+        print("✅ Medication record deleted from CloudKit: \(record.id)")
     }
     
     func deletePottyRecord(_ record: PottyRecord, for dogID: String) async throws {
-        let predicate = NSPredicate(format: "\(RecordFields.id) == %@", record.id.uuidString)
+        let predicate = NSPredicate(format: "\(RecordFields.id) == %@ AND \(RecordFields.dogID) == %@", record.id.uuidString, dogID)
         let query = CKQuery(recordType: RecordTypes.pottyRecord, predicate: predicate)
+        
         let result = try await publicDatabase.records(matching: query)
         let records = result.matchResults.compactMap { try? $0.1.get() }
         
-        for record in records {
-            try await publicDatabase.deleteRecord(withID: record.recordID)
+        guard let recordToDelete = records.first else {
+            throw CloudKitError.recordNotFound
         }
-        print("✅ Deleted potty record for dog: \(dogID)")
+        
+        try await publicDatabase.deleteRecord(withID: recordToDelete.recordID)
+        print("✅ Potty record deleted from CloudKit: \(record.id)")
     }
     
     func deleteWalkingRecord(_ record: WalkingRecord, for dogID: String) async throws {
-        let predicate = NSPredicate(format: "\(RecordFields.id) == %@", record.id.uuidString)
+        let predicate = NSPredicate(format: "\(RecordFields.id) == %@ AND \(RecordFields.dogID) == %@", record.id.uuidString, dogID)
         let query = CKQuery(recordType: RecordTypes.walkingRecord, predicate: predicate)
+        
         let result = try await publicDatabase.records(matching: query)
         let records = result.matchResults.compactMap { try? $0.1.get() }
         
-        for record in records {
-            try await publicDatabase.deleteRecord(withID: record.recordID)
+        guard let recordToDelete = records.first else {
+            throw CloudKitError.recordNotFound
         }
-        print("✅ Deleted walking record for dog: \(dogID)")
+        
+        try await publicDatabase.deleteRecord(withID: recordToDelete.recordID)
+        print("✅ Walking record deleted from CloudKit: \(record.id)")
+    }
+    
+    // MARK: - Targeted Dog Operations
+    
+    func checkoutDog(_ dogID: String) async throws {
+        print("🔄 CloudKitService.checkoutDog called for dog ID: \(dogID)")
+        
+        // Fetch the existing dog record
+        let predicate = NSPredicate(format: "\(DogFields.id) == %@", dogID)
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let dogRecord = records.first else {
+            throw CloudKitError.recordNotFound
+        }
+        
+        let departureDate = dogRecord[DogFields.departureDate] as? Date
+        print("📅 Original record departure date: \(departureDate?.description ?? "nil")")
+        
+        // Update only the departure date
+        dogRecord[DogFields.departureDate] = Date()
+        dogRecord[DogFields.updatedAt] = Date()
+        
+        // Update audit fields if user is authenticated
+        if let currentUser = currentUser {
+            dogRecord[DogFields.modifiedBy] = currentUser.id
+            let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
+            dogRecord[DogFields.modificationCount] = currentCount + 1
+        }
+        
+        let updatedDepartureDate = dogRecord[DogFields.departureDate] as? Date
+        print("📅 Updated record departure date: \(updatedDepartureDate?.description ?? "nil")")
+        
+        // Save the updated record
+        let savedRecord = try await publicDatabase.save(dogRecord)
+        print("✅ Checkout record saved successfully: \(savedRecord.recordID.recordName)")
+        
+        // Create audit trail entry
+        try await createDogChange(
+            dogID: dogID,
+            changeType: .departed,
+            fieldName: DogFields.departureDate,
+            oldValue: nil,
+            newValue: Date().description
+        )
+    }
+    
+    func extendBoardingOptimized(_ dogID: String, newEndDate: Date) async throws {
+        print("🔄 CloudKitService.extendBoardingOptimized called for dog ID: \(dogID)")
+        
+        // Fetch the existing dog record
+        let predicate = NSPredicate(format: "\(DogFields.id) == %@", dogID)
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let dogRecord = records.first else {
+            throw CloudKitError.recordNotFound
+        }
+        
+        let oldEndDate = dogRecord[DogFields.boardingEndDate] as? Date
+        print("📅 Original boarding end date: \(oldEndDate?.description ?? "nil")")
+        
+        // Update only the boarding end date
+        dogRecord[DogFields.boardingEndDate] = newEndDate
+        dogRecord[DogFields.updatedAt] = Date()
+        
+        // Update audit fields if user is authenticated
+        if let currentUser = currentUser {
+            dogRecord[DogFields.modifiedBy] = currentUser.id
+            let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
+            dogRecord[DogFields.modificationCount] = currentCount + 1
+        }
+        
+        let updatedEndDate = dogRecord[DogFields.boardingEndDate] as? Date
+        print("📅 Updated boarding end date: \(updatedEndDate?.description ?? "nil")")
+        
+        // Save the updated record
+        let savedRecord = try await publicDatabase.save(dogRecord)
+        print("✅ Extend boarding record saved successfully: \(savedRecord.recordID.recordName)")
+        
+        // Create audit trail entry
+        try await createDogChange(
+            dogID: dogID,
+            changeType: .updated,
+            fieldName: DogFields.boardingEndDate,
+            oldValue: oldEndDate?.description,
+            newValue: newEndDate.description
+        )
+    }
+    
+    func boardDogOptimized(_ dogID: String, endDate: Date) async throws {
+        print("🔄 CloudKitService.boardDogOptimized called for dog ID: \(dogID)")
+        
+        // Fetch the existing dog record
+        let predicate = NSPredicate(format: "\(DogFields.id) == %@", dogID)
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let dogRecord = records.first else {
+            throw CloudKitError.recordNotFound
+        }
+        
+        let wasBoarding = dogRecord[DogFields.isBoarding] as? Int64 == 1
+        let oldEndDate = dogRecord[DogFields.boardingEndDate] as? Date
+        print("📅 Original boarding status: \(wasBoarding), end date: \(oldEndDate?.description ?? "nil")")
+        
+        // Update only the boarding fields
+        dogRecord[DogFields.isBoarding] = 1
+        dogRecord[DogFields.boardingEndDate] = endDate
+        dogRecord[DogFields.updatedAt] = Date()
+        
+        // Update audit fields if user is authenticated
+        if let currentUser = currentUser {
+            dogRecord[DogFields.modifiedBy] = currentUser.id
+            let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
+            dogRecord[DogFields.modificationCount] = currentCount + 1
+        }
+        
+        let updatedEndDate = dogRecord[DogFields.boardingEndDate] as? Date
+        print("📅 Updated boarding status: true, end date: \(updatedEndDate?.description ?? "nil")")
+        
+        // Save the updated record
+        let savedRecord = try await publicDatabase.save(dogRecord)
+        print("✅ Board conversion record saved successfully: \(savedRecord.recordID.recordName)")
+        
+        // Create audit trail entry
+        try await createDogChange(
+            dogID: dogID,
+            changeType: .updated,
+            fieldName: DogFields.isBoarding,
+            oldValue: wasBoarding ? "true" : "false",
+            newValue: "true"
+        )
+    }
+
+    func undoDepartureOptimized(_ dogID: String) async throws {
+        print("🔄 CloudKitService.undoDepartureOptimized called for dog ID: \(dogID)")
+        // Fetch the existing dog record
+        let predicate = NSPredicate(format: "\(DogFields.id) == %@", dogID)
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        guard let dogRecord = records.first else {
+            throw CloudKitError.recordNotFound
+        }
+        let oldDepartureDate = dogRecord[DogFields.departureDate] as? Date
+        print("📅 Original record departure date: \(oldDepartureDate?.description ?? "nil")")
+        // Set departureDate to nil
+        dogRecord[DogFields.departureDate] = nil
+        dogRecord[DogFields.updatedAt] = Date()
+        if let currentUser = currentUser {
+            dogRecord[DogFields.modifiedBy] = currentUser.id
+            let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
+            dogRecord[DogFields.modificationCount] = currentCount + 1
+        }
+        print("📅 Departure date undone (set to nil)")
+        let savedRecord = try await publicDatabase.save(dogRecord)
+        print("✅ Undo departure saved: \(savedRecord.recordID.recordName)")
+        try await createDogChange(
+            dogID: dogID,
+            changeType: .updated,
+            fieldName: DogFields.departureDate,
+            oldValue: oldDepartureDate?.description,
+            newValue: "nil"
+        )
+    }
+
+    func editDepartureOptimized(_ dogID: String, newDate: Date) async throws {
+        print("🔄 CloudKitService.editDepartureOptimized called for dog ID: \(dogID), newDate: \(newDate)")
+        // Fetch the existing dog record
+        let predicate = NSPredicate(format: "\(DogFields.id) == %@", dogID)
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        guard let dogRecord = records.first else {
+            throw CloudKitError.recordNotFound
+        }
+        let oldDepartureDate = dogRecord[DogFields.departureDate] as? Date
+        print("📅 Original record departure date: \(oldDepartureDate?.description ?? "nil")")
+        // Set departureDate to newDate
+        dogRecord[DogFields.departureDate] = newDate
+        dogRecord[DogFields.updatedAt] = Date()
+        if let currentUser = currentUser {
+            dogRecord[DogFields.modifiedBy] = currentUser.id
+            let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
+            dogRecord[DogFields.modificationCount] = currentCount + 1
+        }
+        print("📅 Updated record departure date: \(newDate)")
+        let savedRecord = try await publicDatabase.save(dogRecord)
+        print("✅ Edit departure saved: \(savedRecord.recordID.recordName)")
+        try await createDogChange(
+            dogID: dogID,
+            changeType: .updated,
+            fieldName: DogFields.departureDate,
+            oldValue: oldDepartureDate?.description,
+            newValue: newDate.description
+        )
     }
 }
 

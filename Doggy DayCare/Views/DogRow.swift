@@ -232,17 +232,11 @@ struct DogRow: View {
     }
     
     private func undoDeparture() async {
-        var updatedDog = dog
-        updatedDog.departureDate = nil
-        updatedDog.updatedAt = Date()
-        await dataManager.updateDog(updatedDog)
+        await dataManager.undoDepartureOptimized(for: dog)
     }
     
     private func updateDepartureTime() async {
-        var updatedDog = dog
-        updatedDog.departureDate = newDepartureDate
-        updatedDog.updatedAt = Date()
-        await dataManager.updateDog(updatedDog)
+        await dataManager.editDepartureOptimized(for: dog, newDate: newDepartureDate)
     }
     
     private func setArrivalTime() async {

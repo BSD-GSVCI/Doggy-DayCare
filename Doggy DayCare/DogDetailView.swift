@@ -433,17 +433,9 @@ struct DogDetailView: View {
         print("🔄 Starting checkout process for dog: \(dog.name)")
         print("📅 Current departure date: \(dog.departureDate?.description ?? "nil")")
         
-        var updatedDog = dog
-        updatedDog.departureDate = Date()
-        updatedDog.updatedAt = Date()
-        
-        print("📅 New departure date: \(updatedDog.departureDate?.description ?? "nil")")
-        print("🔄 Calling dataManager.updateDog...")
-        
-        await dataManager.updateDog(updatedDog)
+        await dataManager.checkoutDog(dog)
         
         print("✅ Checkout completed for dog: \(dog.name)")
-        print("📅 Final departure date: \(updatedDog.departureDate?.description ?? "nil")")
         
         dismiss()
     }
@@ -560,11 +552,7 @@ struct BoardDogView: View {
     
     private func convertToBoarding() async {
         isLoading = true
-        var updatedDog = dog
-        updatedDog.isBoarding = true
-        updatedDog.boardingEndDate = endDate
-        updatedDog.updatedAt = Date()
-        await dataManager.updateDog(updatedDog)
+        await dataManager.boardDogOptimized(dog, endDate: endDate)
         isLoading = false
         dismiss()
     }
@@ -629,10 +617,7 @@ struct ExtendStayView: View {
     
     private func extendStay() async {
         isLoading = true
-        var updatedDog = dog
-        updatedDog.boardingEndDate = endDate
-        updatedDog.updatedAt = Date()
-        await dataManager.updateDog(updatedDog)
+        await dataManager.extendBoardingOptimized(for: dog, newEndDate: endDate)
         isLoading = false
         dismiss()
     }
