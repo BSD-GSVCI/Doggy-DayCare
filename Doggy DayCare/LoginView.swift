@@ -485,10 +485,11 @@ struct LoginView: View {
                 isOwner: true,
                 isActive: true,
                 isWorkingToday: false,
-                isOriginalOwner: isFirstOwner
+                isOriginalOwner: isFirstOwner,
+                hashedPassword: AuthenticationService.shared.hashPassword(ownerPassword)
             )
             
-            // Store password before creating the user
+            // Store password in UserDefaults for backward compatibility
             if isFirstOwner {
                 // For original owner, use the owner password key
                 UserDefaults.standard.set(ownerPassword, forKey: "owner_password")

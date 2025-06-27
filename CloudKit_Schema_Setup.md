@@ -40,6 +40,7 @@ This document provides the complete CloudKit schema configuration needed for the
 - `canManageMedications` (Int64, Queryable) - 1 = true, 0 = false
 - `canManageFeeding` (Int64, Queryable) - 1 = true, 0 = false
 - `canManageWalking` (Int64, Queryable) - 1 = true, 0 = false
+- `hashedPassword` (String, Queryable) - SHA-256 hashed password with salt
 - `createdBy` (String, Queryable, Indexed)
 - `modifiedBy` (String, Queryable, Indexed)
 - `modificationCount` (Int64, Queryable)

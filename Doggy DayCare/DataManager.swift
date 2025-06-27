@@ -244,6 +244,26 @@ class DataManager: ObservableObject {
         }
     }
     
+    func addCloudKitUser(_ cloudKitUser: CloudKitUser) async {
+        isLoading = true
+        errorMessage = nil
+        do {
+            let addedCloudKitUser = try await cloudKitService.createUser(cloudKitUser)
+            let addedUser = addedCloudKitUser.toUser()
+            await MainActor.run {
+                self.users.append(addedUser)
+                self.isLoading = false
+                print("✅ Added CloudKit user: \(addedUser.name)")
+            }
+        } catch {
+            await MainActor.run {
+                self.errorMessage = "Failed to add user: \(error.localizedDescription)"
+                self.isLoading = false
+                print("❌ Failed to add CloudKit user: \(error)")
+            }
+        }
+    }
+    
     func updateUser(_ user: User) async {
         isLoading = true
         errorMessage = nil
@@ -812,6 +832,42 @@ class DataManager: ObservableObject {
                 }
             }
         }
+        isLoading = false
+    }
+
+    func setArrivalTimeOptimized(for dog: Dog, newArrivalTime: Date) async {
+        isLoading = true
+        errorMessage = nil
+        
+        print("🔄 Starting optimized set arrival time for dog: \(dog.name)")
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].arrivalDate = newArrivalTime
+                self.dogs[index].isArrivalTimeSet = true
+                self.dogs[index].updatedAt = Date()
+                print("✅ Updated local cache for set arrival time")
+            }
+        }
+        
+        // Update CloudKit with only the arrival time
+        do {
+            try await cloudKitService.setArrivalTimeOptimized(dog.id.uuidString, newArrivalTime: newArrivalTime)
+            print("✅ Set arrival time completed in CloudKit for \(dog.name)")
+        } catch {
+            print("❌ Failed to set arrival time in CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                    self.dogs[index].arrivalDate = dog.arrivalDate
+                    self.dogs[index].isArrivalTimeSet = dog.isArrivalTimeSet
+                    self.dogs[index].updatedAt = dog.updatedAt
+                    print("🔄 Reverted set arrival time in local cache due to CloudKit failure")
+                }
+            }
+        }
+        
         isLoading = false
     }
 }

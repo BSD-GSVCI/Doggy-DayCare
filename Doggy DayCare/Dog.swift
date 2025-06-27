@@ -313,13 +313,40 @@ struct Dog: Codable, Identifiable {
         // Ensure departureDate is after arrivalDate to prevent negative durations
         guard departureDate > arrivalDate else { return "" }
         
-        let components = Calendar.current.dateComponents([.hour, .minute], from: arrivalDate, to: departureDate)
-        if let hours = components.hour, let minutes = components.minute {
+        let components = Calendar.current.dateComponents([.day, .hour, .minute], from: arrivalDate, to: departureDate)
+        if let days = components.day, let hours = components.hour, let minutes = components.minute {
             // Ensure we have valid non-negative values
+            let safeDays = max(0, days)
             let safeHours = max(0, hours)
             let safeMinutes = max(0, minutes)
             
-            if safeHours > 0 {
+            if safeDays > 0 {
+                return "\(safeDays)d \(safeHours)h \(safeMinutes)m"
+            } else if safeHours > 0 {
+                return "\(safeHours)h \(safeMinutes)m"
+            } else {
+                return "\(safeMinutes)m"
+            }
+        }
+        return ""
+    }
+    
+    var formattedCurrentStayDuration: String {
+        let endDate = Date()
+        
+        // Ensure endDate is after arrivalDate to prevent negative durations
+        guard endDate > arrivalDate else { return "" }
+        
+        let components = Calendar.current.dateComponents([.day, .hour, .minute], from: arrivalDate, to: endDate)
+        if let days = components.day, let hours = components.hour, let minutes = components.minute {
+            // Ensure we have valid non-negative values
+            let safeDays = max(0, days)
+            let safeHours = max(0, hours)
+            let safeMinutes = max(0, minutes)
+            
+            if safeDays > 0 {
+                return "\(safeDays)d \(safeHours)h \(safeMinutes)m"
+            } else if safeHours > 0 {
                 return "\(safeHours)h \(safeMinutes)m"
             } else {
                 return "\(safeMinutes)m"

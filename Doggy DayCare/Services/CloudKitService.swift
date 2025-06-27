@@ -42,6 +42,7 @@ class CloudKitService: ObservableObject {
         static let canManageMedications = "canManageMedications"
         static let canManageFeeding = "canManageFeeding"
         static let canManageWalking = "canManageWalking"
+        static let hashedPassword = "hashedPassword"
         
         // Audit fields
         static let createdBy = "createdBy"
@@ -200,6 +201,7 @@ class CloudKitService: ObservableObject {
         record[UserFields.canManageMedications] = user.canManageMedications ? 1 : 0
         record[UserFields.canManageFeeding] = user.canManageFeeding ? 1 : 0
         record[UserFields.canManageWalking] = user.canManageWalking ? 1 : 0
+        record[UserFields.hashedPassword] = user.hashedPassword
         
         // Audit fields
         record[UserFields.createdBy] = user.id
@@ -236,6 +238,7 @@ class CloudKitService: ObservableObject {
         record[UserFields.canManageMedications] = user.canManageMedications ? 1 : 0
         record[UserFields.canManageFeeding] = user.canManageFeeding ? 1 : 0
         record[UserFields.canManageWalking] = user.canManageWalking ? 1 : 0
+        record[UserFields.hashedPassword] = user.hashedPassword
         
         // Audit fields
         record[UserFields.modifiedBy] = user.id
@@ -1383,6 +1386,51 @@ class CloudKitService: ObservableObject {
             newValue: newDate.description
         )
     }
+
+    func setArrivalTimeOptimized(_ dogID: String, newArrivalTime: Date) async throws {
+        print("🔄 CloudKitService.setArrivalTimeOptimized called for dog ID: \(dogID), newArrivalTime: \(newArrivalTime)")
+        
+        // Fetch the existing dog record
+        let predicate = NSPredicate(format: "\(DogFields.id) == %@", dogID)
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let dogRecord = records.first else {
+            throw CloudKitError.recordNotFound
+        }
+        
+        let oldArrivalDate = dogRecord[DogFields.arrivalDate] as? Date
+        print("📅 Original record arrival date: \(oldArrivalDate?.description ?? "nil")")
+        
+        // Update only the arrival date and arrival time set flag
+        dogRecord[DogFields.arrivalDate] = newArrivalTime
+        dogRecord[DogFields.isArrivalTimeSet] = 1
+        dogRecord[DogFields.updatedAt] = Date()
+        
+        // Update audit fields if user is authenticated
+        if let currentUser = currentUser {
+            dogRecord[DogFields.modifiedBy] = currentUser.id
+            let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
+            dogRecord[DogFields.modificationCount] = currentCount + 1
+        }
+        
+        print("📅 Updated record arrival date: \(newArrivalTime)")
+        
+        // Save the updated record
+        let savedRecord = try await publicDatabase.save(dogRecord)
+        print("✅ Set arrival time saved successfully: \(savedRecord.recordID.recordName)")
+        
+        // Create audit trail entry
+        try await createDogChange(
+            dogID: dogID,
+            changeType: .updated,
+            fieldName: DogFields.arrivalDate,
+            oldValue: oldArrivalDate?.description,
+            newValue: newArrivalTime.description
+        )
+    }
 }
 
 // MARK: - Error Types
@@ -1435,6 +1483,7 @@ struct CloudKitUser {
     var canManageMedications: Bool
     var canManageFeeding: Bool
     var canManageWalking: Bool
+    var hashedPassword: String?
     
     var canWorkToday: Bool {
         // Owners can always work
@@ -1472,7 +1521,8 @@ struct CloudKitUser {
         canManageStaff: Bool = false,
         canManageMedications: Bool = true,
         canManageFeeding: Bool = true,
-        canManageWalking: Bool = true
+        canManageWalking: Bool = true,
+        hashedPassword: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -1493,6 +1543,7 @@ struct CloudKitUser {
         self.canManageMedications = canManageMedications
         self.canManageFeeding = canManageFeeding
         self.canManageWalking = canManageWalking
+        self.hashedPassword = hashedPassword
     }
     
     init(from record: CKRecord) {
@@ -1515,6 +1566,7 @@ struct CloudKitUser {
         self.canManageMedications = (record[CloudKitService.UserFields.canManageMedications] as? Int64 ?? 0) == 1
         self.canManageFeeding = (record[CloudKitService.UserFields.canManageFeeding] as? Int64 ?? 0) == 1
         self.canManageWalking = (record[CloudKitService.UserFields.canManageWalking] as? Int64 ?? 0) == 1
+        self.hashedPassword = record[CloudKitService.UserFields.hashedPassword] as? String
     }
 }
 

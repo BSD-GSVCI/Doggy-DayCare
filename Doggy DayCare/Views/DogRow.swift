@@ -73,10 +73,14 @@ struct DogRow: View {
                                 Text("until: \(shortDateFormatter.string(from: boardingEndDate))")
                                     .font(.caption)
                                     .foregroundStyle(.blue)
-                                if dog.shouldBeTreatedAsDaycare {
+                                if dog.shouldBeTreatedAsDaycare && dog.departureDate == nil {
                                     Text("– is leaving today")
                                         .font(.caption)
                                         .foregroundStyle(.orange)
+                                } else if dog.shouldBeTreatedAsDaycare && dog.departureDate != nil {
+                                    Text("– already left")
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
                                 }
                             }
                         }
@@ -240,10 +244,6 @@ struct DogRow: View {
     }
     
     private func setArrivalTime() async {
-        var updatedDog = dog
-        updatedDog.arrivalDate = newArrivalTime
-        updatedDog.isArrivalTimeSet = true
-        updatedDog.updatedAt = Date()
-        await dataManager.updateDog(updatedDog)
+        await dataManager.setArrivalTimeOptimized(for: dog, newArrivalTime: newArrivalTime)
     }
 } 

@@ -514,12 +514,16 @@ private struct AddStaffView: View {
             isWorkingToday: false
         )
         
-        // Store staff password
+        // Store staff password in UserDefaults for backward compatibility
         let passwordKey = "staff_password_\(name)"
         UserDefaults.standard.set(password, forKey: passwordKey)
         
         Task {
-            await dataManager.addUser(newUser)
+            // Create CloudKit user with hashed password
+            var cloudKitUser = newUser.toCloudKitUser()
+            cloudKitUser.hashedPassword = AuthenticationService.shared.hashPassword(password)
+            
+            await dataManager.addCloudKitUser(cloudKitUser)
             await MainActor.run {
                 dismiss()
             }

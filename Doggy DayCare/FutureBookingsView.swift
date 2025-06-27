@@ -102,7 +102,7 @@ struct FutureBookingRow: View {
                         .foregroundStyle(.primary)
                     
                     if dog.isBoarding, let boardingEndDate = dog.boardingEndDate {
-                        Text("Expected Departure")
+                        Text("Boarding End Date")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(dateFormatter.string(from: boardingEndDate))
@@ -158,6 +158,8 @@ struct FutureBookingFormView: View {
     @State private var showingImportDatabase = false
     @State private var showingDuplicateAlert = false
     @State private var duplicateDog: Dog?
+    @State private var profileImage: UIImage?
+    @State private var showingImagePicker = false
     
     var body: some View {
         NavigationStack {
@@ -181,6 +183,31 @@ struct FutureBookingFormView: View {
                 }
                 
                 Section("Dog Information") {
+                    // Profile Picture
+                    VStack {
+                        if let profileImage = profileImage {
+                            Image(uiImage: profileImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 100, height: 100)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color.gray, lineWidth: 2))
+                        } else {
+                            Image(systemName: "camera.circle.fill")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 100, height: 100)
+                                .foregroundColor(.gray)
+                        }
+                        
+                        Button(profileImage == nil ? "Add Profile Picture" : "Change Picture") {
+                            showingImagePicker = true
+                        }
+                        .font(.caption)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical)
+                    
                     TextField("Name", text: $name)
                     TextField("Owner Name", text: $ownerName)
                     DatePicker("Arrival Date", selection: $arrivalDate, displayedComponents: .date)
@@ -190,7 +217,7 @@ struct FutureBookingFormView: View {
                     Toggle("Boarding", isOn: $isBoarding)
                     
                     if isBoarding {
-                        DatePicker("Expected Departure", selection: $boardingEndDate, displayedComponents: .date)
+                        DatePicker("Boarding End Date", selection: $boardingEndDate, displayedComponents: .date)
                     }
                 }
                 
@@ -248,6 +275,9 @@ struct FutureBookingFormView: View {
                 loadDogFromImport(importedDog)
             }
         }
+        .sheet(isPresented: $showingImagePicker) {
+            ImagePicker(image: $profileImage)
+        }
         .alert("Duplicate Dog Found", isPresented: $showingDuplicateAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Use Imported Data") {
@@ -263,8 +293,9 @@ struct FutureBookingFormView: View {
     }
     
     private func loadDogFromImport(_ importedDog: Dog) {
-        // Check for duplicates
+        // Check for duplicates (only against currently present dogs)
         let existingDogs = dataManager.dogs.filter { dog in
+            dog.isCurrentlyPresent && // Only check currently present dogs
             dog.name.lowercased() == importedDog.name.lowercased() &&
             (dog.ownerName?.lowercased() == importedDog.ownerName?.lowercased() || 
              (dog.ownerName == nil && importedDog.ownerName == nil))
@@ -285,6 +316,7 @@ struct FutureBookingFormView: View {
         walkingNotes = importedDog.walkingNotes ?? ""
         isDaycareFed = importedDog.isDaycareFed
         notes = importedDog.notes ?? ""
+        profileImage = importedDog.profilePictureData.flatMap { UIImage(data: $0) }
         
         // Keep current arrival date and boarding status
         // arrivalDate stays as current date
@@ -293,6 +325,9 @@ struct FutureBookingFormView: View {
     
     private func addFutureBooking() async {
         isLoading = true
+        
+        // Convert profile image to data
+        let profilePictureData = profileImage?.jpegData(compressionQuality: 0.8)
         
         let newDog = Dog(
             name: name,
@@ -305,10 +340,17 @@ struct FutureBookingFormView: View {
             walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
             isDaycareFed: isDaycareFed,
             notes: notes.isEmpty ? nil : notes,
+            profilePictureData: profilePictureData,
             isArrivalTimeSet: false
         )
         
-        await dataManager.addDog(newDog)
+        // Set boarding end date for boarding dogs
+        var dogToAdd = newDog
+        if isBoarding {
+            dogToAdd.boardingEndDate = boardingEndDate
+        }
+        
+        await dataManager.addDog(dogToAdd)
         
         isLoading = false
         dismiss()
@@ -333,6 +375,8 @@ struct FutureBookingEditView: View {
     @State private var notes: String
     @State private var isLoading = false
     @State private var isArrivalTimeSet: Bool
+    @State private var profileImage: UIImage?
+    @State private var showingImagePicker = false
     
     init(dog: Dog) {
         self.dog = dog
@@ -358,12 +402,38 @@ struct FutureBookingEditView: View {
         self._medications = State(initialValue: dog.medications ?? "")
         self._allergiesAndFeedingInstructions = State(initialValue: dog.allergiesAndFeedingInstructions ?? "")
         self._notes = State(initialValue: dog.notes ?? "")
+        self._profileImage = State(initialValue: dog.profilePictureData.flatMap { UIImage(data: $0) })
     }
     
     var body: some View {
         NavigationStack {
             Form {
                 Section("Dog Information") {
+                    // Profile Picture
+                    VStack {
+                        if let profileImage = profileImage {
+                            Image(uiImage: profileImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 100, height: 100)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(Color.gray, lineWidth: 2))
+                        } else {
+                            Image(systemName: "camera.circle.fill")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 100, height: 100)
+                                .foregroundColor(.gray)
+                        }
+                        
+                        Button(profileImage == nil ? "Add Profile Picture" : "Change Picture") {
+                            showingImagePicker = true
+                        }
+                        .font(.caption)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical)
+                    
                     TextField("Name", text: $name)
                     TextField("Owner Name", text: $ownerName)
                     DatePicker("Arrival Date", selection: $arrivalDate, displayedComponents: .date)
@@ -390,7 +460,7 @@ struct FutureBookingEditView: View {
                     Toggle("Boarding", isOn: $isBoarding)
                     
                     if isBoarding {
-                        DatePicker("Expected Departure", selection: $boardingEndDate, displayedComponents: .date)
+                        DatePicker("Boarding End Date", selection: $boardingEndDate, displayedComponents: .date)
                     }
                 }
                 
@@ -443,10 +513,16 @@ struct FutureBookingEditView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingImagePicker) {
+            ImagePicker(image: $profileImage)
+        }
     }
     
     private func updateFutureBooking() async {
         isLoading = true
+        
+        // Convert profile image to data
+        let profilePictureData = profileImage?.jpegData(compressionQuality: 0.8)
         
         var updatedDog = dog
         updatedDog.name = name
@@ -460,6 +536,7 @@ struct FutureBookingEditView: View {
         updatedDog.walkingNotes = walkingNotes.isEmpty ? nil : walkingNotes
         updatedDog.isDaycareFed = isDaycareFed
         updatedDog.notes = notes.isEmpty ? nil : notes
+        updatedDog.profilePictureData = profilePictureData
         updatedDog.isArrivalTimeSet = isArrivalTimeSet // Use the state value instead of forcing false
         updatedDog.updatedAt = Date()
         

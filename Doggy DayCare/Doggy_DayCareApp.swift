@@ -12,13 +12,17 @@ import CloudKit
 struct Doggy_DayCareApp: App {
     @StateObject private var dataManager = DataManager.shared
     @StateObject private var authService = AuthenticationService.shared
+    @StateObject private var networkService = NetworkConnectivityService.shared
     @State private var isInitialized = false
     @State private var initializationError: String?
     
     var body: some Scene {
         WindowGroup {
             Group {
-                if let error = initializationError {
+                if !networkService.isConnected {
+                    // Show no internet screen
+                    NoInternetView()
+                } else if let error = initializationError {
                     // Show error screen
                     VStack(spacing: 20) {
                         Image(systemName: "exclamationmark.triangle")

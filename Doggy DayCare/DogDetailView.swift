@@ -682,11 +682,7 @@ struct SetArrivalTimeView: View {
     
     private func setArrivalTime() async {
         isLoading = true
-        var updatedDog = dog
-        updatedDog.arrivalDate = newArrivalTime
-        updatedDog.isArrivalTimeSet = true
-        updatedDog.updatedAt = Date()
-        await dataManager.updateDog(updatedDog)
+        await dataManager.setArrivalTimeOptimized(for: dog, newArrivalTime: newArrivalTime)
         isLoading = false
         dismiss()
     }

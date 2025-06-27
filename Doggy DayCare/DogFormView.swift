@@ -125,7 +125,7 @@ struct DogFormView: View {
                     
                     if isBoarding {
                         DatePicker(
-                            "Expected Departure",
+                            "Boarding End Date",
                             selection: Binding(
                                 get: { boardingEndDate ?? Calendar.current.startOfDay(for: Date()) },
                                 set: { boardingEndDate = $0 }

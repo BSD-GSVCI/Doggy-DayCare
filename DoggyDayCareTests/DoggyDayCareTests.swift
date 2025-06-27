@@ -200,6 +200,29 @@ final class DoggyDayCareTests: XCTestCase {
         
         // Test formatted duration
         XCTAssertEqual(dog.formattedStayDuration, "1h 0m")
+        
+        // Test longer duration (3 days)
+        let longDepartureDate = now.addingTimeInterval(3 * 24 * 3600) // 3 days later
+        dog.departureDate = longDepartureDate
+        try modelContext.save()
+        
+        XCTAssertEqual(dog.formattedStayDuration, "3d 0h 0m")
+        
+        // Test duration with hours and minutes
+        let mediumDepartureDate = now.addingTimeInterval(2 * 24 * 3600 + 5 * 3600 + 30 * 60) // 2 days, 5 hours, 30 minutes
+        dog.departureDate = mediumDepartureDate
+        try modelContext.save()
+        
+        XCTAssertEqual(dog.formattedStayDuration, "2d 5h 30m")
+        
+        // Test current stay duration for present dogs
+        let currentDog = try await createTestDog(name: "Current Dog")
+        XCTAssertTrue(currentDog.isCurrentlyPresent)
+        XCTAssertFalse(currentDog.formattedCurrentStayDuration.isEmpty)
+        
+        // Test that current stay duration shows some time (should be very small for just created dog)
+        let currentDuration = currentDog.formattedCurrentStayDuration
+        XCTAssertTrue(currentDuration.contains("m") || currentDuration.contains("h") || currentDuration.contains("d"))
     }
     
     // MARK: - Future Bookings Tests

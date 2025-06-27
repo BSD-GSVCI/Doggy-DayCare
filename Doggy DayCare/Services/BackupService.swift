@@ -33,18 +33,14 @@ class BackupService {
             
             let serviceType = dog.isBoarding ? "Boarding" : "Daycare"
             
-            // Calculate stay duration
+            // Calculate stay duration using the improved formatted properties
             let stayDuration: String
-            if let departureDate = dog.departureDate {
-                let duration = departureDate.timeIntervalSince(dog.arrivalDate)
-                let hours = Int(duration) / 3600
-                let minutes = Int(duration) % 3600 / 60
-                stayDuration = "\(hours)h \(minutes)m"
+            if dog.departureDate != nil {
+                // For departed dogs, use the formatted stay duration
+                stayDuration = dog.formattedStayDuration
             } else {
-                let duration = Date().timeIntervalSince(dog.arrivalDate)
-                let hours = Int(duration) / 3600
-                let minutes = Int(duration) % 3600 / 60
-                stayDuration = "\(hours)h \(minutes)m"
+                // For current dogs, use the current stay duration
+                stayDuration = dog.formattedCurrentStayDuration
             }
             
             // Format records in a readable way
