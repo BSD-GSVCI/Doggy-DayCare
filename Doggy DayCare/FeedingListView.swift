@@ -223,7 +223,7 @@ struct FeedingListView: View {
                                     .foregroundStyle(.primary)
                                     .textCase(nil)
                             }
-                            .listSectionSpacing(20)
+                            .listSectionSpacing(160)
                         }
                         
                         if !boardingDogs.isEmpty {
@@ -239,7 +239,7 @@ struct FeedingListView: View {
                                     .foregroundStyle(.primary)
                                     .textCase(nil)
                             }
-                            .listSectionSpacing(20)
+                            .listSectionSpacing(160)
                         }
                     }
                 }
@@ -415,22 +415,8 @@ struct DogFeedingRow: View {
                 }
             }
         }
-        .alert("Record Feeding Activity", isPresented: $showingFeedingPopup) {
-            Button("Breakfast") { addFeedingRecord(.breakfast) }
-            Button("Lunch") { addFeedingRecord(.lunch) }
-            Button("Dinner") { addFeedingRecord(.dinner) }
-            Button("Snack") { addFeedingRecord(.snack) }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Record feeding activity for \(dog.name)")
-        }
-        .alert("Delete Last Feeding", isPresented: $showingDeleteAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                deleteLastFeeding()
-            }
-        } message: {
-            Text("Are you sure you want to delete the last feeding for \(dog.name)?")
+        .sheet(isPresented: $showingFeedingPopup) {
+            FeedingPopupView(dog: dog)
         }
         .alert("Delete Feeding Record", isPresented: $showingDeleteFeedingAlert) {
             Button("Cancel", role: .cancel) { }
@@ -444,20 +430,6 @@ struct DogFeedingRow: View {
         }
     }
     
-    private func addFeedingRecord(_ type: FeedingRecord.FeedingType) {
-        Task {
-            await dataManager.addFeedingRecord(to: dog, type: type, recordedBy: authService.currentUser?.name)
-        }
-    }
-    
-    private func deleteLastFeeding() {
-        if let lastFeeding = dog.feedingRecords.last {
-            Task {
-                await dataManager.deleteFeedingRecord(lastFeeding, from: dog)
-            }
-        }
-    }
-    
     private func deleteFeedingRecord(_ record: FeedingRecord) {
         Task {
             await dataManager.deleteFeedingRecord(record, from: dog)
@@ -468,26 +440,90 @@ struct DogFeedingRow: View {
 struct FeedingInstanceView: View {
     let record: FeedingRecord
     let onDelete: () -> Void
+    @EnvironmentObject var dataManager: DataManager
+    @State private var showingNoteAlert = false
+    @State private var showingEditNote = false
+    @State private var editedNotes = ""
     
     var body: some View {
-        Button(action: onDelete) {
-            HStack(spacing: 4) {
+        Button(action: {
+            showingNoteAlert = true
+        }) {
+            HStack(spacing: 2) {
+                // Feeding type icon
                 Image(systemName: iconForFeedingType(record.type))
                     .foregroundStyle(colorForFeedingType(record.type))
+                    .font(.caption)
                 
+                Spacer(minLength: 2)
+                
+                // Time
                 Text(record.timestamp.formatted(date: .omitted, time: .shortened))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                
+                // Note icon if record has notes
+                if let notes = record.notes, !notes.isEmpty {
+                    Text("📝")
+                        .font(.caption2)
+                        .padding(1)
+                        .background(Color.blue.opacity(0.1))
+                        .clipShape(Circle())
+                }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.gray.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 4))
         }
         .buttonStyle(PlainButtonStyle())
+        .onLongPressGesture {
+            onDelete()
+        }
+        .alert("Feeding Record Notes", isPresented: $showingNoteAlert) {
+            if let notes = record.notes, !notes.isEmpty {
+                Button("Edit Note") {
+                    editedNotes = notes
+                    showingEditNote = true
+                }
+            } else {
+                Button("Add Note") {
+                    editedNotes = ""
+                    showingEditNote = true
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            if let notes = record.notes, !notes.isEmpty {
+                Text(notes)
+            } else {
+                Text("This record has no notes associated with it.")
+            }
+        }
+        .alert("Edit Note", isPresented: $showingEditNote) {
+            TextField("Notes", text: $editedNotes, axis: .vertical)
+                .lineLimit(3...6)
+            Button("Save") {
+                Task {
+                    await updateFeedingRecordNotes()
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Edit notes for this feeding record")
+        }
+    }
+    
+    private func updateFeedingRecordNotes() async {
+        // Find the dog that contains this record
+        if let dog = dataManager.dogs.first(where: { dog in
+            dog.feedingRecords.contains { $0.id == record.id }
+        }) {
+            await dataManager.updateFeedingRecordNotes(record, newNotes: editedNotes.isEmpty ? nil : editedNotes, in: dog)
+        }
     }
     
     private func iconForFeedingType(_ type: FeedingRecord.FeedingType) -> String {
@@ -592,10 +628,118 @@ struct AddFeedingView: View {
     private func recordFeeding() async {
         isLoading = true
         
-        await dataManager.addFeedingRecord(to: dog, type: feedingType, recordedBy: AuthenticationService.shared.currentUser?.name)
+        await dataManager.addFeedingRecord(to: dog, type: feedingType, notes: notes.isEmpty ? nil : notes, recordedBy: AuthenticationService.shared.currentUser?.name)
         
         isLoading = false
         dismiss()
+    }
+}
+
+struct FeedingPopupView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var dataManager: DataManager
+    @StateObject private var authService = AuthenticationService.shared
+    let dog: Dog
+    
+    @State private var notes = ""
+    @State private var isLoading = false
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(dog.name)
+                        .font(.headline)
+                    
+                    if let allergiesAndFeedingInstructions = dog.allergiesAndFeedingInstructions, !allergiesAndFeedingInstructions.isEmpty {
+                        Text(allergiesAndFeedingInstructions)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                Section("Notes (optional)") {
+                    TextField("Add notes for this feeding", text: $notes, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+                
+                Section("Feeding Type") {
+                    Button {
+                        addFeedingRecord(.breakfast)
+                    } label: {
+                        HStack {
+                            Image(systemName: "sunrise.fill")
+                                .foregroundStyle(.orange)
+                            Text("Breakfast")
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    
+                    Button {
+                        addFeedingRecord(.lunch)
+                    } label: {
+                        HStack {
+                            Image(systemName: "sun.max.fill")
+                                .foregroundStyle(.yellow)
+                            Text("Lunch")
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    
+                    Button {
+                        addFeedingRecord(.dinner)
+                    } label: {
+                        HStack {
+                            Image(systemName: "sunset.fill")
+                                .foregroundStyle(.red)
+                            Text("Dinner")
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    
+                    Button {
+                        addFeedingRecord(.snack)
+                    } label: {
+                        HStack {
+                            Image(systemName: "pawprint.fill")
+                                .foregroundStyle(.brown)
+                            Text("Snack")
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                }
+            }
+            .navigationTitle("Record Feeding")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+            .overlay {
+                if isLoading {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .overlay {
+                            ProgressView("Recording...")
+                                .padding()
+                                .background(.regularMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                }
+            }
+        }
+    }
+    
+    private func addFeedingRecord(_ type: FeedingRecord.FeedingType) {
+        isLoading = true
+        Task {
+            await dataManager.addFeedingRecord(to: dog, type: type, notes: notes.isEmpty ? nil : notes, recordedBy: authService.currentUser?.name)
+            isLoading = false
+            dismiss()
+        }
     }
 }
 

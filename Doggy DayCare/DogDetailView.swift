@@ -142,81 +142,6 @@ struct DogDetailView: View {
                 }
             }
             
-            // Walking Section
-            if dog.needsWalking || !dog.walkingRecords.isEmpty {
-                Section("Walking Information") {
-                    if !dog.walkingRecords.isEmpty {
-                        ForEach(dog.walkingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
-                            HStack {
-                                Image(systemName: "figure.walk")
-                                    .foregroundStyle(.blue)
-                                VStack(alignment: .leading) {
-                                    Text("Walk")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                    if let notes = record.notes {
-                                        Text(notes)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    
-                    // Individual potty instances
-                    if !dog.pottyRecords.isEmpty {
-                        ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
-                            HStack {
-                                if record.type == .pee {
-                                    Image(systemName: "drop.fill")
-                                        .foregroundStyle(.yellow)
-                                } else if record.type == .poop {
-                                    Text("💩")
-                                } else if record.type == .nothing {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.red)
-                                }
-                                VStack(alignment: .leading) {
-                                    Text(record.type.rawValue.capitalized)
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                }
-                                Spacer()
-                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    
-                    // Potty counts
-                    HStack(spacing: 16) {
-                        HStack {
-                            Image(systemName: "drop.fill")
-                                .foregroundStyle(.yellow)
-                            Text("\(dog.peeCount)")
-                                .font(.headline)
-                                .foregroundStyle(.blue)
-                        }
-                        
-                        HStack {
-                            Text("💩")
-                            Text("\(dog.poopCount)")
-                                .font(.headline)
-                                .foregroundStyle(.blue)
-                        }
-                        
-                        Spacer()
-                    }
-                    .font(.caption)
-                }
-            }
-            
             // Feeding Section
             if dog.isDaycareFed || !dog.feedingRecords.isEmpty {
                 Section("Feeding Information") {
@@ -229,6 +154,11 @@ struct DogDetailView: View {
                                     Text(record.type.rawValue.capitalized)
                                         .font(.subheadline)
                                         .fontWeight(.medium)
+                                    if let notes = record.notes, !notes.isEmpty {
+                                        Text(notes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                                 Spacer()
                                 Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
@@ -268,6 +198,96 @@ struct DogDetailView: View {
                             Image(systemName: "pawprint.fill")
                                 .foregroundStyle(.brown)
                             Text("\(dog.snackCount)")
+                                .font(.headline)
+                                .foregroundStyle(.blue)
+                        }
+                        
+                        Spacer()
+                    }
+                    .font(.caption)
+                }
+            }
+            
+            // Walking Section
+            if dog.needsWalking || !dog.walkingRecords.isEmpty {
+                Section("Walking Information") {
+                    if !dog.walkingRecords.isEmpty {
+                        ForEach(dog.walkingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                            HStack {
+                                Image(systemName: "figure.walk")
+                                    .foregroundStyle(.blue)
+                                VStack(alignment: .leading) {
+                                    Text("Walk")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    if let notes = record.notes {
+                                        Text(notes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    
+                    // Individual potty instances
+                    if !dog.pottyRecords.isEmpty {
+                        ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                            HStack {
+                                if record.type == .pee {
+                                    Image(systemName: "drop.fill")
+                                        .foregroundStyle(.yellow)
+                                } else if record.type == .poop {
+                                    Text("💩")
+                                } else if record.type == .both {
+                                    HStack(spacing: 2) {
+                                        Image(systemName: "drop.fill")
+                                            .foregroundStyle(.yellow)
+                                        Text("💩")
+                                    }
+                                } else if record.type == .nothing {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.red)
+                                }
+                                VStack(alignment: .leading) {
+                                    if let notes = record.notes, !notes.isEmpty {
+                                        Text(notes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    
+                    // Potty counts
+                    HStack(spacing: 16) {
+                        let todaysPottyRecords = dog.pottyRecords.filter { record in
+                            Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
+                        }
+                        
+                        let todaysPeeCount = todaysPottyRecords.filter { $0.type == .pee || $0.type == .both }.count
+                        let todaysPoopCount = todaysPottyRecords.filter { $0.type == .poop || $0.type == .both }.count
+                        
+                        HStack {
+                            Image(systemName: "drop.fill")
+                                .foregroundStyle(.yellow)
+                            Text("\(todaysPeeCount)")
+                                .font(.headline)
+                                .foregroundStyle(.blue)
+                        }
+                        
+                        HStack {
+                            Text("💩")
+                            Text("\(todaysPoopCount)")
                                 .font(.headline)
                                 .foregroundStyle(.blue)
                         }

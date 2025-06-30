@@ -17,6 +17,7 @@ struct PottyRecord: Codable, Identifiable {
     var id = UUID()
     var timestamp: Date
     var type: PottyType
+    var notes: String?  // Add notes field
     var recordedBy: String?  // Store user name instead of User reference
     
     enum PottyType: String, Codable {
@@ -48,9 +49,10 @@ struct PottyRecord: Codable, Identifiable {
         }
     }
     
-    init(timestamp: Date, type: PottyType, recordedBy: String? = nil) {
+    init(timestamp: Date, type: PottyType, notes: String? = nil, recordedBy: String? = nil) {
         self.timestamp = timestamp
         self.type = type
+        self.notes = notes
         self.recordedBy = recordedBy
     }
 }
@@ -59,6 +61,7 @@ struct FeedingRecord: Codable, Identifiable {
     var id = UUID()
     var timestamp: Date
     var type: FeedingType
+    var notes: String?  // Add notes field
     var recordedBy: String?  // Store user name instead of User reference
     
     enum FeedingType: String, Codable {
@@ -68,9 +71,10 @@ struct FeedingRecord: Codable, Identifiable {
         case snack
     }
     
-    init(timestamp: Date, type: FeedingType, recordedBy: String? = nil) {
+    init(timestamp: Date, type: FeedingType, notes: String? = nil, recordedBy: String? = nil) {
         self.timestamp = timestamp
         self.type = type
+        self.notes = notes
         self.recordedBy = recordedBy
     }
 }
@@ -158,8 +162,8 @@ struct Dog: Codable, Identifiable {
         self.isDeleted = isDeleted
     }
     
-    mutating func addPottyRecord(type: PottyRecord.PottyType, recordedBy: User? = nil) {
-        let record = PottyRecord(timestamp: Date(), type: type, recordedBy: recordedBy?.name)
+    mutating func addPottyRecord(type: PottyRecord.PottyType, notes: String? = nil, recordedBy: User? = nil) {
+        let record = PottyRecord(timestamp: Date(), type: type, notes: notes, recordedBy: recordedBy?.name)
         pottyRecords.append(record)
         updatedAt = Date()
         lastModifiedBy = recordedBy
@@ -174,18 +178,20 @@ struct Dog: Codable, Identifiable {
         }
     }
     
-    mutating func updatePottyRecord(at timestamp: Date, type: PottyRecord.PottyType, modifiedBy: User? = nil) {
+    mutating func updatePottyRecord(at timestamp: Date, type: PottyRecord.PottyType, notes: String? = nil, modifiedBy: User? = nil) {
         if let index = pottyRecords.firstIndex(where: { $0.timestamp == timestamp }) {
             pottyRecords[index].type = type
+            pottyRecords[index].notes = notes
             updatedAt = Date()
             lastModifiedBy = modifiedBy
         }
     }
     
-    mutating func addFeedingRecord(type: FeedingRecord.FeedingType, recordedBy: User? = nil) {
+    mutating func addFeedingRecord(type: FeedingRecord.FeedingType, notes: String? = nil, recordedBy: User? = nil) {
         let record = FeedingRecord(
             timestamp: Date(),
             type: type,
+            notes: notes,
             recordedBy: recordedBy?.name
         )
         feedingRecords.append(record)
@@ -202,9 +208,10 @@ struct Dog: Codable, Identifiable {
         }
     }
     
-    mutating func updateFeedingRecord(at timestamp: Date, type: FeedingRecord.FeedingType, modifiedBy: User? = nil) {
+    mutating func updateFeedingRecord(at timestamp: Date, type: FeedingRecord.FeedingType, notes: String? = nil, modifiedBy: User? = nil) {
         if let index = feedingRecords.firstIndex(where: { $0.timestamp == timestamp }) {
             feedingRecords[index].type = type
+            feedingRecords[index].notes = notes
             updatedAt = Date()
             lastModifiedBy = modifiedBy
         }
@@ -391,13 +398,13 @@ struct Dog: Codable, Identifiable {
     }
     
     var peeCount: Int {
-        let count = pottyRecords.filter { $0.type == .pee }.count
+        let count = pottyRecords.filter { $0.type == .pee || $0.type == .both }.count
         print("peeCount for \(name): \(count) (total records: \(pottyRecords.count))")
         return count
     }
     
     var poopCount: Int {
-        let count = pottyRecords.filter { $0.type == .poop }.count
+        let count = pottyRecords.filter { $0.type == .poop || $0.type == .both }.count
         print("poopCount for \(name): \(count) (total records: \(pottyRecords.count))")
         return count
     }

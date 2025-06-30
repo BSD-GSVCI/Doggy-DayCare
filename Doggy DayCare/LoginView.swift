@@ -390,33 +390,8 @@ struct LoginView: View {
             staffPassword = ""
             confirmPassword = ""
             
-            // Check if owner exists using CloudKit
-            Task {
-                do {
-                    let cloudKitService = CloudKitService.shared
-                    let allUsers = try await cloudKitService.fetchAllUsers()
-                    let owners = allUsers.filter { $0.isOwner && $0.isActive }
-                    
-                    print("Found \(owners.count) active owners")
-                    for owner in owners {
-                        print("Owner: \(owner.name), email: \(owner.email ?? "none"), isOriginalOwner: \(owner.isOriginalOwner)")
-                    }
-                    
-                    await MainActor.run {
-                        ownerExists = !owners.isEmpty
-                        print("ownerExists set to: \(ownerExists)")
-                        
-                        // Set initial owner signup mode
-                        isOwnerSignupMode = !ownerExists
-                    }
-                } catch {
-                    print("Error checking for owner: \(error)")
-                    await MainActor.run {
-                        ownerExists = false
-                        isOwnerSignupMode = true
-                    }
-                }
-            }
+            // Check if owner exists using CloudKit in background
+            checkOwnerExists()
         }
     }
     
@@ -552,6 +527,39 @@ struct LoginView: View {
         }
         
         isResettingPassword = false
+    }
+    
+    private func checkOwnerExists() {
+        // Check if owner exists using CloudKit in background
+        Task {
+            // Add a small delay to ensure UI is fully loaded before making CloudKit calls
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            
+            do {
+                let cloudKitService = CloudKitService.shared
+                let allUsers = try await cloudKitService.fetchAllUsers()
+                let owners = allUsers.filter { $0.isOwner && $0.isActive }
+                
+                print("Found \(owners.count) active owners")
+                for owner in owners {
+                    print("Owner: \(owner.name), email: \(owner.email ?? "none"), isOriginalOwner: \(owner.isOriginalOwner)")
+                }
+                
+                await MainActor.run {
+                    ownerExists = !owners.isEmpty
+                    print("ownerExists set to: \(ownerExists)")
+                    
+                    // Set initial owner signup mode
+                    isOwnerSignupMode = !ownerExists
+                }
+            } catch {
+                print("Error checking for owner: \(error)")
+                await MainActor.run {
+                    ownerExists = false
+                    isOwnerSignupMode = true
+                }
+            }
+        }
     }
 }
 

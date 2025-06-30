@@ -545,6 +545,7 @@ class CloudKitService: ObservableObject {
                 ckRecord[RecordFields.id] = record.id.uuidString
                 ckRecord[RecordFields.timestamp] = record.timestamp
                 ckRecord[RecordFields.type] = record.type.rawValue
+                ckRecord[RecordFields.notes] = record.notes
                 ckRecord[RecordFields.recordedBy] = record.recordedBy
                 ckRecord[RecordFields.dogID] = dogID
                 ckRecord[RecordFields.createdAt] = Date()
@@ -601,6 +602,7 @@ class CloudKitService: ObservableObject {
                 ckRecord[RecordFields.id] = record.id.uuidString
                 ckRecord[RecordFields.timestamp] = record.timestamp
                 ckRecord[RecordFields.type] = record.type.rawValue
+                ckRecord[RecordFields.notes] = record.notes
                 ckRecord[RecordFields.recordedBy] = record.recordedBy
                 ckRecord[RecordFields.dogID] = dogID
                 ckRecord[RecordFields.createdAt] = Date()
@@ -729,6 +731,7 @@ class CloudKitService: ObservableObject {
                 var feedingRecord = FeedingRecord(
                     timestamp: timestamp,
                     type: type,
+                    notes: record[RecordFields.notes] as? String,
                     recordedBy: record[RecordFields.recordedBy] as? String
                 )
                 feedingRecord.id = id  // Preserve the original ID from CloudKit
@@ -809,6 +812,7 @@ class CloudKitService: ObservableObject {
                 var pottyRecord = PottyRecord(
                     timestamp: timestamp,
                     type: type,
+                    notes: record[RecordFields.notes] as? String,
                     recordedBy: record[RecordFields.recordedBy] as? String
                 )
                 pottyRecord.id = id  // Preserve the original ID from CloudKit
@@ -1087,6 +1091,7 @@ class CloudKitService: ObservableObject {
         ckRecord[RecordFields.id] = record.id.uuidString
         ckRecord[RecordFields.timestamp] = record.timestamp
         ckRecord[RecordFields.type] = record.type.rawValue
+        ckRecord[RecordFields.notes] = record.notes
         ckRecord[RecordFields.recordedBy] = record.recordedBy
         ckRecord[RecordFields.dogID] = dogID
         ckRecord[RecordFields.createdAt] = Date()
@@ -1094,6 +1099,28 @@ class CloudKitService: ObservableObject {
         
         let savedRecord = try await publicDatabase.save(ckRecord)
         print("✅ Feeding record saved to CloudKit: \(savedRecord.recordID.recordName)")
+    }
+    
+    func updateFeedingRecordNotes(_ record: FeedingRecord, newNotes: String?, for dogID: String) async throws {
+        print("🔄 CloudKit: Updating feeding record notes for record ID: \(record.id)")
+        
+        let predicate = NSPredicate(format: "\(RecordFields.id) == %@ AND \(RecordFields.dogID) == %@", record.id.uuidString, dogID)
+        let query = CKQuery(recordType: RecordTypes.feedingRecord, predicate: predicate)
+        
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let recordToUpdate = records.first else {
+            print("❌ CloudKit: No feeding record found to update")
+            throw CloudKitError.recordNotFound
+        }
+        
+        // Update the notes field
+        recordToUpdate[RecordFields.notes] = newNotes
+        recordToUpdate[RecordFields.updatedAt] = Date()
+        
+        let savedRecord = try await publicDatabase.save(recordToUpdate)
+        print("✅ Feeding record notes updated in CloudKit: \(savedRecord.recordID.recordName)")
     }
     
     func addMedicationRecord(_ record: MedicationRecord, for dogID: String) async throws {
@@ -1117,6 +1144,7 @@ class CloudKitService: ObservableObject {
         ckRecord[RecordFields.id] = record.id.uuidString
         ckRecord[RecordFields.timestamp] = record.timestamp
         ckRecord[RecordFields.type] = record.type.rawValue
+        ckRecord[RecordFields.notes] = record.notes
         ckRecord[RecordFields.recordedBy] = record.recordedBy
         ckRecord[RecordFields.dogID] = dogID
         ckRecord[RecordFields.createdAt] = Date()
@@ -1124,6 +1152,28 @@ class CloudKitService: ObservableObject {
         
         let savedRecord = try await publicDatabase.save(ckRecord)
         print("✅ Potty record saved to CloudKit: \(savedRecord.recordID.recordName)")
+    }
+    
+    func updatePottyRecordNotes(_ record: PottyRecord, newNotes: String?, for dogID: String) async throws {
+        print("🔄 CloudKit: Updating potty record notes for record ID: \(record.id)")
+        
+        let predicate = NSPredicate(format: "\(RecordFields.id) == %@ AND \(RecordFields.dogID) == %@", record.id.uuidString, dogID)
+        let query = CKQuery(recordType: RecordTypes.pottyRecord, predicate: predicate)
+        
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let recordToUpdate = records.first else {
+            print("❌ CloudKit: No potty record found to update")
+            throw CloudKitError.recordNotFound
+        }
+        
+        // Update the notes field
+        recordToUpdate[RecordFields.notes] = newNotes
+        recordToUpdate[RecordFields.updatedAt] = Date()
+        
+        let savedRecord = try await publicDatabase.save(recordToUpdate)
+        print("✅ Potty record notes updated in CloudKit: \(savedRecord.recordID.recordName)")
     }
     
     func addWalkingRecord(_ record: WalkingRecord, for dogID: String) async throws {
@@ -1652,6 +1702,45 @@ class CloudKitService: ObservableObject {
         print("✅ Updated user's CloudKit ID: \(savedRecord[UserFields.cloudKitUserID] as? String ?? "nil")")
     }
 
+    /// Debug function to check current user's CloudKit ID mapping
+    func debugCurrentUserCloudKitID() async {
+        print("🔍 Debugging current user's CloudKit ID mapping...")
+        
+        // Get current CloudKit user ID
+        do {
+            let cloudKitUserID = try await container.userRecordID()
+            print("📱 Current CloudKit User ID: \(cloudKitUserID.recordName)")
+        } catch {
+            print("❌ Failed to get CloudKit user ID: \(error)")
+        }
+        
+        // Get current app user
+        guard let currentUser = AuthenticationService.shared.currentUser else {
+            print("❌ No authenticated user found")
+            return
+        }
+        
+        print("👤 Current app user: \(currentUser.name) (ID: \(currentUser.id))")
+        
+        // Check if user has CloudKit ID stored
+        if let storedCloudKitID = currentUser.cloudKitUserID {
+            print("🔗 Stored CloudKit ID: \(storedCloudKitID)")
+        } else {
+            print("❌ No CloudKit ID stored for current user")
+        }
+        
+        // Fetch all users to see the mapping
+        do {
+            let allUsers = try await fetchAllUsers()
+            print("📋 All users and their CloudKit IDs:")
+            for user in allUsers {
+                print("   - \(user.name) (App ID: \(user.id), CloudKit ID: \(user.cloudKitUserID ?? "nil"))")
+            }
+        } catch {
+            print("❌ Failed to fetch users: \(error)")
+        }
+    }
+
     func permanentlyDeleteDog(_ dog: CloudKitDog) async throws {
         let predicate = NSPredicate(format: "\(DogFields.id) == %@", dog.id)
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
@@ -1814,7 +1903,8 @@ struct CloudKitUser {
         canManageMedications: Bool = true,
         canManageFeeding: Bool = true,
         canManageWalking: Bool = true,
-        hashedPassword: String? = nil
+        hashedPassword: String? = nil,
+        cloudKitUserID: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -1836,6 +1926,7 @@ struct CloudKitUser {
         self.canManageFeeding = canManageFeeding
         self.canManageWalking = canManageWalking
         self.hashedPassword = hashedPassword
+        self.cloudKitUserID = cloudKitUserID
     }
     
     init(from record: CKRecord) {

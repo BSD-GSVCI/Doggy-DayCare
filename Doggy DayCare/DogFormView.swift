@@ -25,6 +25,7 @@ struct DogFormView: View {
     @State private var showingDuplicateAlert = false
     @State private var duplicateDog: Dog?
     @State private var bypassDuplicateCheck = false
+    @State private var showingCamera = false
     
     let dog: Dog?
     
@@ -102,9 +103,13 @@ struct DogFormView: View {
                                 .aspectRatio(contentMode: .fit)
                                 .frame(width: 100, height: 100)
                                 .foregroundColor(.gray)
+                                .onTapGesture {
+                                    // Camera icon tap opens camera directly
+                                    showingCamera = true
+                                }
                         }
                         
-                        Button(profileImage == nil ? "Add Profile Picture" : "Change Picture") {
+                        Button(profileImage == nil ? "Add Profile Picture from Library" : "Change Picture") {
                             showingImagePicker = true
                         }
                         .font(.caption)
@@ -194,7 +199,10 @@ struct DogFormView: View {
             }
         }
         .sheet(isPresented: $showingImagePicker) {
-            ImageSourcePicker(image: $profileImage)
+            PhotoLibraryPicker(image: $profileImage)
+        }
+        .sheet(isPresented: $showingCamera) {
+            CameraPicker(image: $profileImage)
         }
         .sheet(isPresented: $showingImportDatabase) {
             ImportDatabaseView { importedDog in
@@ -450,7 +458,7 @@ struct ImportDatabaseView: View {
             dogGroups[key]?.append(dog)
         }
         
-        print("🔍 Import: Created \(dogGroups.count) dog groups")
+        print("�� Import: Created \(dogGroups.count) dog groups")
         
         // For each group, if any dog is currently present, skip showing this group in the import list
         // Otherwise, show the most recent departed record, with the total visit count

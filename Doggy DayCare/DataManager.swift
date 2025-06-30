@@ -492,76 +492,36 @@ class DataManager: ObservableObject {
     
     // MARK: - Record Management
     
-    func addPottyRecord(to dog: Dog, type: PottyRecord.PottyType, recordedBy: String?) async {
+    func addPottyRecord(to dog: Dog, type: PottyRecord.PottyType, notes: String? = nil, recordedBy: String?) async {
         isLoading = true
         errorMessage = nil
         
-        // Handle "both" case by creating two separate records
-        if type == .both {
-            // Create two separate records for pee and poop
-            let peeRecord = PottyRecord(
-                timestamp: Date(),
-                type: .pee,
-                recordedBy: recordedBy
-            )
-            
-            let poopRecord = PottyRecord(
-                timestamp: Date(),
-                type: .poop,
-                recordedBy: recordedBy
-            )
-            
-            // Update local cache immediately for responsive UI
+        // Create the new record
+        let newRecord = PottyRecord(
+            timestamp: Date(),
+            type: type,
+            notes: notes,
+            recordedBy: recordedBy
+        )
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index].pottyRecords.append(newRecord)
+                self.dogs[index].updatedAt = Date()
+            }
+        }
+        
+        // Update CloudKit with only the new record
+        do {
+            try await cloudKitService.addPottyRecord(newRecord, for: dog.id.uuidString)
+            print("✅ Potty record added to CloudKit for \(dog.name)")
+        } catch {
+            print("❌ Failed to add potty record to CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].pottyRecords.append(peeRecord)
-                    self.dogs[index].pottyRecords.append(poopRecord)
-                    self.dogs[index].updatedAt = Date()
-                }
-            }
-            
-            // Update CloudKit with both records
-            do {
-                try await cloudKitService.addPottyRecord(peeRecord, for: dog.id.uuidString)
-                try await cloudKitService.addPottyRecord(poopRecord, for: dog.id.uuidString)
-                print("✅ Both potty records added to CloudKit for \(dog.name)")
-            } catch {
-                print("❌ Failed to add potty records to CloudKit: \(error)")
-                // Revert local cache if CloudKit update failed
-                await MainActor.run {
-                    if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                        self.dogs[index].pottyRecords.removeLast() // Remove poop record
-                        self.dogs[index].pottyRecords.removeLast() // Remove pee record
-                    }
-                }
-            }
-        } else {
-            // Create the new record for single type
-            let newRecord = PottyRecord(
-                timestamp: Date(),
-                type: type,
-                recordedBy: recordedBy
-            )
-            
-            // Update local cache immediately for responsive UI
-            await MainActor.run {
-                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].pottyRecords.append(newRecord)
-                    self.dogs[index].updatedAt = Date()
-                }
-            }
-            
-            // Update CloudKit with only the new record
-            do {
-                try await cloudKitService.addPottyRecord(newRecord, for: dog.id.uuidString)
-                print("✅ Potty record added to CloudKit for \(dog.name)")
-            } catch {
-                print("❌ Failed to add potty record to CloudKit: \(error)")
-                // Revert local cache if CloudKit update failed
-                await MainActor.run {
-                    if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                        self.dogs[index].pottyRecords.removeLast()
-                    }
+                    self.dogs[index].pottyRecords.removeLast()
                 }
             }
         }
@@ -569,7 +529,38 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func addFeedingRecord(to dog: Dog, type: FeedingRecord.FeedingType, recordedBy: String?) async {
+    func updatePottyRecordNotes(_ record: PottyRecord, newNotes: String?, in dog: Dog) async {
+        isLoading = true
+        errorMessage = nil
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+               let recordIndex = self.dogs[dogIndex].pottyRecords.firstIndex(where: { $0.id == record.id }) {
+                self.dogs[dogIndex].pottyRecords[recordIndex].notes = newNotes
+                self.dogs[dogIndex].updatedAt = Date()
+            }
+        }
+        
+        // Update CloudKit
+        do {
+            try await cloudKitService.updatePottyRecordNotes(record, newNotes: newNotes, for: dog.id.uuidString)
+            print("✅ Potty record notes updated in CloudKit for \(dog.name)")
+        } catch {
+            print("❌ Failed to update potty record notes in CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+                   let recordIndex = self.dogs[dogIndex].pottyRecords.firstIndex(where: { $0.id == record.id }) {
+                    self.dogs[dogIndex].pottyRecords[recordIndex].notes = record.notes
+                }
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    func addFeedingRecord(to dog: Dog, type: FeedingRecord.FeedingType, notes: String? = nil, recordedBy: String?) async {
         isLoading = true
         errorMessage = nil
         
@@ -577,6 +568,7 @@ class DataManager: ObservableObject {
         let newRecord = FeedingRecord(
             timestamp: Date(),
             type: type,
+            notes: notes,
             recordedBy: recordedBy
         )
         
@@ -598,6 +590,37 @@ class DataManager: ObservableObject {
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                     self.dogs[index].feedingRecords.removeLast()
+                }
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    func updateFeedingRecordNotes(_ record: FeedingRecord, newNotes: String?, in dog: Dog) async {
+        isLoading = true
+        errorMessage = nil
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+               let recordIndex = self.dogs[dogIndex].feedingRecords.firstIndex(where: { $0.id == record.id }) {
+                self.dogs[dogIndex].feedingRecords[recordIndex].notes = newNotes
+                self.dogs[dogIndex].updatedAt = Date()
+            }
+        }
+        
+        // Update CloudKit
+        do {
+            try await cloudKitService.updateFeedingRecordNotes(record, newNotes: newNotes, for: dog.id.uuidString)
+            print("✅ Feeding record notes updated in CloudKit for \(dog.name)")
+        } catch {
+            print("❌ Failed to update feeding record notes in CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+                   let recordIndex = self.dogs[dogIndex].feedingRecords.firstIndex(where: { $0.id == record.id }) {
+                    self.dogs[dogIndex].feedingRecords[recordIndex].notes = record.notes
                 }
             }
         }
@@ -1015,7 +1038,8 @@ extension CloudKitUser {
             scheduleEndTime: scheduleEndTime,
             createdAt: createdAt,
             updatedAt: updatedAt,
-            lastLogin: lastLogin
+            lastLogin: lastLogin,
+            cloudKitUserID: cloudKitUserID
         )
     }
 }
@@ -1059,7 +1083,8 @@ extension User {
             isOriginalOwner: isOriginalOwner,
             scheduledDays: scheduledDays?.map { Int64($0) },
             scheduleStartTime: scheduleStartTime,
-            scheduleEndTime: scheduleEndTime
+            scheduleEndTime: scheduleEndTime,
+            cloudKitUserID: cloudKitUserID
         )
     }
 } 

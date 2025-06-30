@@ -160,6 +160,7 @@ struct FutureBookingFormView: View {
     @State private var duplicateDog: Dog?
     @State private var profileImage: UIImage?
     @State private var showingImagePicker = false
+    @State private var showingCamera = false
     
     var body: some View {
         NavigationStack {
@@ -198,9 +199,13 @@ struct FutureBookingFormView: View {
                                 .aspectRatio(contentMode: .fit)
                                 .frame(width: 100, height: 100)
                                 .foregroundColor(.gray)
+                                .onTapGesture {
+                                    // Camera icon tap opens camera directly
+                                    showingCamera = true
+                                }
                         }
                         
-                        Button(profileImage == nil ? "Add Profile Picture" : "Change Picture") {
+                        Button(profileImage == nil ? "Add Profile Picture from Library" : "Change Picture") {
                             showingImagePicker = true
                         }
                         .font(.caption)
@@ -276,7 +281,10 @@ struct FutureBookingFormView: View {
             }
         }
         .sheet(isPresented: $showingImagePicker) {
-            ImageSourcePicker(image: $profileImage)
+            PhotoLibraryPicker(image: $profileImage)
+        }
+        .sheet(isPresented: $showingCamera) {
+            CameraPicker(image: $profileImage)
         }
         .alert("Duplicate Dog Found", isPresented: $showingDuplicateAlert) {
             Button("Cancel", role: .cancel) { }
@@ -374,9 +382,9 @@ struct FutureBookingEditView: View {
     @State private var allergiesAndFeedingInstructions: String
     @State private var notes: String
     @State private var isLoading = false
-    @State private var isArrivalTimeSet: Bool
     @State private var profileImage: UIImage?
     @State private var showingImagePicker = false
+    @State private var showingCamera = false
     
     init(dog: Dog) {
         self.dog = dog
@@ -384,7 +392,6 @@ struct FutureBookingEditView: View {
         self._ownerName = State(initialValue: dog.ownerName ?? "")
         self._arrivalDate = State(initialValue: dog.arrivalDate)
         self._isBoarding = State(initialValue: dog.isBoarding)
-        self._isArrivalTimeSet = State(initialValue: dog.isArrivalTimeSet)
         
         // For boarding end date, use existing value if available, otherwise use a reasonable default
         let defaultBoardingEndDate: Date
@@ -424,9 +431,13 @@ struct FutureBookingEditView: View {
                                 .aspectRatio(contentMode: .fit)
                                 .frame(width: 100, height: 100)
                                 .foregroundColor(.gray)
+                                .onTapGesture {
+                                    // Camera icon tap opens camera directly
+                                    showingCamera = true
+                                }
                         }
                         
-                        Button(profileImage == nil ? "Add Profile Picture" : "Change Picture") {
+                        Button(profileImage == nil ? "Add Profile Picture from Library" : "Change Picture") {
                             showingImagePicker = true
                         }
                         .font(.caption)
@@ -437,23 +448,6 @@ struct FutureBookingEditView: View {
                     TextField("Name", text: $name)
                     TextField("Owner Name", text: $ownerName)
                     DatePicker("Arrival Date", selection: $arrivalDate, displayedComponents: .date)
-                    
-                    // Add toggle for setting arrival time
-                    Toggle("Set Arrival Time", isOn: $isArrivalTimeSet)
-                        .onChange(of: isArrivalTimeSet) { _, newValue in
-                            if newValue {
-                                // When enabling arrival time, set the arrival date to today with current time
-                                let now = Date()
-                                let calendar = Calendar.current
-                                let today = calendar.startOfDay(for: now)
-                                let currentTime = calendar.dateComponents([.hour, .minute], from: now)
-                                arrivalDate = calendar.date(bySettingHour: currentTime.hour ?? 9, minute: currentTime.minute ?? 0, second: 0, of: today) ?? now
-                            }
-                        }
-                    
-                    if isArrivalTimeSet {
-                        DatePicker("Arrival Time", selection: $arrivalDate, displayedComponents: [.date, .hourAndMinute])
-                    }
                 }
                 
                 Section("Stay Type") {
@@ -514,7 +508,10 @@ struct FutureBookingEditView: View {
             }
         }
         .sheet(isPresented: $showingImagePicker) {
-            ImageSourcePicker(image: $profileImage)
+            PhotoLibraryPicker(image: $profileImage)
+        }
+        .sheet(isPresented: $showingCamera) {
+            CameraPicker(image: $profileImage)
         }
     }
     
@@ -537,7 +534,7 @@ struct FutureBookingEditView: View {
         updatedDog.isDaycareFed = isDaycareFed
         updatedDog.notes = notes.isEmpty ? nil : notes
         updatedDog.profilePictureData = profilePictureData
-        updatedDog.isArrivalTimeSet = isArrivalTimeSet // Use the state value instead of forcing false
+        updatedDog.isArrivalTimeSet = false
         updatedDog.updatedAt = Date()
         
         await dataManager.updateDog(updatedDog)

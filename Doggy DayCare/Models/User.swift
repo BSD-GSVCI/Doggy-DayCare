@@ -11,6 +11,7 @@ struct User: Codable, Identifiable {
     var lastLogin: Date?
     var createdAt: Date
     var isOriginalOwner: Bool  // Track if this is the original owner
+    var cloudKitUserID: String?  // CloudKit user ID for cross-device mapping
     
     // Schedule-based access control
     var scheduledDays: [Int]?  // Array of weekday indices (1-7, where 1 is Sunday, 2 is Monday, etc.)
@@ -62,7 +63,7 @@ struct User: Codable, Identifiable {
         return false
     }
     
-    init(id: String, name: String, email: String? = nil, isOwner: Bool = false, isActive: Bool = true, isWorkingToday: Bool = false, isOriginalOwner: Bool = false, scheduledDays: [Int]? = nil, scheduleStartTime: Date? = nil, scheduleEndTime: Date? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), lastLogin: Date? = nil) {
+    init(id: String, name: String, email: String? = nil, isOwner: Bool = false, isActive: Bool = true, isWorkingToday: Bool = false, isOriginalOwner: Bool = false, scheduledDays: [Int]? = nil, scheduleStartTime: Date? = nil, scheduleEndTime: Date? = nil, createdAt: Date = Date(), updatedAt: Date = Date(), lastLogin: Date? = nil, cloudKitUserID: String? = nil) {
         self.id = id
         self.name = name
         self.email = email
@@ -76,6 +77,7 @@ struct User: Codable, Identifiable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.lastLogin = lastLogin
+        self.cloudKitUserID = cloudKitUserID
         // Set permissions based on role
         if isOwner {
             self.canAddDogs = true

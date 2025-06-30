@@ -114,9 +114,11 @@ class AuthenticationService: ObservableObject {
             
             // Update CloudKit user ID for cross-device compatibility
             do {
+                print("🔄 Attempting to update CloudKit user ID for owner login...")
                 try await cloudKitService.updateCurrentUserCloudKitID()
+                print("✅ Successfully updated CloudKit user ID for owner")
             } catch {
-                print("⚠️ Failed to update CloudKit user ID: \(error)")
+                print("⚠️ Failed to update CloudKit user ID for owner: \(error)")
             }
             
             return
@@ -180,9 +182,11 @@ class AuthenticationService: ObservableObject {
             
             // Update CloudKit user ID for cross-device compatibility
             do {
+                print("🔄 Attempting to update CloudKit user ID for staff login...")
                 try await cloudKitService.updateCurrentUserCloudKitID()
+                print("✅ Successfully updated CloudKit user ID for staff")
             } catch {
-                print("⚠️ Failed to update CloudKit user ID: \(error)")
+                print("⚠️ Failed to update CloudKit user ID for staff: \(error)")
             }
             
             return

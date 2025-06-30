@@ -78,7 +78,7 @@ struct WalkingListView: View {
                                 .foregroundStyle(.primary)
                                 .textCase(nil)
                         }
-                        .listSectionSpacing(20)
+                        .listSectionSpacing(160)
                     }
                     
                     if !boardingDogs.isEmpty {
@@ -93,7 +93,7 @@ struct WalkingListView: View {
                                 .foregroundStyle(.primary)
                                 .textCase(nil)
                         }
-                        .listSectionSpacing(20)
+                        .listSectionSpacing(160)
                     }
                 }
             }
@@ -175,8 +175,8 @@ struct DogWalkingRow: View {
                     Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
                 }
                 
-                let todaysPeeCount = todaysPottyRecords.filter { $0.type == .pee }.count
-                let todaysPoopCount = todaysPottyRecords.filter { $0.type == .poop }.count
+                let todaysPeeCount = todaysPottyRecords.filter { $0.type == .pee || $0.type == .both }.count
+                let todaysPoopCount = todaysPottyRecords.filter { $0.type == .poop || $0.type == .both }.count
                 
                 HStack {
                     Image(systemName: "drop.fill")
@@ -233,30 +233,14 @@ struct DogWalkingRow: View {
                 }
                 
                 ForEach(todaysPottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
-                    if record.type != .nothing {
-                        Button("Delete \(record.type.rawValue) at \(record.timestamp.formatted(date: .omitted, time: .shortened))", role: .destructive) {
-                            deletePottyRecord(record)
-                        }
+                    Button("Delete \(record.type.rawValue) at \(record.timestamp.formatted(date: .omitted, time: .shortened))", role: .destructive) {
+                        deletePottyRecord(record)
                     }
                 }
             }
         }
-        .alert("Record Potty Activity", isPresented: $showingPottyPopup) {
-            Button("Peed") { addPottyRecord(.pee) }
-            Button("Pooped") { addPottyRecord(.poop) }
-            Button("Both") { addPottyRecord(.both) }
-            Button("None") { addPottyRecord(.nothing) }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Record potty activity for \(dog.name)")
-        }
-        .alert("Delete Last Walk", isPresented: $showingDeleteAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                deleteLastWalk()
-            }
-        } message: {
-            Text("Are you sure you want to delete the last walk for \(dog.name)?")
+        .sheet(isPresented: $showingPottyPopup) {
+            PottyPopupView(dog: dog)
         }
         .alert("Delete Potty Record", isPresented: $showingDeletePottyAlert) {
             Button("Cancel", role: .cancel) { }
@@ -289,44 +273,112 @@ struct DogWalkingRow: View {
             await dataManager.deletePottyRecord(record, from: dog)
         }
     }
-    
-    private func addPottyRecord(_ type: PottyRecord.PottyType) {
-        Task {
-            await dataManager.addPottyRecord(to: dog, type: type, recordedBy: authService.currentUser?.name)
-        }
-    }
 }
 
 struct PottyInstanceView: View {
     let record: PottyRecord
     let onDelete: () -> Void
+    @EnvironmentObject var dataManager: DataManager
+    @State private var showingNoteAlert = false
+    @State private var showingEditNote = false
+    @State private var editedNotes = ""
     
     var body: some View {
-        Button(action: onDelete) {
-            HStack(spacing: 4) {
+        Button(action: {
+            showingNoteAlert = true
+        }) {
+            HStack(spacing: 2) {
+                // Potty type icons
                 if record.type == .pee {
                     Image(systemName: "drop.fill")
                         .foregroundStyle(.yellow)
+                        .font(.caption)
                 } else if record.type == .poop {
                     Text("💩")
+                        .font(.caption)
+                } else if record.type == .both {
+                    HStack(spacing: 1) {
+                        Image(systemName: "drop.fill")
+                            .foregroundStyle(.yellow)
+                            .font(.caption2)
+                        Text("💩")
+                            .font(.caption2)
+                    }
                 } else if record.type == .nothing {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.red)
+                        .font(.caption)
                 }
                 
+                Spacer(minLength: 2)
+                
+                // Time
                 Text(record.timestamp.formatted(date: .omitted, time: .shortened))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                
+                // Note icon if record has notes
+                if let notes = record.notes, !notes.isEmpty {
+                    Text("📝")
+                        .font(.caption2)
+                        .padding(1)
+                        .background(Color.blue.opacity(0.1))
+                        .clipShape(Circle())
+                }
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.gray.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 4))
         }
         .buttonStyle(PlainButtonStyle())
+        .onLongPressGesture {
+            onDelete()
+        }
+        .alert("Potty Record Notes", isPresented: $showingNoteAlert) {
+            if let notes = record.notes, !notes.isEmpty {
+                Button("Edit Note") {
+                    editedNotes = notes
+                    showingEditNote = true
+                }
+            } else {
+                Button("Add Note") {
+                    editedNotes = ""
+                    showingEditNote = true
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            if let notes = record.notes, !notes.isEmpty {
+                Text(notes)
+            } else {
+                Text("This record has no notes associated with it.")
+            }
+        }
+        .alert("Edit Note", isPresented: $showingEditNote) {
+            TextField("Notes", text: $editedNotes, axis: .vertical)
+                .lineLimit(3...6)
+            Button("Save") {
+                Task {
+                    await updatePottyRecordNotes()
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Edit notes for this potty record")
+        }
+    }
+    
+    private func updatePottyRecordNotes() async {
+        // Find the dog that contains this record
+        if let dog = dataManager.dogs.first(where: { dog in
+            dog.pottyRecords.contains { $0.id == record.id }
+        }) {
+            await dataManager.updatePottyRecordNotes(record, newNotes: editedNotes.isEmpty ? nil : editedNotes, in: dog)
+        }
     }
 }
 
@@ -396,6 +448,116 @@ struct AddWalkingView: View {
         
         isLoading = false
         dismiss()
+    }
+}
+
+struct PottyPopupView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var dataManager: DataManager
+    @StateObject private var authService = AuthenticationService.shared
+    let dog: Dog
+    
+    @State private var notes = ""
+    @State private var isLoading = false
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(dog.name)
+                        .font(.headline)
+                    
+                    if let walkingNotes = dog.walkingNotes, !walkingNotes.isEmpty {
+                        Text("Walking Notes: \(walkingNotes)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                Section("Notes (optional)") {
+                    TextField("Add notes for this potty activity", text: $notes, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+                
+                Section("Potty Activity") {
+                    Button {
+                        addPottyRecord(.pee)
+                    } label: {
+                        HStack {
+                            Image(systemName: "drop.fill")
+                                .foregroundStyle(.yellow)
+                            Text("Peed")
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    
+                    Button {
+                        addPottyRecord(.poop)
+                    } label: {
+                        HStack {
+                            Text("💩")
+                            Text("Pooped")
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    
+                    Button {
+                        addPottyRecord(.both)
+                    } label: {
+                        HStack {
+                            HStack(spacing: 2) {
+                                Image(systemName: "drop.fill")
+                                    .foregroundStyle(.yellow)
+                                Text("💩")
+                            }
+                            Text("Both")
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    
+                    Button {
+                        addPottyRecord(.nothing)
+                    } label: {
+                        HStack {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.red)
+                            Text("None")
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                }
+            }
+            .navigationTitle("Record Potty")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+            .overlay {
+                if isLoading {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .overlay {
+                            ProgressView("Recording...")
+                                .padding()
+                                .background(.regularMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                }
+            }
+        }
+    }
+    
+    private func addPottyRecord(_ type: PottyRecord.PottyType) {
+        isLoading = true
+        Task {
+            await dataManager.addPottyRecord(to: dog, type: type, notes: notes.isEmpty ? nil : notes, recordedBy: authService.currentUser?.name)
+            isLoading = false
+            dismiss()
+        }
     }
 }
 

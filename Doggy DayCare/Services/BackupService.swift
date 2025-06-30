@@ -14,9 +14,9 @@ class BackupService {
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "h:mm a"
         
-        var csvString = "Dog Name,Owner Name,Arrival Date & Time,Departure Date & Time,Service Type,Boarding End Date,Stay Duration,Needs Walking,Walking Notes,Medications,Special Instructions,Allergies & Feeding Instructions,Is Daycare Fed,Notes,Feeding Records,Medication Records,Potty Records\n"
+        var csvString = "Number,Dog Name,Owner Name,Arrival Date & Time,Departure Date & Time,Service Type,Boarding End Date,Stay Duration,Needs Walking,Walking Notes,Medications,Special Instructions,Allergies & Feeding Instructions,Is Daycare Fed,Notes,Feeding Records,Medication Records,Potty Records\n"
         
-        for dog in dogs {
+        for (index, dog) in dogs.enumerated() {
             // Format dates properly
             let arrivalDateString: String
             if dog.isArrivalTimeSet {
@@ -63,6 +63,7 @@ class BackupService {
             
             // Create row values in DogDetailView order
             let rowValues = [
+                String(index + 1), // Add row number (starting from 1)
                 dog.name,
                 dog.ownerName ?? "",
                 arrivalDateString,

@@ -182,10 +182,6 @@ struct DogRow: View {
                     Label("Set Arrival Time", systemImage: "clock.badge.checkmark")
                 }
             }
-            
-            Button("Delete", role: .destructive) {
-                showingDeleteAlert = true
-            }
         }
         .sheet(isPresented: $showingSetArrivalTime) {
             NavigationStack {
