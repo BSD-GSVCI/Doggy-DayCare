@@ -63,6 +63,9 @@ struct Doggy_DayCareApp: App {
                             try await dataManager.authenticate()
                             print("✅ CloudKit initialization completed successfully")
                             
+                            // Password migration disabled - passwords already migrated and new users auto-save to CloudKit
+                            // await authService.migrateExistingPasswords()
+                            
                             // Initialize automation service for automatic backups
                             _ = AutomationService.shared
                             print("✅ Automation service initialized")

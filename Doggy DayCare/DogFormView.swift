@@ -194,7 +194,7 @@ struct DogFormView: View {
             }
         }
         .sheet(isPresented: $showingImagePicker) {
-            ImagePicker(image: $profileImage)
+            ImageSourcePicker(image: $profileImage)
         }
         .sheet(isPresented: $showingImportDatabase) {
             ImportDatabaseView { importedDog in
@@ -287,6 +287,7 @@ struct DogFormView: View {
                 ownerName: ownerName.isEmpty ? nil : ownerName,
                 arrivalDate: arrivalDate,
                 isBoarding: isBoarding,
+                boardingEndDate: isBoarding ? boardingEndDate : nil,
                 medications: medications.isEmpty ? nil : medications,
                 allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
                 needsWalking: needsWalking,
@@ -311,6 +312,8 @@ struct ImportDatabaseView: View {
     @State private var isLoading = false
     @State private var importedDogs: [Dog] = []
     @State private var zoomedDog: Dog?
+    @State private var showingDeleteAlert = false
+    @State private var dogToDelete: Dog?
     
     let onImport: (Dog) -> Void
     
@@ -335,6 +338,14 @@ struct ImportDatabaseView: View {
                                 onImport(dog)
                                 dismiss()
                             }
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    dogToDelete = dog
+                                    showingDeleteAlert = true
+                                } label: {
+                                    Label("Permanently Delete", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                     .searchable(text: $searchText, prompt: "Search dogs")
@@ -347,6 +358,25 @@ struct ImportDatabaseView: View {
                     Button("Cancel") {
                         dismiss()
                     }
+                }
+            }
+            .alert("Permanently Delete Dog", isPresented: $showingDeleteAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    if let dog = dogToDelete {
+                        print("🗑️ User confirmed permanent delete for dog: \(dog.name)")
+                        Task {
+                            print("🔄 Starting permanent delete process...")
+                            await dataManager.permanentlyDeleteDog(dog)
+                            print("🔄 Permanent delete completed, refreshing import list...")
+                            await loadImportedDogs()
+                            print("✅ Import list refresh completed")
+                        }
+                    }
+                }
+            } message: {
+                if let dog = dogToDelete {
+                    Text("Are you sure you want to permanently delete '\(dog.name)'? This action cannot be undone and will remove the dog from the database completely.")
                 }
             }
             .overlay {
@@ -401,12 +431,18 @@ struct ImportDatabaseView: View {
     private func loadImportedDogs() async {
         isLoading = true
         
-        // Get all dogs from the database (including departed and present)
-        let allDogs = await dataManager.getAllDogs()
+        // Get all dogs from the database (including deleted ones)
+        await dataManager.fetchAllDogsIncludingDeleted()
+        let allDogs = dataManager.allDogs
         
-        // Group all dogs (present and departed) by name+owner
+        print("🔍 Import: Found \(allDogs.count) total dogs in database")
+        
+        // Filter out deleted dogs and group by name+owner
+        let activeDogs = allDogs.filter { !$0.isDeleted }
+        print("🔍 Import: After filtering deleted dogs: \(activeDogs.count) active dogs")
+        
         var dogGroups: [String: [Dog]] = [:]
-        for dog in allDogs {
+        for dog in activeDogs {
             let key = "\(dog.name.lowercased())_\(dog.ownerName?.lowercased() ?? "")"
             if dogGroups[key] == nil {
                 dogGroups[key] = []
@@ -414,27 +450,38 @@ struct ImportDatabaseView: View {
             dogGroups[key]?.append(dog)
         }
         
+        print("🔍 Import: Created \(dogGroups.count) dog groups")
+        
         // For each group, if any dog is currently present, skip showing this group in the import list
         // Otherwise, show the most recent departed record, with the total visit count
-        importedDogs = dogGroups.compactMap { _, dogs in
+        importedDogs = dogGroups.compactMap { key, dogs in
+            print("🔍 Import: Processing group '\(key)' with \(dogs.count) dogs")
+            
             // If any dog in the group is currently present, skip
             if dogs.contains(where: { $0.isCurrentlyPresent }) {
+                print("⏭️ Import: Skipping group '\(key)' - has currently present dogs")
                 return nil
             }
+            
             // Find the most recent departed record
             let departedDogs = dogs.filter { !$0.isCurrentlyPresent }
+            print("🔍 Import: Group '\(key)' has \(departedDogs.count) departed dogs")
+            
             guard let mostRecent = departedDogs.sorted(by: { $0.arrivalDate > $1.arrivalDate }).first else {
+                print("⚠️ Import: No departed dogs found in group '\(key)'")
                 return nil
             }
+            
             var importedDog = mostRecent
             importedDog.visitCount = dogs.count // Count all visits (present and past)
+            print("✅ Import: Added dog '\(importedDog.name)' with \(importedDog.visitCount) visits")
             return importedDog
         }
         .sorted { $0.name < $1.name }
         
-        print("Available owners:")
-        for owner in allDogs {
-            print("- \(owner.name) (\(owner.ownerName ?? "no owner"), active: \(owner.isCurrentlyPresent))")
+        print("✅ Import: Final result - \(importedDogs.count) dogs available for import")
+        for dog in importedDogs {
+            print("- \(dog.name) (\(dog.ownerName ?? "no owner"), visits: \(dog.visitCount), deleted: \(dog.isDeleted), present: \(dog.isCurrentlyPresent))")
         }
         
         isLoading = false

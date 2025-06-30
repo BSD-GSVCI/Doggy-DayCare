@@ -96,14 +96,29 @@ class AuthenticationService: ObservableObject {
                 await migratePasswordToCloudKit(for: cloudKitUser, password: password)
             }
             
-            // Update last login time
-            var updatedUser = cloudKitUser
-            updatedUser.lastLogin = Date()
-            _ = try await cloudKitService.updateUser(updatedUser)
+            // Update last login time (only if we have write permissions)
+            do {
+                var updatedUser = cloudKitUser
+                updatedUser.lastLogin = Date()
+                _ = try await cloudKitService.updateUser(updatedUser)
+                print("✅ Updated last login time for user: \(updatedUser.name)")
+            } catch {
+                // If we can't update last login (e.g., no write permissions), 
+                // just log it but don't fail the login
+                print("⚠️ Could not update last login time (this is normal for non-owner users): \(error)")
+            }
             
             // Set current user
-            currentUser = updatedUser.toUser()
-            print("Successfully signed in user: \(updatedUser.name)")
+            currentUser = cloudKitUser.toUser()
+            print("Successfully signed in user: \(cloudKitUser.name)")
+            
+            // Update CloudKit user ID for cross-device compatibility
+            do {
+                try await cloudKitService.updateCurrentUserCloudKitID()
+            } catch {
+                print("⚠️ Failed to update CloudKit user ID: \(error)")
+            }
+            
             return
             
         } else if let name = name {
@@ -147,18 +162,108 @@ class AuthenticationService: ObservableObject {
                 throw AuthError.notScheduledToday
             }
             
-            // Update last login time
-            var updatedUser = cloudKitUser
-            updatedUser.lastLogin = Date()
-            _ = try await cloudKitService.updateUser(updatedUser)
+            // Update last login time (only if we have write permissions)
+            do {
+                var updatedUser = cloudKitUser
+                updatedUser.lastLogin = Date()
+                _ = try await cloudKitService.updateUser(updatedUser)
+                print("✅ Updated last login time for user: \(updatedUser.name)")
+            } catch {
+                // If we can't update last login (e.g., no write permissions), 
+                // just log it but don't fail the login
+                print("⚠️ Could not update last login time (this is normal for non-owner users): \(error)")
+            }
             
             // Set current user
-            currentUser = updatedUser.toUser()
-            print("Successfully signed in user: \(updatedUser.name)")
+            currentUser = cloudKitUser.toUser()
+            print("Successfully signed in user: \(cloudKitUser.name)")
+            
+            // Update CloudKit user ID for cross-device compatibility
+            do {
+                try await cloudKitService.updateCurrentUserCloudKitID()
+            } catch {
+                print("⚠️ Failed to update CloudKit user ID: \(error)")
+            }
+            
+            return
             
         } else {
             throw AuthError.invalidCredentials
         }
+    }
+    
+    // MARK: - Password Migration
+    
+    /// Manually migrate passwords for existing users (runs only once per app installation)
+    func migrateExistingPasswords() async {
+        // Check if migration has already been completed
+        let migrationCompletedKey = "password_migration_completed"
+        if UserDefaults.standard.bool(forKey: migrationCompletedKey) {
+            print("✅ Password migration already completed, skipping...")
+            return
+        }
+        
+        print("🔄 Starting password migration for existing users...")
+        
+        do {
+            let allUsers = try await cloudKitService.fetchAllUsers()
+            var migrationCount = 0
+            
+            for user in allUsers {
+                // Skip users that already have hashed passwords
+                if user.hashedPassword != nil {
+                    print("User \(user.name) already has hashed password, skipping...")
+                    continue
+                }
+                
+                // Try to find password in UserDefaults
+                var password: String?
+                
+                if user.isOwner {
+                    if user.isOriginalOwner {
+                        password = UserDefaults.standard.string(forKey: ownerPasswordKey)
+                    } else if let email = user.email {
+                        let passwordKey = "owner_password_\(email.lowercased())"
+                        password = UserDefaults.standard.string(forKey: passwordKey)
+                    }
+                } else {
+                    // Staff member
+                    let passwordKey = "staff_password_\(user.name)"
+                    password = UserDefaults.standard.string(forKey: passwordKey)
+                }
+                
+                if let password = password {
+                    print("Migrating password for user: \(user.name)")
+                    await migratePasswordToCloudKit(for: user, password: password)
+                    migrationCount += 1
+                } else {
+                    print("No password found in UserDefaults for user: \(user.name)")
+                }
+            }
+            
+            // Mark migration as completed
+            UserDefaults.standard.set(true, forKey: migrationCompletedKey)
+            
+            if migrationCount > 0 {
+                print("✅ Password migration completed for \(migrationCount) users")
+            } else {
+                print("✅ Password migration completed (no users needed migration)")
+            }
+        } catch {
+            print("❌ Error during password migration: \(error)")
+        }
+    }
+    
+    /// Manually trigger password migration (for testing purposes)
+    func forcePasswordMigration() async {
+        print("🔄 Force triggering password migration...")
+        
+        // Reset migration flag to force migration
+        let migrationCompletedKey = "password_migration_completed"
+        UserDefaults.standard.set(false, forKey: migrationCompletedKey)
+        
+        // Run migration
+        await migrateExistingPasswords()
     }
     
     private func migratePasswordToCloudKit(for user: CloudKitUser, password: String) async {
@@ -168,7 +273,7 @@ class AuthenticationService: ObservableObject {
             _ = try await cloudKitService.updateUser(updatedUser)
             print("✅ Migrated password to CloudKit for user: \(user.name)")
         } catch {
-            print("❌ Failed to migrate password to CloudKit: \(error)")
+            print("❌ Failed to migrate password to CloudKit for user \(user.name): \(error)")
         }
     }
     
@@ -237,6 +342,26 @@ class AuthenticationService: ObservableObject {
             print("✅ Owner password updated in CloudKit")
         } catch {
             print("Error updating owner password: \(error)")
+        }
+    }
+    
+    func updatePromotedOwnerPassword(email: String, password: String) async {
+        do {
+            // Find the promoted owner by email
+            let allUsers = try await cloudKitService.fetchAllUsers()
+            guard let promotedOwner = allUsers.first(where: { $0.email?.lowercased() == email.lowercased() && $0.isOwner && !$0.isOriginalOwner }) else {
+                print("Promoted owner with email \(email) not found")
+                return
+            }
+            
+            // Update password in CloudKit
+            var updatedOwner = promotedOwner
+            updatedOwner.hashedPassword = hashPassword(password)
+            _ = try await cloudKitService.updateUser(updatedOwner)
+            
+            print("✅ Promoted owner password updated in CloudKit for \(email)")
+        } catch {
+            print("Error updating promoted owner password: \(error)")
         }
     }
 }

@@ -5,6 +5,7 @@ class DataManager: ObservableObject {
     static let shared = DataManager()
     
     @Published var dogs: [Dog] = []
+    @Published var allDogs: [Dog] = []  // Separate array for all dogs including deleted ones
     @Published var users: [User] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -41,6 +42,11 @@ class DataManager: ObservableObject {
             
             let localDogs = cloudKitDogs.map { $0.toDog() }
             print("🔍 DataManager: Converted to \(localDogs.count) local dogs")
+            
+            // Debug: Print each dog's details
+            for dog in localDogs {
+                print("🐕 Dog: \(dog.name), Owner: \(dog.ownerName ?? "none"), Deleted: \(dog.isDeleted), Present: \(dog.isCurrentlyPresent), Arrival: \(dog.arrivalDate), Departure: \(dog.departureDate?.description ?? "nil")")
+            }
             
             await MainActor.run {
                 self.dogs = localDogs
@@ -159,21 +165,63 @@ class DataManager: ObservableObject {
     func deleteDog(_ dog: Dog) async {
         isLoading = true
         errorMessage = nil
+        
+        print("🔄 Starting delete dog: \(dog.name)")
+        
+        // Remove from local cache immediately for responsive UI
+        await MainActor.run {
+            self.dogs.removeAll { $0.id == dog.id }
+            print("✅ Removed dog from local cache")
+        }
+        
+        // Mark as deleted in CloudKit (but keep in database)
         do {
-            let cloudKitDog = dog.toCloudKitDog()
-            try await cloudKitService.deleteDog(cloudKitDog)
-            await MainActor.run {
-                self.dogs.removeAll { $0.id == dog.id }
-                self.isLoading = false
-                print("✅ Deleted dog: \(dog.name)")
-            }
+            try await cloudKitService.deleteDog(dog.toCloudKitDog())
+            print("✅ Dog marked as deleted in CloudKit")
         } catch {
+            print("❌ Failed to mark dog as deleted: \(error)")
+            errorMessage = "Failed to delete dog: \(error.localizedDescription)"
+            
+            // Restore to local cache if CloudKit update failed
             await MainActor.run {
-                self.errorMessage = "Failed to delete dog: \(error.localizedDescription)"
-                self.isLoading = false
-                print("❌ Failed to delete dog: \(error)")
+                self.dogs.append(dog)
+                print("🔄 Restored dog to local cache due to CloudKit failure")
             }
         }
+        
+        isLoading = false
+    }
+    
+    func permanentlyDeleteDog(_ dog: Dog) async {
+        isLoading = true
+        errorMessage = nil
+        
+        print("🔄 Starting permanent delete dog: \(dog.name)")
+        
+        // Remove from local cache immediately for responsive UI
+        await MainActor.run {
+            self.dogs.removeAll { $0.id == dog.id }
+            self.allDogs.removeAll { $0.id == dog.id }  // Also remove from allDogs array
+            print("✅ Removed dog from local cache and allDogs array")
+        }
+        
+        // Permanently delete from CloudKit
+        do {
+            try await cloudKitService.permanentlyDeleteDog(dog.toCloudKitDog())
+            print("✅ Dog permanently deleted from CloudKit")
+        } catch {
+            print("❌ Failed to permanently delete dog: \(error)")
+            errorMessage = "Failed to permanently delete dog: \(error.localizedDescription)"
+            
+            // Restore to local cache if CloudKit update failed
+            await MainActor.run {
+                self.dogs.append(dog)
+                self.allDogs.append(dog)  // Also restore to allDogs array
+                print("🔄 Restored dog to local cache due to CloudKit failure")
+            }
+        }
+        
+        isLoading = false
     }
     
     func extendBoarding(for dog: Dog, newEndDate: Date) async {
@@ -268,7 +316,17 @@ class DataManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         do {
-            let cloudKitUser = user.toCloudKitUser()
+            // Get the existing user from CloudKit to preserve the hashedPassword
+            let existingCloudKitUser = try await cloudKitService.fetchUser(by: user.id)
+            
+            // Convert the updated user to CloudKitUser
+            var cloudKitUser = user.toCloudKitUser()
+            
+            // Preserve the existing hashedPassword if it exists
+            if let existingUser = existingCloudKitUser, let existingPassword = existingUser.hashedPassword {
+                cloudKitUser.hashedPassword = existingPassword
+            }
+            
             let updatedCloudKitUser = try await cloudKitService.updateUser(cloudKitUser)
             let updatedUser = updatedCloudKitUser.toUser()
             await MainActor.run {
@@ -870,6 +928,38 @@ class DataManager: ObservableObject {
         
         isLoading = false
     }
+
+    func fetchAllDogsIncludingDeleted() async {
+        isLoading = true
+        errorMessage = nil
+        
+        print("🔍 DataManager: Starting fetchAllDogsIncludingDeleted...")
+        
+        do {
+            let cloudKitDogs = try await cloudKitService.fetchAllDogsIncludingDeleted()
+            print("🔍 DataManager: Got \(cloudKitDogs.count) CloudKit dogs (including deleted)")
+            
+            let localDogs = cloudKitDogs.map { $0.toDog() }
+            print("🔍 DataManager: Converted to \(localDogs.count) local dogs")
+            
+            // Debug: Print each dog's details
+            for dog in localDogs {
+                print("🐕 AllDogs: \(dog.name), Owner: \(dog.ownerName ?? "none"), Deleted: \(dog.isDeleted), Present: \(dog.isCurrentlyPresent)")
+            }
+            
+            await MainActor.run {
+                self.allDogs = localDogs
+                print("✅ DataManager: Set \(localDogs.count) dogs in allDogs array")
+            }
+        } catch {
+            print("❌ Failed to fetch all dogs: \(error)")
+            await MainActor.run {
+                self.errorMessage = "Failed to fetch dogs: \(error.localizedDescription)"
+            }
+        }
+        
+        isLoading = false
+    }
 }
 
 // MARK: - Conversion Extensions
@@ -890,7 +980,8 @@ extension CloudKitDog {
             isDaycareFed: isDaycareFed,
             notes: notes,
             profilePictureData: profilePictureData,
-            isArrivalTimeSet: isArrivalTimeSet
+            isArrivalTimeSet: isArrivalTimeSet,
+            isDeleted: isDeleted
         )
         
         // Copy additional properties
@@ -950,7 +1041,8 @@ extension Dog {
             medicationRecords: medicationRecords,
             pottyRecords: pottyRecords,
             walkingRecords: walkingRecords,
-            isArrivalTimeSet: isArrivalTimeSet
+            isArrivalTimeSet: isArrivalTimeSet,
+            isDeleted: isDeleted
         )
     }
 }

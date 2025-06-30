@@ -38,71 +38,17 @@ struct StaffManagementView: View {
     }
     
     var body: some View {
-        List {
-            if dataManager.users.isEmpty {
-                ContentUnavailableView {
-                    Label("No Staff Members", systemImage: "person.2.slash")
-                } description: {
-                    Text("Add staff members to manage their schedules and permissions.")
-                }
-            } else {
-                Section("Staff Members") {
-                    ForEach(staffMembers) { user in
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text(user.name)
-                                    .font(.headline)
-                                Spacer()
-                                if user.isActive {
-                                    Text("Active")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    Text("Inactive")
-                                        .font(.caption)
-                                        .foregroundStyle(.red)
-                                }
-                            }
-                            
-                            // Schedule Access Button
-                            if user.isActive {
-                                Button {
-                                    handleScheduleAction(for: user)
-                                } label: {
-                                    Label("Schedule Access", systemImage: "clock")
-                                        .font(.subheadline)
-                                }
-                            }
-                            
-                            // Schedule Information
-                            ScheduleInfoView(user: user)
-                        }
-                        .swipeActions(edge: .trailing) {
-                            if isCurrentUserOwner {
-                                Button(role: .destructive) {
-                                    staffToDelete = user
-                                    showingDeleteAlert = true
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
-                        }
-                        .swipeActions(edge: .leading) {
-                            if isCurrentUserOriginalOwner && user.isActive {
-                                Button {
-                                    handlePromoteAction(for: user)
-                                } label: {
-                                    Label("Promote", systemImage: "person.badge.plus")
-                                }
-                                .tint(.blue)
-                            }
-                        }
+        NavigationStack {
+            List {
+                if dataManager.users.isEmpty {
+                    ContentUnavailableView {
+                        Label("No Staff Members", systemImage: "person.2.slash")
+                    } description: {
+                        Text("Add staff members to manage their schedules and permissions.")
                     }
-                }
-                
-                if !promotedOwners.isEmpty {
-                    Section("Promoted Owners") {
-                        ForEach(promotedOwners) { user in
+                } else {
+                    Section("Staff Members") {
+                        ForEach(staffMembers) { user in
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
                                     Text(user.name)
@@ -119,12 +65,21 @@ struct StaffManagementView: View {
                                     }
                                 }
                                 
-                                Text("Full access to all features")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                // Schedule Access Button
+                                if user.isActive {
+                                    Button {
+                                        handleScheduleAction(for: user)
+                                    } label: {
+                                        Label("Schedule Access", systemImage: "clock")
+                                            .font(.subheadline)
+                                    }
+                                }
+                                
+                                // Schedule Information
+                                ScheduleInfoView(user: user)
                             }
                             .swipeActions(edge: .trailing) {
-                                if isCurrentUserOriginalOwner {
+                                if isCurrentUserOwner {
                                     Button(role: .destructive) {
                                         staffToDelete = user
                                         showingDeleteAlert = true
@@ -133,47 +88,92 @@ struct StaffManagementView: View {
                                     }
                                 }
                             }
-                        }
-                    }
-                }
-                if let owner = originalOwner {
-                    Section("Original Owner") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text(owner.name)
-                                    .font(.headline)
-                                Spacer()
-                                if owner.isActive {
-                                    Text("Active")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    Text("Inactive")
-                                        .font(.caption)
-                                        .foregroundStyle(.red)
+                            .swipeActions(edge: .leading) {
+                                if isCurrentUserOriginalOwner && user.isActive {
+                                    Button {
+                                        handlePromoteAction(for: user)
+                                    } label: {
+                                        Label("Promote", systemImage: "person.badge.plus")
+                                    }
+                                    .tint(.blue)
                                 }
                             }
-                            
-                            Text("This account has full access to all features and cannot be deleted.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    
+                    if !promotedOwners.isEmpty {
+                        Section("Promoted Owners") {
+                            ForEach(promotedOwners) { user in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        Text(user.name)
+                                            .font(.headline)
+                                        Spacer()
+                                        if user.isActive {
+                                            Text("Active")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        } else {
+                                            Text("Inactive")
+                                                .font(.caption)
+                                                .foregroundStyle(.red)
+                                        }
+                                    }
+                                    
+                                    Text("Full access to all features")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .swipeActions(edge: .trailing) {
+                                    if isCurrentUserOriginalOwner {
+                                        Button(role: .destructive) {
+                                            staffToDelete = user
+                                            showingDeleteAlert = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if let owner = originalOwner {
+                        Section("Original Owner") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text(owner.name)
+                                        .font(.headline)
+                                    Spacer()
+                                    if owner.isActive {
+                                        Text("Active")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        Text("Inactive")
+                                            .font(.caption)
+                                            .foregroundStyle(.red)
+                                    }
+                                }
+                                
+                                Text("This account has full access to all features and cannot be deleted.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
             }
-        }
-        .navigationTitle("Staff Management")
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    showingAddStaff = true
-                } label: {
-                    Image(systemName: "person.badge.plus")
+            .navigationTitle("Staff Management")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        showingAddStaff = true
+                    } label: {
+                        Image(systemName: "person.badge.plus")
+                    }
                 }
             }
-        }
-        .sheet(isPresented: $showingAddStaff) {
-            NavigationStack {
+            .sheet(isPresented: $showingAddStaff) {
                 AddStaffView()
             }
         }
@@ -254,7 +254,16 @@ struct StaffManagementView: View {
         Task {
             var updatedStaff = staff
             updatedStaff.promoteToOwner(email: promoteEmail, password: promotePassword)
+            
+            // Update the user with the new owner status
             await dataManager.updateUser(updatedStaff)
+            
+            // Also update the hashedPassword in CloudKit for the new owner
+            await AuthenticationService.shared.updatePromotedOwnerPassword(email: promoteEmail, password: promotePassword)
+            
+            await MainActor.run {
+                staffToPromote = nil
+            }
         }
     }
     
@@ -346,7 +355,13 @@ struct PromoteToOwnerView: View {
         Task {
             var updatedStaff = staff
             updatedStaff.promoteToOwner(email: email, password: password)
+            
+            // Update the user with the new owner status
             await dataManager.updateUser(updatedStaff)
+            
+            // Also update the hashedPassword in CloudKit for the new owner
+            await AuthenticationService.shared.updatePromotedOwnerPassword(email: email, password: password)
+            
             await MainActor.run {
                 onComplete(true)
             }

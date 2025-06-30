@@ -99,6 +99,7 @@ struct User: Codable, Identifiable {
         
         // Update owner status and permissions
         isOwner = true
+        isWorkingToday = true  // Owners should always have access
         self.email = email  // Set the new owner email
         
         // Update permissions for owner

@@ -276,7 +276,7 @@ struct FutureBookingFormView: View {
             }
         }
         .sheet(isPresented: $showingImagePicker) {
-            ImagePicker(image: $profileImage)
+            ImageSourcePicker(image: $profileImage)
         }
         .alert("Duplicate Dog Found", isPresented: $showingDuplicateAlert) {
             Button("Cancel", role: .cancel) { }
@@ -514,7 +514,7 @@ struct FutureBookingEditView: View {
             }
         }
         .sheet(isPresented: $showingImagePicker) {
-            ImagePicker(image: $profileImage)
+            ImageSourcePicker(image: $profileImage)
         }
     }
     

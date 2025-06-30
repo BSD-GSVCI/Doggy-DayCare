@@ -43,6 +43,7 @@ class CloudKitService: ObservableObject {
         static let canManageFeeding = "canManageFeeding"
         static let canManageWalking = "canManageWalking"
         static let hashedPassword = "hashedPassword"
+        static let cloudKitUserID = "cloudKitUserID"
         
         // Audit fields
         static let createdBy = "createdBy"
@@ -69,6 +70,7 @@ class CloudKitService: ObservableObject {
         static let createdAt = "createdAt"
         static let updatedAt = "updatedAt"
         static let isArrivalTimeSet = "isArrivalTimeSet"
+        static let isDeleted = "isDeleted"  // Added field for deleted status
         
         // Audit fields
         static let createdBy = "createdBy"
@@ -345,14 +347,16 @@ class CloudKitService: ObservableObject {
         record[DogFields.updatedAt] = dog.updatedAt
         record[DogFields.isArrivalTimeSet] = dog.isArrivalTimeSet ? 1 : 0
         
-        // Audit fields
-        guard let currentUser = AuthenticationService.shared.currentUser else {
-            throw CloudKitError.userNotAuthenticated
-        }
-        record[DogFields.createdBy] = currentUser.id
-        record[DogFields.modifiedBy] = currentUser.id
+        // Get the actual CloudKit user record ID (not our app's user ID)
+        let cloudKitUserRecordID = try await container.userRecordID()
+        print("🔗 Using CloudKit user record ID: \(cloudKitUserRecordID.recordName)")
+        
+        // Audit fields - use CloudKit's actual user ID
+        record[DogFields.createdBy] = cloudKitUserRecordID.recordName
+        record[DogFields.modifiedBy] = cloudKitUserRecordID.recordName
         record[DogFields.modificationCount] = 1
         
+        // Save the record (without CKShare for now)
         let saved = try await publicDatabase.save(record)
         
         // Create audit trail entry
@@ -378,14 +382,26 @@ class CloudKitService: ObservableObject {
             throw CloudKitError.recordNotFound
         }
         
-        // Delete all associated records first
+        // Instead of deleting, mark the dog as deleted and set departure date
+        record[DogFields.departureDate] = Date()
+        record[DogFields.updatedAt] = Date()
+        record[DogFields.isDeleted] = 1  // Mark as deleted
+        
+        // Update audit fields
+        guard let currentUser = AuthenticationService.shared.currentUser else {
+            throw CloudKitError.userNotAuthenticated
+        }
+        record[DogFields.modifiedBy] = currentUser.id
+        record[DogFields.modificationCount] = (record[DogFields.modificationCount] as? Int64 ?? 0) + 1
+        
+        // Save the updated record
+        try await publicDatabase.save(record)
+        
+        // Delete all associated records (feeding, medication, potty, walking)
         try await deleteFeedingRecords(for: dog.id)
         try await deleteMedicationRecords(for: dog.id)
         try await deletePottyRecords(for: dog.id)
         try await deleteWalkingRecords(for: dog.id)
-        
-        // Delete the dog record
-        try await publicDatabase.deleteRecord(withID: record.recordID)
         
         // Create audit trail entry
         try await createDogChange(
@@ -396,11 +412,12 @@ class CloudKitService: ObservableObject {
             newValue: nil
         )
         
-        print("✅ Dog deleted: \(dog.name)")
+        print("✅ Dog marked as deleted (remains in database): \(dog.name)")
     }
     
     func fetchDogs() async throws -> [CloudKitDog] {
         print("🔍 Starting fetchDogs...")
+        // Fetch all dogs and filter out deleted ones locally
         let predicate = NSPredicate(format: "\(DogFields.name) != %@", "")
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
         
@@ -408,13 +425,19 @@ class CloudKitService: ObservableObject {
         let result = try await publicDatabase.records(matching: query)
         let records = result.matchResults.compactMap { try? $0.1.get() }
         
-        print("🔍 Found \(records.count) dog records in CloudKit")
+        print("🔍 Found \(records.count) total dog records in CloudKit")
         
         var dogs: [CloudKitDog] = []
         
         for record in records {
             print("🔍 Processing dog record: \(record[DogFields.name] as? String ?? "Unknown")")
             var dog = CloudKitDog(from: record)
+            
+            // Skip deleted dogs
+            if dog.isDeleted {
+                print("⏭️ Skipping deleted dog: \(dog.name)")
+                continue
+            }
             
             // Load records for this dog
             do {
@@ -434,7 +457,7 @@ class CloudKitService: ObservableObject {
         // Sort dogs by creation date locally
         dogs.sort { $0.createdAt > $1.createdAt }
         
-        print("✅ Fetched \(dogs.count) dogs from CloudKit")
+        print("✅ Fetched \(dogs.count) active dogs from CloudKit")
         return dogs
     }
     
@@ -1189,6 +1212,9 @@ class CloudKitService: ObservableObject {
     func checkoutDog(_ dogID: String) async throws {
         print("🔄 CloudKitService.checkoutDog called for dog ID: \(dogID)")
         
+        // Debug: Check user identity
+        await debugUserIdentity()
+        
         // Fetch the existing dog record
         let predicate = NSPredicate(format: "\(DogFields.id) == %@", dogID)
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
@@ -1203,23 +1229,54 @@ class CloudKitService: ObservableObject {
         let departureDate = dogRecord[DogFields.departureDate] as? Date
         print("📅 Original record departure date: \(departureDate?.description ?? "nil")")
         
+        // Debug: Check who created this dog
+        let createdBy = dogRecord[DogFields.createdBy] as? String
+        print("🔍 Dog was created by CloudKit user ID: \(createdBy ?? "nil")")
+        
+        // Check if current user is the original owner
+        guard let currentUser = AuthenticationService.shared.currentUser else {
+            print("❌ No authenticated user found in AuthenticationService")
+            throw CloudKitError.userNotAuthenticated
+        }
+        
+        // Get the actual CloudKit user record ID
+        let cloudKitUserRecordID = try await container.userRecordID()
+        print("🔗 Current CloudKit user record ID: \(cloudKitUserRecordID.recordName)")
+        print("🔗 App user ID: \(currentUser.id)")
+        
         // Update only the departure date
         dogRecord[DogFields.departureDate] = Date()
         dogRecord[DogFields.updatedAt] = Date()
         
-        // Update audit fields if user is authenticated
-        if let currentUser = currentUser {
-            dogRecord[DogFields.modifiedBy] = currentUser.id
-            let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
-            dogRecord[DogFields.modificationCount] = currentCount + 1
-        }
+        // Update audit fields - use CloudKit's actual user ID
+        dogRecord[DogFields.modifiedBy] = cloudKitUserRecordID.recordName
+        let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
+        dogRecord[DogFields.modificationCount] = currentCount + 1
         
         let updatedDepartureDate = dogRecord[DogFields.departureDate] as? Date
         print("📅 Updated record departure date: \(updatedDepartureDate?.description ?? "nil")")
         
         // Save the updated record
-        let savedRecord = try await publicDatabase.save(dogRecord)
-        print("✅ Checkout record saved successfully: \(savedRecord.recordID.recordName)")
+        do {
+            let savedRecord = try await publicDatabase.save(dogRecord)
+            print("✅ Checkout record saved successfully: \(savedRecord.recordID.recordName)")
+        } catch let error as CKError {
+            print("❌ CloudKit save error: \(error)")
+            print("❌ Error code: \(error.code.rawValue)")
+            print("❌ Error description: \(error.localizedDescription)")
+            
+            if error.code == .notAuthenticated {
+                throw CloudKitError.userNotAuthenticated
+            } else if error.code == .permissionFailure {
+                print("❌ PERMISSION ERROR: User cannot modify this record")
+                print("❌ This is likely a CloudKit container security setting issue")
+                print("❌ Check CloudKit Dashboard → Schema → Security Roles")
+                print("❌ OR check Apple Developer Portal → CloudKit → Container Settings")
+                throw CloudKitError.permissionDenied
+            } else {
+                throw CloudKitError.unknownError(error.localizedDescription)
+            }
+        }
         
         // Create audit trail entry
         try await createDogChange(
@@ -1253,11 +1310,14 @@ class CloudKitService: ObservableObject {
         dogRecord[DogFields.updatedAt] = Date()
         
         // Update audit fields if user is authenticated
-        if let currentUser = currentUser {
-            dogRecord[DogFields.modifiedBy] = currentUser.id
-            let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
-            dogRecord[DogFields.modificationCount] = currentCount + 1
+        guard let currentUser = AuthenticationService.shared.currentUser else {
+            print("❌ No authenticated user found in AuthenticationService")
+            throw CloudKitError.userNotAuthenticated
         }
+        
+        dogRecord[DogFields.modifiedBy] = currentUser.id
+        let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
+        dogRecord[DogFields.modificationCount] = currentCount + 1
         
         let updatedEndDate = dogRecord[DogFields.boardingEndDate] as? Date
         print("📅 Updated boarding end date: \(updatedEndDate?.description ?? "nil")")
@@ -1300,11 +1360,14 @@ class CloudKitService: ObservableObject {
         dogRecord[DogFields.updatedAt] = Date()
         
         // Update audit fields if user is authenticated
-        if let currentUser = currentUser {
-            dogRecord[DogFields.modifiedBy] = currentUser.id
-            let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
-            dogRecord[DogFields.modificationCount] = currentCount + 1
+        guard let currentUser = AuthenticationService.shared.currentUser else {
+            print("❌ No authenticated user found in AuthenticationService")
+            throw CloudKitError.userNotAuthenticated
         }
+        
+        dogRecord[DogFields.modifiedBy] = currentUser.id
+        let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
+        dogRecord[DogFields.modificationCount] = currentCount + 1
         
         let updatedEndDate = dogRecord[DogFields.boardingEndDate] as? Date
         print("📅 Updated boarding status: true, end date: \(updatedEndDate?.description ?? "nil")")
@@ -1338,11 +1401,17 @@ class CloudKitService: ObservableObject {
         // Set departureDate to nil
         dogRecord[DogFields.departureDate] = nil
         dogRecord[DogFields.updatedAt] = Date()
-        if let currentUser = currentUser {
-            dogRecord[DogFields.modifiedBy] = currentUser.id
-            let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
-            dogRecord[DogFields.modificationCount] = currentCount + 1
+        
+        // Update audit fields if user is authenticated
+        guard let currentUser = AuthenticationService.shared.currentUser else {
+            print("❌ No authenticated user found in AuthenticationService")
+            throw CloudKitError.userNotAuthenticated
         }
+        
+        dogRecord[DogFields.modifiedBy] = currentUser.id
+        let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
+        dogRecord[DogFields.modificationCount] = currentCount + 1
+        
         print("📅 Departure date undone (set to nil)")
         let savedRecord = try await publicDatabase.save(dogRecord)
         print("✅ Undo departure saved: \(savedRecord.recordID.recordName)")
@@ -1370,11 +1439,17 @@ class CloudKitService: ObservableObject {
         // Set departureDate to newDate
         dogRecord[DogFields.departureDate] = newDate
         dogRecord[DogFields.updatedAt] = Date()
-        if let currentUser = currentUser {
-            dogRecord[DogFields.modifiedBy] = currentUser.id
-            let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
-            dogRecord[DogFields.modificationCount] = currentCount + 1
+        
+        // Update audit fields if user is authenticated
+        guard let currentUser = AuthenticationService.shared.currentUser else {
+            print("❌ No authenticated user found in AuthenticationService")
+            throw CloudKitError.userNotAuthenticated
         }
+        
+        dogRecord[DogFields.modifiedBy] = currentUser.id
+        let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
+        dogRecord[DogFields.modificationCount] = currentCount + 1
+        
         print("📅 Updated record departure date: \(newDate)")
         let savedRecord = try await publicDatabase.save(dogRecord)
         print("✅ Edit departure saved: \(savedRecord.recordID.recordName)")
@@ -1410,11 +1485,14 @@ class CloudKitService: ObservableObject {
         dogRecord[DogFields.updatedAt] = Date()
         
         // Update audit fields if user is authenticated
-        if let currentUser = currentUser {
-            dogRecord[DogFields.modifiedBy] = currentUser.id
-            let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
-            dogRecord[DogFields.modificationCount] = currentCount + 1
+        guard let currentUser = AuthenticationService.shared.currentUser else {
+            print("❌ No authenticated user found in AuthenticationService")
+            throw CloudKitError.userNotAuthenticated
         }
+        
+        dogRecord[DogFields.modifiedBy] = currentUser.id
+        let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
+        dogRecord[DogFields.modificationCount] = currentCount + 1
         
         print("📅 Updated record arrival date: \(newArrivalTime)")
         
@@ -1430,6 +1508,219 @@ class CloudKitService: ObservableObject {
             oldValue: oldArrivalDate?.description,
             newValue: newArrivalTime.description
         )
+    }
+    
+    // MARK: - Debug Functions
+    
+    func debugTestPermissions() async {
+        print("🔍 Testing CloudKit permissions...")
+        
+        // Test 1: Try to create a new dog record
+        do {
+            let testDog = CloudKitDog(
+                name: "TEST_DOG_PERMISSIONS",
+                arrivalDate: Date(),
+                isBoarding: false
+            )
+            
+            let record = CKRecord(recordType: RecordTypes.dog)
+            record[DogFields.id] = testDog.id
+            record[DogFields.name] = testDog.name
+            record[DogFields.arrivalDate] = testDog.arrivalDate
+            record[DogFields.isBoarding] = testDog.isBoarding ? 1 : 0
+            record[DogFields.createdAt] = Date()
+            record[DogFields.updatedAt] = Date()
+            
+            let savedRecord = try await publicDatabase.save(record)
+            print("✅ SUCCESS: Can create new dog records")
+            
+            // Try to modify the record we just created
+            savedRecord[DogFields.name] = "TEST_DOG_MODIFIED"
+            _ = try await publicDatabase.save(savedRecord)
+            print("✅ SUCCESS: Can modify records we created")
+            
+            // Test 3: Try to create a share for this record
+            do {
+                let share = CKShare(rootRecord: savedRecord)
+                share[CKShare.SystemFieldKey.title] = "Test Dog Share"
+                share.publicPermission = .readWrite
+                
+                let saveResult = try await publicDatabase.save(share)
+                print("✅ SUCCESS: Can create CKShare for records")
+                print("✅ Share ID: \(saveResult.recordID.recordName)")
+                
+                // Try to modify the shared record
+                savedRecord[DogFields.name] = "TEST_DOG_SHARED_MODIFIED"
+                _ = try await publicDatabase.save(savedRecord)
+                print("✅ SUCCESS: Can modify shared records")
+                
+                // Clean up
+                try await publicDatabase.deleteRecord(withID: saveResult.recordID)
+                try await publicDatabase.deleteRecord(withID: savedRecord.recordID)
+                print("✅ SUCCESS: Can delete shared records")
+                
+            } catch {
+                print("❌ CKShare test failed: \(error)")
+            }
+            
+        } catch {
+            print("❌ FAILED: \(error)")
+        }
+    }
+    
+    func debugUserIdentity() async {
+        print("🔍 Debugging CloudKit user identity...")
+        
+        do {
+            // Check current CloudKit user
+            let userRecordID = try await container.userRecordID()
+            print("📱 Current CloudKit User Record ID: \(userRecordID.recordName)")
+            
+            // Check container identifier
+            print("📦 CloudKit Container ID: \(container.containerIdentifier ?? "Unknown")")
+            
+            // Check if we can access private database
+            let privateDatabase = container.privateCloudDatabase
+            print("🔒 Private database available: \(privateDatabase)")
+            
+            // Check if we can fetch our own user record
+            let userRecord = try await publicDatabase.record(for: userRecordID)
+            print("✅ Can fetch own user record")
+            print("📱 User record type: \(userRecord.recordType)")
+            
+            // Check if we can fetch our own user from our app's user table
+            let predicate = NSPredicate(format: "\(UserFields.id) == %@", userRecordID.recordName)
+            let query = CKQuery(recordType: RecordTypes.user, predicate: predicate)
+            let result = try await publicDatabase.records(matching: query)
+            let records = result.matchResults.compactMap { try? $0.1.get() }
+            
+            if let userRecord = records.first {
+                print("✅ Found matching user record in app: \(userRecord[UserFields.name] as? String ?? "Unknown")")
+                print("📱 User is owner: \(userRecord[UserFields.isOwner] as? Int64 == 1)")
+                print("📱 User is original owner: \(userRecord[UserFields.isOriginalOwner] as? Int64 == 1)")
+            } else {
+                print("❌ No matching user record found in app's user table")
+                print("🔍 This suggests the CloudKit user ID doesn't match any app user")
+            }
+            
+            // Check all users in the app
+            let allUsers = try await fetchAllUsers()
+            print("👥 All users in app:")
+            for user in allUsers {
+                print("   - \(user.name) (ID: \(user.id), Owner: \(user.isOwner), Original: \(user.isOriginalOwner))")
+            }
+            
+        } catch {
+            print("❌ User identity debug failed: \(error)")
+        }
+    }
+    
+    // MARK: - User Identity Management
+    
+    /// Updates the current user's CloudKit user ID in our app's user table
+    func updateCurrentUserCloudKitID() async throws {
+        print("🔄 Updating current user's CloudKit ID...")
+        
+        // Get current CloudKit user ID
+        let cloudKitUserID = try await container.userRecordID()
+        print("📱 Current CloudKit User ID: \(cloudKitUserID.recordName)")
+        
+        // Get current app user
+        guard let currentUser = AuthenticationService.shared.currentUser else {
+            throw CloudKitError.userNotAuthenticated
+        }
+        
+        print("👤 Current app user: \(currentUser.name) (ID: \(currentUser.id))")
+        
+        // Find the user record in CloudKit
+        let predicate = NSPredicate(format: "\(UserFields.id) == %@", currentUser.id)
+        let query = CKQuery(recordType: RecordTypes.user, predicate: predicate)
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let userRecord = records.first else {
+            print("❌ User record not found in CloudKit")
+            throw CloudKitError.recordNotFound
+        }
+        
+        // Update the CloudKit user ID field
+        userRecord[UserFields.cloudKitUserID] = cloudKitUserID.recordName
+        userRecord[UserFields.updatedAt] = Date()
+        
+        // Save the updated record
+        let savedRecord = try await publicDatabase.save(userRecord)
+        print("✅ Updated user's CloudKit ID: \(savedRecord[UserFields.cloudKitUserID] as? String ?? "nil")")
+    }
+
+    func permanentlyDeleteDog(_ dog: CloudKitDog) async throws {
+        let predicate = NSPredicate(format: "\(DogFields.id) == %@", dog.id)
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let record = records.first else {
+            throw CloudKitError.recordNotFound
+        }
+        
+        // Delete all associated records first
+        try await deleteFeedingRecords(for: dog.id)
+        try await deleteMedicationRecords(for: dog.id)
+        try await deletePottyRecords(for: dog.id)
+        try await deleteWalkingRecords(for: dog.id)
+        
+        // Delete the dog record permanently
+        try await publicDatabase.deleteRecord(withID: record.recordID)
+        
+        // Create audit trail entry
+        try await createDogChange(
+            dogID: dog.id,
+            changeType: .deleted,
+            fieldName: "dog",
+            oldValue: dog.name,
+            newValue: nil
+        )
+        
+        print("✅ Dog permanently deleted from database: \(dog.name)")
+    }
+
+    func fetchAllDogsIncludingDeleted() async throws -> [CloudKitDog] {
+        print("🔍 Starting fetchAllDogsIncludingDeleted...")
+        // Fetch all dogs including deleted ones
+        let predicate = NSPredicate(format: "\(DogFields.name) != %@", "")
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        
+        print("🔍 Executing CloudKit query: \(query)")
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        print("🔍 Found \(records.count) total dog records in CloudKit")
+        
+        var dogs: [CloudKitDog] = []
+        
+        for record in records {
+            print("🔍 Processing dog record: \(record[DogFields.name] as? String ?? "Unknown")")
+            var dog = CloudKitDog(from: record)
+            
+            // Load records for this dog
+            do {
+                let (feeding, medication, potty, walking) = try await loadRecords(for: dog.id)
+                dog.feedingRecords = feeding
+                dog.medicationRecords = medication
+                dog.pottyRecords = potty
+                dog.walkingRecords = walking
+                print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty, \(walking.count) walking records for \(dog.name)")
+            } catch {
+                print("⚠️ Failed to load records for dog \(dog.name): \(error)")
+            }
+            
+            dogs.append(dog)
+        }
+        
+        // Sort dogs by creation date locally
+        dogs.sort { $0.createdAt > $1.createdAt }
+        
+        print("✅ Fetched \(dogs.count) total dogs from CloudKit")
+        return dogs
     }
 }
 
@@ -1484,6 +1775,7 @@ struct CloudKitUser {
     var canManageFeeding: Bool
     var canManageWalking: Bool
     var hashedPassword: String?
+    var cloudKitUserID: String?
     
     var canWorkToday: Bool {
         // Owners can always work
@@ -1567,6 +1859,7 @@ struct CloudKitUser {
         self.canManageFeeding = (record[CloudKitService.UserFields.canManageFeeding] as? Int64 ?? 0) == 1
         self.canManageWalking = (record[CloudKitService.UserFields.canManageWalking] as? Int64 ?? 0) == 1
         self.hashedPassword = record[CloudKitService.UserFields.hashedPassword] as? String
+        self.cloudKitUserID = record[CloudKitService.UserFields.cloudKitUserID] as? String
     }
 }
 
@@ -1588,6 +1881,7 @@ struct CloudKitDog {
     var createdAt: Date
     var updatedAt: Date
     var isArrivalTimeSet: Bool
+    var isDeleted: Bool
     
     // Records
     var feedingRecords: [FeedingRecord] = []
@@ -1627,7 +1921,8 @@ struct CloudKitDog {
         medicationRecords: [MedicationRecord] = [],
         pottyRecords: [PottyRecord] = [],
         walkingRecords: [WalkingRecord] = [],
-        isArrivalTimeSet: Bool = true
+        isArrivalTimeSet: Bool = true,
+        isDeleted: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -1650,10 +1945,11 @@ struct CloudKitDog {
         self.createdAt = Date()
         self.updatedAt = Date()
         self.isArrivalTimeSet = isArrivalTimeSet
+        self.isDeleted = isDeleted
     }
     
     init(from record: CKRecord) {
-        self.id = record[CloudKitService.DogFields.id] as? String ?? ""
+        self.id = record[CloudKitService.DogFields.id] as? String ?? UUID().uuidString
         self.name = record[CloudKitService.DogFields.name] as? String ?? ""
         self.ownerName = record[CloudKitService.DogFields.ownerName] as? String
         self.arrivalDate = record[CloudKitService.DogFields.arrivalDate] as? Date ?? Date()
@@ -1669,16 +1965,10 @@ struct CloudKitDog {
         self.profilePictureData = record[CloudKitService.DogFields.profilePictureData] as? Data
         self.createdAt = record[CloudKitService.DogFields.createdAt] as? Date ?? Date()
         self.updatedAt = record[CloudKitService.DogFields.updatedAt] as? Date ?? Date()
+        self.isArrivalTimeSet = (record[CloudKitService.DogFields.isArrivalTimeSet] as? Int64 ?? 1) == 1
+        self.isDeleted = (record[CloudKitService.DogFields.isDeleted] as? Int64 ?? 0) == 1
         
-        // For existing records that don't have isArrivalTimeSet field, default to true
-        // Only set to false if the field exists and is explicitly set to false
-        if record[CloudKitService.DogFields.isArrivalTimeSet] != nil {
-            self.isArrivalTimeSet = (record[CloudKitService.DogFields.isArrivalTimeSet] as? Int64 ?? 1) == 1
-        } else {
-            self.isArrivalTimeSet = true
-        }
-        
-        // Initialize empty records - these will be loaded separately
+        // Initialize empty records arrays - they will be loaded separately
         self.feedingRecords = []
         self.medicationRecords = []
         self.pottyRecords = []
