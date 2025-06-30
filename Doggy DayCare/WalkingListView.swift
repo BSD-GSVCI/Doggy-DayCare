@@ -78,7 +78,6 @@ struct WalkingListView: View {
                                 .foregroundStyle(.primary)
                                 .textCase(nil)
                         }
-                        .listSectionSpacing(160)
                     }
                     
                     if !boardingDogs.isEmpty {
@@ -92,8 +91,8 @@ struct WalkingListView: View {
                                 .fontWeight(.bold)
                                 .foregroundStyle(.primary)
                                 .textCase(nil)
+                                .padding(.top, 80)
                         }
-                        .listSectionSpacing(160)
                     }
                 }
             }

@@ -142,6 +142,55 @@ struct DogDetailView: View {
                 }
             }
             
+            // Allergies & Feeding Instructions Section
+            if let allergiesAndFeedingInstructions = dog.allergiesAndFeedingInstructions, !allergiesAndFeedingInstructions.isEmpty {
+                Section("Allergies & Feeding Instructions") {
+                    Text(allergiesAndFeedingInstructions)
+                        .font(.body)
+                }
+            }
+            
+            // Notes Section
+            if let notes = dog.notes, !notes.isEmpty {
+                Section("Notes") {
+                    Text(notes)
+                        .font(.body)
+                }
+            }
+            
+            // Medications Section
+            if let medications = dog.medications, !medications.isEmpty || !dog.medicationRecords.isEmpty {
+                Section("Medications") {
+                    if let medications = dog.medications, !medications.isEmpty {
+                        Text(medications)
+                            .font(.body)
+                    }
+                    
+                    if !dog.medicationRecords.isEmpty {
+                        ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                            HStack {
+                                Image(systemName: "pills")
+                                    .foregroundStyle(.purple)
+                                VStack(alignment: .leading) {
+                                    Text("Medication")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    if let notes = record.notes {
+                                        Text(notes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+            
             // Feeding Section
             if dog.isDaycareFed || !dog.feedingRecords.isEmpty {
                 Section("Feeding Information") {
@@ -205,6 +254,14 @@ struct DogDetailView: View {
                         Spacer()
                     }
                     .font(.caption)
+                }
+            }
+            
+            // Walking Notes Section
+            if let walkingNotes = dog.walkingNotes, !walkingNotes.isEmpty {
+                Section("Walking Notes") {
+                    Text(walkingNotes)
+                        .font(.body)
                 }
             }
             
@@ -295,63 +352,6 @@ struct DogDetailView: View {
                         Spacer()
                     }
                     .font(.caption)
-                }
-            }
-            
-            // Medications Section
-            if let medications = dog.medications, !medications.isEmpty || !dog.medicationRecords.isEmpty {
-                Section("Medications") {
-                    if let medications = dog.medications, !medications.isEmpty {
-                        Text(medications)
-                            .font(.body)
-                    }
-                    
-                    if !dog.medicationRecords.isEmpty {
-                        ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
-                            HStack {
-                                Image(systemName: "pills")
-                                    .foregroundStyle(.purple)
-                                VStack(alignment: .leading) {
-                                    Text("Medication")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                    if let notes = record.notes {
-                                        Text(notes)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Notes Section
-            if let notes = dog.notes, !notes.isEmpty {
-                Section("Notes") {
-                    Text(notes)
-                        .font(.body)
-                }
-            }
-            
-            // Walking Notes Section
-            if let walkingNotes = dog.walkingNotes, !walkingNotes.isEmpty {
-                Section("Walking Notes") {
-                    Text(walkingNotes)
-                        .font(.body)
-                }
-            }
-            
-            // Allergies & Feeding Instructions Section
-            if let allergiesAndFeedingInstructions = dog.allergiesAndFeedingInstructions, !allergiesAndFeedingInstructions.isEmpty {
-                Section("Allergies & Feeding Instructions") {
-                    Text(allergiesAndFeedingInstructions)
-                        .font(.body)
                 }
             }
             
