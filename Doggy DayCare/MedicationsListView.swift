@@ -14,6 +14,7 @@ struct MedicationsListView: View {
     @State private var medicationRecordToDelete: MedicationRecord?
     @State private var showingMedicationPopup = false
     @State private var medicationNotes = ""
+    @State private var editingMedicationRecord: MedicationRecord?
     
     enum MedicationFilter {
         case all
@@ -106,6 +107,7 @@ struct MedicationsListView: View {
                 }
             }
             .navigationTitle("Medications")
+            .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "Search dogs")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -157,6 +159,21 @@ struct DogMedicationRow: View {
     @State private var medicationRecordToDelete: MedicationRecord?
     @State private var showingMedicationPopup = false
     @State private var medicationNotes = ""
+    @State private var editingMedicationRecord: MedicationRecord?
+    
+    private func editMedicationRecord(_ record: MedicationRecord) {
+        editingMedicationRecord = record
+    }
+    
+    private func updateMedicationRecordNotes(_ record: MedicationRecord, newNote: String?) {
+        Task {
+            if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
+                var updatedDog = dataManager.dogs[dogIndex]
+                updatedDog.updateMedicationRecord(at: record.timestamp, notes: newNote, modifiedBy: authService.currentUser)
+                await dataManager.updateDog(updatedDog)
+            }
+        }
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -196,46 +213,19 @@ struct DogMedicationRow: View {
             }
             .font(.caption)
             
-            // Individual medication instances list
+            // Individual medication instances grid
             if !dog.medicationRecords.isEmpty {
                 let todaysMedicationRecords = dog.medicationRecords.filter { record in
                     Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
                 }
-                
-                // Log medication records outside of ViewBuilder
-                let _ = {
-                    print("📋 Dog \(dog.name) has \(todaysMedicationRecords.count) today's medication records")
-                    for (index, record) in todaysMedicationRecords.enumerated() {
-                        print("📝 Record \(index + 1): timestamp=\(record.timestamp), notes=\(record.notes ?? "nil")")
-                    }
-                }()
-                
                 if !todaysMedicationRecords.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(todaysMedicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
-                            HStack {
-                                Image(systemName: "pills.fill")
-                                    .foregroundStyle(.purple)
-                                
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    
-                                    if let notes = record.notes, !notes.isEmpty {
-                                        Text(notes)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(2)
-                                    }
-                                }
-                                
-                                Spacer()
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.gray.opacity(0.1))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 4) {
+                        ForEach(todaysMedicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \ .id) { record in
+                            MedicationInstanceView(
+                                record: record,
+                                onUpdateNote: { newNotes in updateMedicationRecordNotes(record, newNote: newNotes) },
+                                onDelete: { medicationRecordToDelete = record; showingDeleteMedicationAlert = true }
+                            )
                         }
                     }
                 }
@@ -247,11 +237,11 @@ struct DogMedicationRow: View {
             showingMedicationPopup = true
         }
         .contextMenu {
+            // Only allow deletion via long-press
             if !dog.medicationRecords.isEmpty {
                 let todaysMedicationRecords = dog.medicationRecords.filter { record in
                     Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
                 }
-                
                 ForEach(todaysMedicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
                     Button("Delete medication at \(record.timestamp.formatted(date: .omitted, time: .shortened))", role: .destructive) {
                         deleteMedicationRecord(record)
@@ -318,44 +308,74 @@ struct DogMedicationRow: View {
 
 struct MedicationInstanceView: View {
     let record: MedicationRecord
+    let onUpdateNote: (String?) -> Void
     let onDelete: () -> Void
-    
-    private let shortDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MM/dd/yy"
-        return formatter
-    }()
-    
-    private let shortTimeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter
-    }()
+    @State private var showingNoteAlert = false
+    @State private var showingEditNote = false
+    @State private var editedNotes = ""
     
     var body: some View {
-        Button(action: onDelete) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Image(systemName: "pills.fill")
-                        .foregroundStyle(.purple)
-                    
-                    Text("\(shortDateFormatter.string(from: record.timestamp)) \(shortTimeFormatter.string(from: record.timestamp))")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                
+        Button(action: {
+            showingNoteAlert = true
+        }) {
+            HStack(spacing: 2) {
+                Image(systemName: "pills.fill")
+                    .foregroundStyle(.purple)
+                    .font(.caption)
+                Spacer(minLength: 2)
+                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                 if let notes = record.notes, !notes.isEmpty {
-                    Text(notes)
+                    Text("📝")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .padding(1)
+                        .background(Color.blue.opacity(0.1))
+                        .clipShape(Circle())
                 }
             }
-            .padding(4)
+            .padding(.horizontal, 2)
+            .padding(.vertical, 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.gray.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 4))
         }
         .buttonStyle(PlainButtonStyle())
+        .onLongPressGesture {
+            onDelete()
+        }
+        .alert("Medication Record Notes", isPresented: $showingNoteAlert) {
+            if let notes = record.notes, !notes.isEmpty {
+                Button("Edit Note") {
+                    editedNotes = notes
+                    showingEditNote = true
+                }
+            } else {
+                Button("Add Note") {
+                    editedNotes = ""
+                    showingEditNote = true
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            if let notes = record.notes, !notes.isEmpty {
+                Text(notes)
+            } else {
+                Text("This record has no notes associated with it.")
+            }
+        }
+        .alert("Edit Note", isPresented: $showingEditNote) {
+            TextField("Notes", text: $editedNotes, axis: .vertical)
+                .lineLimit(3...6)
+            Button("Save") {
+                onUpdateNote(editedNotes.isEmpty ? nil : editedNotes)
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Edit notes for this medication record")
+        }
     }
 }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct WalkingListView: View {
     @EnvironmentObject var dataManager: DataManager
@@ -12,6 +13,8 @@ struct WalkingListView: View {
     
     enum WalkingFilter {
         case all
+        case daycare
+        case boarding
         case recentActivity
     }
     
@@ -27,9 +30,15 @@ struct WalkingListView: View {
             }
             return true
         }
-        
-        return dogs.filter { dog in
-            dog.isCurrentlyPresent && dog.needsWalking
+        switch selectedFilter {
+        case .all:
+            return dogs.filter { $0.isCurrentlyPresent && $0.needsWalking }
+        case .daycare:
+            return dogs.filter { $0.isCurrentlyPresent && $0.needsWalking && $0.shouldBeTreatedAsDaycare }
+        case .boarding:
+            return dogs.filter { $0.isCurrentlyPresent && $0.needsWalking && !$0.shouldBeTreatedAsDaycare }
+        case .recentActivity:
+            return dogs.filter { $0.isCurrentlyPresent && $0.needsWalking } // You can refine this if needed
         }
     }
     
@@ -58,45 +67,55 @@ struct WalkingListView: View {
     
     var body: some View {
         NavigationStack {
-            List {
-                if daycareDogs.isEmpty && boardingDogs.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Dogs Need Walking", systemImage: "figure.walk")
-                    } description: {
-                        Text("Dogs that need walking will appear here.")
-                    }
-                } else {
-                    if !daycareDogs.isEmpty {
-                        Section {
-                            ForEach(daycareDogs) { dog in
-                                DogWalkingRow(dog: dog)
-                            }
-                        } header: {
-                            Text("DAYCARE \(daycareDogs.count)")
-                                .font(.headline)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.primary)
-                                .textCase(nil)
+            VStack(spacing: 0) {
+                // Filter carousel
+                HStack(spacing: 12) {
+                    ContentFilterButton(title: "All", isSelected: selectedFilter == .all) { selectedFilter = .all }
+                    ContentFilterButton(title: "Daycare", isSelected: selectedFilter == .daycare) { selectedFilter = .daycare }
+                    ContentFilterButton(title: "Boarding", isSelected: selectedFilter == .boarding) { selectedFilter = .boarding }
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+                List {
+                    if daycareDogs.isEmpty && boardingDogs.isEmpty {
+                        ContentUnavailableView {
+                            Label("No Dogs Need Walking", systemImage: "figure.walk")
+                        } description: {
+                            Text("Dogs that need walking will appear here.")
                         }
-                    }
-                    
-                    if !boardingDogs.isEmpty {
-                        Section {
-                            ForEach(boardingDogs) { dog in
-                                DogWalkingRow(dog: dog)
+                    } else {
+                        if !daycareDogs.isEmpty {
+                            Section {
+                                ForEach(daycareDogs) { dog in
+                                    DogWalkingRow(dog: dog)
+                                }
+                            } header: {
+                                Text("DAYCARE \(daycareDogs.count)")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.primary)
+                                    .textCase(nil)
                             }
-                        } header: {
-                            Text("BOARDING \(boardingDogs.count)")
-                                .font(.headline)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.primary)
-                                .textCase(nil)
-                                .padding(.top, 80)
+                        }
+                        if !boardingDogs.isEmpty {
+                            Section {
+                                ForEach(boardingDogs) { dog in
+                                    DogWalkingRow(dog: dog)
+                                }
+                            } header: {
+                                Text("BOARDING \(boardingDogs.count)")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.primary)
+                                    .textCase(nil)
+                            }
                         }
                     }
                 }
             }
             .navigationTitle("Walking List")
+            .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "Search dogs")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -316,7 +335,7 @@ struct PottyInstanceView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.5)
                 
                 // Note icon if record has notes
                 if let notes = record.notes, !notes.isEmpty {
@@ -327,7 +346,7 @@ struct PottyInstanceView: View {
                         .clipShape(Circle())
                 }
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 2)
             .padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.gray.opacity(0.1))

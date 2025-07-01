@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 struct FeedingListView: View {
     @EnvironmentObject var dataManager: DataManager
@@ -202,6 +203,15 @@ struct FeedingListView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Filter carousel
+                HStack(spacing: 12) {
+                    ContentFilterButton(title: "All", isSelected: selectedFilter == .all) { selectedFilter = .all }
+                    ContentFilterButton(title: "Daycare", isSelected: selectedFilter == .daycare) { selectedFilter = .daycare }
+                    ContentFilterButton(title: "Boarding", isSelected: selectedFilter == .boarding) { selectedFilter = .boarding }
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
                 List {
                     if daycareDogs.isEmpty && boardingDogs.isEmpty {
                         ContentUnavailableView {
@@ -224,7 +234,6 @@ struct FeedingListView: View {
                                     .textCase(nil)
                             }
                         }
-                        
                         if !boardingDogs.isEmpty {
                             Section {
                                 ForEach(boardingDogs) { dog in
@@ -237,14 +246,13 @@ struct FeedingListView: View {
                                     .fontWeight(.bold)
                                     .foregroundStyle(.primary)
                                     .textCase(nil)
-                                    .padding(.top, 80)
                             }
                         }
                     }
                 }
             }
             .navigationTitle("Feeding List")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "Search dogs")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -284,24 +292,6 @@ struct FeedingListView: View {
                     AddFeedingView(dog: dog, feedingType: selectedFeedingType)
                 }
             }
-        }
-    }
-}
-
-struct FeedingFilterButton: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.caption)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(isSelected ? Color.blue : Color.gray.opacity(0.2))
-                .foregroundStyle(isSelected ? .white : .primary)
-                .clipShape(Capsule())
         }
     }
 }
@@ -461,7 +451,7 @@ struct FeedingInstanceView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.5)
                 
                 // Note icon if record has notes
                 if let notes = record.notes, !notes.isEmpty {
@@ -472,7 +462,7 @@ struct FeedingInstanceView: View {
                         .clipShape(Circle())
                 }
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 2)
             .padding(.vertical, 3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.gray.opacity(0.1))
