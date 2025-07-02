@@ -322,7 +322,6 @@ struct MedicationInstanceView: View {
                 Image(systemName: "pills.fill")
                     .foregroundStyle(.purple)
                     .font(.caption)
-                Spacer(minLength: 2)
                 Text(record.timestamp.formatted(date: .omitted, time: .shortened))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -336,9 +335,9 @@ struct MedicationInstanceView: View {
                         .clipShape(Circle())
                 }
             }
-            .padding(.horizontal, 2)
+            .padding(.horizontal, 1)
             .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity)
             .background(Color.gray.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 4))
         }

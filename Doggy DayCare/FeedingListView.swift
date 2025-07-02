@@ -488,8 +488,6 @@ struct FeedingListView: View {
                         .foregroundStyle(colorForFeedingType(record.type))
                         .font(.caption)
                     
-                    Spacer(minLength: 2)
-                    
                     // Time
                     Text(record.timestamp.formatted(date: .omitted, time: .shortened))
                         .font(.caption2)
@@ -506,9 +504,9 @@ struct FeedingListView: View {
                             .clipShape(Circle())
                     }
                 }
-                .padding(.horizontal, 2)
+                .padding(.horizontal, 1)
                 .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity)
                 .background(Color.gray.opacity(0.1))
                 .clipShape(RoundedRectangle(cornerRadius: 4))
             }

@@ -328,8 +328,6 @@ struct PottyInstanceView: View {
                         .font(.caption)
                 }
                 
-                Spacer(minLength: 2)
-                
                 // Time
                 Text(record.timestamp.formatted(date: .omitted, time: .shortened))
                     .font(.caption2)
@@ -345,10 +343,10 @@ struct PottyInstanceView: View {
                         .background(Color.blue.opacity(0.1))
                         .clipShape(Circle())
                 }
-            }
-            .padding(.horizontal, 2)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                .padding(.horizontal, 1)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
             .background(Color.gray.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 4))
         }
