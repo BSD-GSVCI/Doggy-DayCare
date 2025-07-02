@@ -219,8 +219,8 @@ struct DogMedicationRow: View {
                     Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
                 }
                 if !todaysMedicationRecords.isEmpty {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 4) {
-                        ForEach(todaysMedicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \ .id) { record in
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 4) {
+                        ForEach(todaysMedicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
                             MedicationInstanceView(
                                 record: record,
                                 onUpdateNote: { newNotes in updateMedicationRecordNotes(record, newNote: newNotes) },
@@ -327,7 +327,7 @@ struct MedicationInstanceView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.5)
+                    .minimumScaleFactor(1.0)
                 if let notes = record.notes, !notes.isEmpty {
                     Text("📝")
                         .font(.caption2)
@@ -337,7 +337,7 @@ struct MedicationInstanceView: View {
                 }
             }
             .padding(.horizontal, 2)
-            .padding(.vertical, 3)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.gray.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 4))

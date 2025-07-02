@@ -222,7 +222,7 @@ struct DogWalkingRow: View {
                 }
                 
                 if !todaysPottyRecords.isEmpty {
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 4) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 4) {
                         ForEach(todaysPottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
                             PottyInstanceView(record: record) {
                                 pottyRecordToDelete = record
@@ -335,7 +335,7 @@ struct PottyInstanceView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.5)
+                    .minimumScaleFactor(1.0)
                 
                 // Note icon if record has notes
                 if let notes = record.notes, !notes.isEmpty {
@@ -347,7 +347,7 @@ struct PottyInstanceView: View {
                 }
             }
             .padding(.horizontal, 2)
-            .padding(.vertical, 3)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.gray.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 4))
