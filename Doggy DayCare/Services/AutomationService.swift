@@ -146,7 +146,28 @@ class AutomationService: ObservableObject {
             let timestamp = dateFormatter.string(from: Date())
             
             print("💾 Creating backup file...")
-            let url = try await BackupService.shared.exportDogs(allDogs, filename: "backup_\(timestamp)")
+            
+            // Try to get the backup folder URL from UserDefaults
+            var backupFolderURL: URL? = nil
+            if let bookmarkData = UserDefaults.standard.data(forKey: "backup_folder_bookmark") {
+                do {
+                    var isStale = false
+                    backupFolderURL = try URL(resolvingBookmarkData: bookmarkData, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
+                    
+                    if isStale {
+                        print("⚠️ Backup folder bookmark is stale, removing...")
+                        UserDefaults.standard.removeObject(forKey: "backup_folder_bookmark")
+                        backupFolderURL = nil
+                    } else {
+                        print("✅ Using backup folder: \(backupFolderURL?.path ?? "unknown")")
+                    }
+                } catch {
+                    print("❌ Failed to resolve backup folder bookmark: \(error)")
+                    UserDefaults.standard.removeObject(forKey: "backup_folder_bookmark")
+                }
+            }
+            
+            let url = try await BackupService.shared.exportDogs(allDogs, filename: "backup_\(timestamp)", to: backupFolderURL)
             print("✅ Automated backup created successfully at: \(url.path) for owner: \(currentUser.name)")
         } catch {
             print("❌ Error performing automated backup: \(error.localizedDescription)")

@@ -109,6 +109,8 @@ struct ContentView: View {
     @State private var exportState: ExportState = .idle
     @State private var exportURL: URL?
     @State private var isExportReady = false
+    @State private var backupFolderURL: URL?
+    @State private var showingFolderPicker = false
     
     enum DogFilter {
         case all
@@ -152,6 +154,30 @@ struct ContentView: View {
     private var departedDogs: [Dog] {
         filteredDogs.filter { $0.departureDate != nil && Calendar.current.isDateInToday($0.departureDate!) }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+    
+    private func loadBackupFolderBookmark() {
+        guard let bookmarkData = UserDefaults.standard.data(forKey: "backup_folder_bookmark") else {
+            print("No backup folder bookmark found")
+            return
+        }
+        
+        do {
+            var isStale = false
+            let url = try URL(resolvingBookmarkData: bookmarkData, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
+            
+            if isStale {
+                print("⚠️ Backup folder bookmark is stale, removing...")
+                UserDefaults.standard.removeObject(forKey: "backup_folder_bookmark")
+                return
+            }
+            
+            backupFolderURL = url
+            print("✅ Backup folder loaded from bookmark: \(url.path)")
+        } catch {
+            print("❌ Failed to resolve backup folder bookmark: \(error)")
+            UserDefaults.standard.removeObject(forKey: "backup_folder_bookmark")
+        }
     }
     
     private var visibleDogs: [Dog] {
@@ -239,6 +265,11 @@ struct ContentView: View {
                                 .foregroundStyle(.blue)
                         }
                         
+                        NavigationLink(destination: PaymentsView()) {
+                            Image(systemName: "dollarsign")
+                                .foregroundStyle(.blue)
+                        }
+                        
                         if authService.currentUser?.isOwner == true {
                             Button {
                                 showingStaffManagement = true
@@ -248,60 +279,82 @@ struct ContentView: View {
                             }
                         }
                         
-                        Button {
-                            Task {
-                                await MainActor.run {
-                                    exportState = .alertShown
-                                    print("🔄 Export started - alert shown")
+                        Menu {
+                            if authService.currentUser?.isOwner == true {
+                                Button {
+                                    showingFolderPicker = true
+                                } label: {
+                                    Label("Choose Backup Folder", systemImage: "folder")
                                 }
                                 
-                                // Record start time for minimum display duration
-                                let startTime = Date()
-                                
-                                do {
-                                    print("Starting export...")
-                                    print("Visible dogs count: \(visibleDogs.count)")
-                                    let url = try await BackupService.shared.exportDogs(visibleDogs)
-                                    print("Export completed, URL: \(url.absoluteString)")
-                                    
-                                    // Calculate how long the export took
-                                    let exportDuration = Date().timeIntervalSince(startTime)
-                                    let minimumDisplayTime: TimeInterval = 1.0 // 1 second minimum
-                                    
-                                    // If export was faster than minimum, wait for the remainder
-                                    if exportDuration < minimumDisplayTime {
-                                        let remainingTime = minimumDisplayTime - exportDuration
-                                        try await Task.sleep(nanoseconds: UInt64(remainingTime * 1_000_000_000))
+                                if backupFolderURL != nil {
+                                    Button {
+                                        backupFolderURL = nil
+                                        UserDefaults.standard.removeObject(forKey: "backup_folder_bookmark")
+                                    } label: {
+                                        Label("Clear Backup Folder", systemImage: "folder.badge.minus")
                                     }
-                                    
-                                    await MainActor.run {
-                                        exportURL = url
-                                        isExportReady = true
-                                        exportState = .sheetPending
-                                        print("Export ready, transitioning to sheet")
-                                    }
-                                    
-                                    await MainActor.run {
-                                        exportState = .sheetShown
-                                        print("Sheet should now be visible")
-                                    }
-                                } catch {
-                                    await MainActor.run {
-                                        exportState = .idle
-                                        print("❌ Export failed - back to idle")
-                                    }
-                                    print("Export error: \(error)")
                                 }
+                                
+                                Divider()
+                            }
+                            
+                            Button {
+                                Task {
+                                    await MainActor.run {
+                                        exportState = .alertShown
+                                        print("🔄 Export started - alert shown")
+                                    }
+                                    
+                                    // Record start time for minimum display duration
+                                    let startTime = Date()
+                                    
+                                    do {
+                                        print("Starting export...")
+                                        print("Visible dogs count: \(visibleDogs.count)")
+                                        let url = try await BackupService.shared.exportDogs(visibleDogs)
+                                        print("Export completed, URL: \(url.absoluteString)")
+                                        
+                                        // Calculate how long the export took
+                                        let exportDuration = Date().timeIntervalSince(startTime)
+                                        let minimumDisplayTime: TimeInterval = 1.0 // 1 second minimum
+                                        
+                                        // If export was faster than minimum, wait for the remainder
+                                        if exportDuration < minimumDisplayTime {
+                                            let remainingTime = minimumDisplayTime - exportDuration
+                                            try await Task.sleep(nanoseconds: UInt64(remainingTime * 1_000_000_000))
+                                        }
+                                        
+                                        await MainActor.run {
+                                            exportURL = url
+                                            isExportReady = true
+                                            exportState = .sheetPending
+                                            print("Export ready, transitioning to sheet")
+                                        }
+                                        
+                                        await MainActor.run {
+                                            exportState = .sheetShown
+                                            print("Sheet should now be visible")
+                                        }
+                                    } catch {
+                                        await MainActor.run {
+                                            exportState = .idle
+                                            print("❌ Export failed - back to idle")
+                                        }
+                                        print("Export error: \(error)")
+                                    }
+                                }
+                            } label: {
+                                Label("Export Data", systemImage: "square.and.arrow.up")
+                            }
+                            
+                            Button(role: .destructive) {
+                                showingLogoutConfirmation = true
+                            } label: {
+                                Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                             }
                         } label: {
-                            Image(systemName: "square.and.arrow.up")
-                                .foregroundStyle(.blue)
-                        }
-                        
-                        Button {
-                            showingLogoutConfirmation = true
-                        } label: {
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                            Image(systemName: "ellipsis.circle")
                                 .foregroundStyle(.blue)
                         }
                     }
@@ -343,6 +396,12 @@ struct ContentView: View {
                 if exportState == .alertShown {
                     ExportingOverlay()
                 }
+            }
+            .onAppear {
+                loadBackupFolderBookmark()
+            }
+            .sheet(isPresented: $showingFolderPicker) {
+                FolderPicker(selectedURL: $backupFolderURL)
             }
         }
     }
@@ -492,6 +551,63 @@ private struct ExportSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+}
+
+// MARK: - Folder Picker
+struct FolderPicker: UIViewControllerRepresentable {
+    @Binding var selectedURL: URL?
+    @Environment(\.dismiss) private var dismiss
+    
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder])
+        picker.delegate = context.coordinator
+        picker.allowsMultipleSelection = false
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let parent: FolderPicker
+        
+        init(_ parent: FolderPicker) {
+            self.parent = parent
+        }
+        
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard let url = urls.first else { return }
+            
+            // Start accessing the security-scoped resource
+            let didStartAccessing = url.startAccessingSecurityScopedResource()
+            
+            if didStartAccessing {
+                // Store the URL for future use
+                parent.selectedURL = url
+                
+                // Save the bookmark data for persistent access
+                do {
+                    let bookmarkData = try url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
+                    UserDefaults.standard.set(bookmarkData, forKey: "backup_folder_bookmark")
+                    print("✅ Backup folder selected and bookmark saved: \(url.path)")
+                } catch {
+                    print("❌ Failed to save bookmark: \(error)")
+                }
+                
+                // Stop accessing the security-scoped resource
+                url.stopAccessingSecurityScopedResource()
+            }
+            
+            parent.dismiss()
+        }
+        
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            parent.dismiss()
         }
     }
 }
