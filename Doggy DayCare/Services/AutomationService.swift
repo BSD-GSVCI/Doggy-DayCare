@@ -45,6 +45,19 @@ class AutomationService: ObservableObject {
         
         // Setup midnight transition timer
         setupMidnightTransition()
+        
+        // Vaccination expiry check at 9:00 AM daily
+        var vaccinationComponents = DateComponents()
+        vaccinationComponents.hour = 9
+        vaccinationComponents.minute = 0
+        if let nextVaccinationCheck = calendar.nextDate(after: Date(), matching: vaccinationComponents, matchingPolicy: .nextTime) {
+            let vaccinationTimer = Timer(fire: nextVaccinationCheck, interval: 86400, repeats: true) { [weak self] _ in
+                Task {
+                    await self?.checkVaccinationExpiries()
+                }
+            }
+            RunLoop.main.add(vaccinationTimer, forMode: .common)
+        }
     }
     
     private func setupBackupTimers() {
@@ -220,6 +233,35 @@ class AutomationService: ObservableObject {
             print("Midnight transition completed successfully")
         } catch {
             print("Error handling midnight transition: \(error.localizedDescription)")
+        }
+    }
+    
+    private func checkVaccinationExpiries() async {
+        do {
+            let cloudKitService = CloudKitService.shared
+            let allCloudKitDogs = try await cloudKitService.fetchDogs()
+            let allDogs = allCloudKitDogs.map { $0.toDog() }
+            let today = Calendar.current.startOfDay(for: Date())
+            let expiredDogs = allDogs.filter {
+                if let endDate = $0.vaccinationEndDate {
+                    return Calendar.current.startOfDay(for: endDate) <= today
+                }
+                return false
+            }
+            for dog in expiredDogs {
+                let content = UNMutableNotificationContent()
+                content.title = "Vaccination Expired"
+                content.body = "The vaccination for \(dog.name) has expired. Please update their vaccination record."
+                content.sound = .default
+                let request = UNNotificationRequest(
+                    identifier: "vaccination_\(dog.id)",
+                    content: content,
+                    trigger: nil
+                )
+                try await UNUserNotificationCenter.current().add(request)
+            }
+        } catch {
+            print("Error checking vaccination expiries: \(error.localizedDescription)")
         }
     }
 } 

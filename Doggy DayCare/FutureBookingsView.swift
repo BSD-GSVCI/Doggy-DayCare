@@ -161,6 +161,11 @@ struct FutureBookingFormView: View {
     @State private var profileImage: UIImage?
     @State private var showingImagePicker = false
     @State private var showingCamera = false
+    @State private var age: Int? = nil
+    @State private var gender: DogGender = .unknown
+    @State private var vaccinationEndDate: Date? = nil
+    @State private var isNeuteredOrSpayed: Bool = false
+    @State private var ownerPhoneNumber: String = ""
     
     var body: some View {
         NavigationStack {
@@ -183,7 +188,7 @@ struct FutureBookingFormView: View {
                     Text("Import saved dog entries to avoid re-entering information")
                 }
                 
-                Section("Dog Information") {
+                Section {
                     // Profile Picture
                     VStack {
                         if let profileImage = profileImage {
@@ -216,20 +221,16 @@ struct FutureBookingFormView: View {
                     TextField("Name", text: $name)
                     TextField("Owner Name", text: $ownerName)
                     DatePicker("Arrival Date", selection: $arrivalDate, displayedComponents: .date)
-                }
-                
-                Section("Stay Type") {
+                    // Move toggles to bottom
                     Toggle("Boarding", isOn: $isBoarding)
-                    
                     if isBoarding {
                         DatePicker("Boarding End Date", selection: $boardingEndDate, displayedComponents: .date)
                     }
+                    Toggle("Daycare Feeds", isOn: $isDaycareFed)
                 }
                 
-                Section("Services") {
-                    Toggle("Daycare Fed", isOn: $isDaycareFed)
+                Section("Walking") {
                     Toggle("Needs Walking", isOn: $needsWalking)
-                    
                     if needsWalking {
                         TextField("Walking Notes", text: $walkingNotes, axis: .vertical)
                             .lineLimit(3...6)
@@ -243,6 +244,31 @@ struct FutureBookingFormView: View {
                         .lineLimit(3...6)
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
+                }
+                
+                Section("Miscellaneous Details") {
+                    TextField("Age", value: $age, format: .number)
+                        .keyboardType(.numberPad)
+                    Picker("Gender", selection: $gender) {
+                        ForEach(DogGender.allCases, id: \ .self) { gender in
+                            Text(gender.displayName).tag(gender)
+                        }
+                    }
+                    if let vaccinationEndDate = vaccinationEndDate {
+                        DatePicker("Vaccination End Date", selection: Binding(get: { vaccinationEndDate }, set: { self.vaccinationEndDate = $0 }), displayedComponents: .date)
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
+                        Button("Clear Vaccination Date") {
+                            self.vaccinationEndDate = nil
+                        }
+                    } else {
+                        Button("Set Vaccination End Date") {
+                            self.vaccinationEndDate = Date()
+                        }
+                    }
+                    Toggle("Neutered/Spayed", isOn: $isNeuteredOrSpayed)
+                    TextField("Owner's Phone Number", text: $ownerPhoneNumber)
+                        .keyboardType(.phonePad)
                 }
             }
             .navigationTitle("Add Future Booking")
@@ -385,6 +411,11 @@ struct FutureBookingEditView: View {
     @State private var profileImage: UIImage?
     @State private var showingImagePicker = false
     @State private var showingCamera = false
+    @State private var age: Int? = nil
+    @State private var gender: DogGender = .unknown
+    @State private var vaccinationEndDate: Date? = nil
+    @State private var isNeuteredOrSpayed: Bool = false
+    @State private var ownerPhoneNumber: String = ""
     
     init(dog: Dog) {
         self.dog = dog
@@ -410,12 +441,17 @@ struct FutureBookingEditView: View {
         self._allergiesAndFeedingInstructions = State(initialValue: dog.allergiesAndFeedingInstructions ?? "")
         self._notes = State(initialValue: dog.notes ?? "")
         self._profileImage = State(initialValue: dog.profilePictureData.flatMap { UIImage(data: $0) })
+        self._age = State(initialValue: dog.age)
+        self._gender = State(initialValue: dog.gender ?? .unknown)
+        self._vaccinationEndDate = State(initialValue: dog.vaccinationEndDate)
+        self._isNeuteredOrSpayed = State(initialValue: dog.isNeuteredOrSpayed ?? false)
+        self._ownerPhoneNumber = State(initialValue: dog.ownerPhoneNumber ?? "")
     }
     
     var body: some View {
         NavigationStack {
             Form {
-                Section("Dog Information") {
+                Section {
                     // Profile Picture
                     VStack {
                         if let profileImage = profileImage {
@@ -448,20 +484,16 @@ struct FutureBookingEditView: View {
                     TextField("Name", text: $name)
                     TextField("Owner Name", text: $ownerName)
                     DatePicker("Arrival Date", selection: $arrivalDate, displayedComponents: .date)
-                }
-                
-                Section("Stay Type") {
+                    // Move toggles to bottom
                     Toggle("Boarding", isOn: $isBoarding)
-                    
                     if isBoarding {
                         DatePicker("Boarding End Date", selection: $boardingEndDate, displayedComponents: .date)
                     }
+                    Toggle("Daycare Feeds", isOn: $isDaycareFed)
                 }
                 
-                Section("Services") {
-                    Toggle("Daycare Fed", isOn: $isDaycareFed)
+                Section("Walking") {
                     Toggle("Needs Walking", isOn: $needsWalking)
-                    
                     if needsWalking {
                         TextField("Walking Notes", text: $walkingNotes, axis: .vertical)
                             .lineLimit(3...6)
@@ -475,6 +507,31 @@ struct FutureBookingEditView: View {
                         .lineLimit(3...6)
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
+                }
+                
+                Section("Miscellaneous Details") {
+                    TextField("Age", value: $age, format: .number)
+                        .keyboardType(.numberPad)
+                    Picker("Gender", selection: $gender) {
+                        ForEach(DogGender.allCases, id: \ .self) { gender in
+                            Text(gender.displayName).tag(gender)
+                        }
+                    }
+                    if let vaccinationEndDate = vaccinationEndDate {
+                        DatePicker("Vaccination End Date", selection: Binding(get: { vaccinationEndDate }, set: { self.vaccinationEndDate = $0 }), displayedComponents: .date)
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
+                        Button("Clear Vaccination Date") {
+                            self.vaccinationEndDate = nil
+                        }
+                    } else {
+                        Button("Set Vaccination End Date") {
+                            self.vaccinationEndDate = Date()
+                        }
+                    }
+                    Toggle("Neutered/Spayed", isOn: $isNeuteredOrSpayed)
+                    TextField("Owner's Phone Number", text: $ownerPhoneNumber)
+                        .keyboardType(.phonePad)
                 }
             }
             .navigationTitle("Edit Future Booking")
@@ -536,6 +593,11 @@ struct FutureBookingEditView: View {
         updatedDog.profilePictureData = profilePictureData
         updatedDog.isArrivalTimeSet = false
         updatedDog.updatedAt = Date()
+        updatedDog.age = age
+        updatedDog.gender = gender
+        updatedDog.vaccinationEndDate = vaccinationEndDate
+        updatedDog.isNeuteredOrSpayed = isNeuteredOrSpayed
+        updatedDog.ownerPhoneNumber = ownerPhoneNumber.isEmpty ? nil : ownerPhoneNumber
         
         await dataManager.updateDog(updatedDog)
         

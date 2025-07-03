@@ -142,7 +142,29 @@ struct DogDetailView: View {
                 }
             }
             
-            // Allergies & Feeding Instructions Section
+            // Miscellaneous Information Section
+            Section("Miscellaneous Information") {
+                if let age = dog.age {
+                    InfoRow(title: "Age", value: String(age))
+                }
+                if let gender = dog.gender {
+                    InfoRow(title: "Gender", value: gender.displayName)
+                }
+                if let vaccinationEndDate = dog.vaccinationEndDate {
+                    InfoRow(title: "Vaccination End Date", value: dateFormatter.string(from: vaccinationEndDate))
+                }
+                if let isNeuteredOrSpayed = dog.isNeuteredOrSpayed {
+                    InfoRow(title: "Neutered/Spayed", value: isNeuteredOrSpayed ? "Yes" : "No")
+                }
+                if let ownerName = dog.ownerName, !ownerName.isEmpty {
+                    InfoRow(title: "Owner Name", value: ownerName)
+                }
+                if let ownerPhoneNumber = dog.ownerPhoneNumber, !ownerPhoneNumber.isEmpty {
+                    InfoRow(title: "Owner's Phone Number", value: ownerPhoneNumber)
+                }
+            }
+            
+            // Move Allergies & Feeding Instructions to just before Feeding Information
             if let allergiesAndFeedingInstructions = dog.allergiesAndFeedingInstructions, !allergiesAndFeedingInstructions.isEmpty {
                 Section("Allergies & Feeding Instructions") {
                     Text(allergiesAndFeedingInstructions)

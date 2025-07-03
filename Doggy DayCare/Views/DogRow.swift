@@ -126,6 +126,9 @@ struct DogRow: View {
             }
             .padding(.vertical, 4)
         }
+        .background(
+            (dog.vaccinationEndDate != nil && Calendar.current.startOfDay(for: dog.vaccinationEndDate!) <= Calendar.current.startOfDay(for: Date())) ? Color.yellow.opacity(0.3) : Color.clear
+        )
         .alert("Undo Departure", isPresented: $showingUndoAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Undo", role: .destructive) {

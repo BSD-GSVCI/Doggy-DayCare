@@ -71,6 +71,11 @@ class CloudKitService: ObservableObject {
         static let updatedAt = "updatedAt"
         static let isArrivalTimeSet = "isArrivalTimeSet"
         static let isDeleted = "isDeleted"  // Added field for deleted status
+        static let age = "age"
+        static let gender = "gender"
+        static let vaccinationEndDate = "vaccinationEndDate"
+        static let isNeuteredOrSpayed = "isNeuteredOrSpayed"
+        static let ownerPhoneNumber = "ownerPhoneNumber"
         
         // Audit fields
         static let createdBy = "createdBy"
@@ -346,6 +351,11 @@ class CloudKitService: ObservableObject {
         record[DogFields.createdAt] = dog.createdAt
         record[DogFields.updatedAt] = dog.updatedAt
         record[DogFields.isArrivalTimeSet] = dog.isArrivalTimeSet ? 1 : 0
+        record[DogFields.age] = dog.age
+        record[DogFields.gender] = dog.gender
+        record[DogFields.vaccinationEndDate] = dog.vaccinationEndDate
+        record[DogFields.isNeuteredOrSpayed] = dog.isNeuteredOrSpayed ? 1 : 0
+        record[DogFields.ownerPhoneNumber] = dog.ownerPhoneNumber
         
         // Get the actual CloudKit user record ID (not our app's user ID)
         let cloudKitUserRecordID = try await container.userRecordID()
@@ -494,6 +504,11 @@ class CloudKitService: ObservableObject {
         record[DogFields.profilePictureData] = dog.profilePictureData
         record[DogFields.updatedAt] = Date()
         record[DogFields.isArrivalTimeSet] = dog.isArrivalTimeSet ? 1 : 0
+        record[DogFields.age] = dog.age
+        record[DogFields.gender] = dog.gender
+        record[DogFields.vaccinationEndDate] = dog.vaccinationEndDate
+        record[DogFields.isNeuteredOrSpayed] = dog.isNeuteredOrSpayed ? 1 : 0
+        record[DogFields.ownerPhoneNumber] = dog.ownerPhoneNumber
         
         print("📅 Updated record departure date: \(record[DogFields.departureDate]?.description ?? "nil")")
         
@@ -1570,7 +1585,12 @@ class CloudKitService: ObservableObject {
             let testDog = CloudKitDog(
                 name: "TEST_DOG_PERMISSIONS",
                 arrivalDate: Date(),
-                isBoarding: false
+                isBoarding: false,
+                age: "",
+                gender: "unknown",
+                vaccinationEndDate: nil,
+                isNeuteredOrSpayed: false,
+                ownerPhoneNumber: nil
             )
             
             let record = CKRecord(recordType: RecordTypes.dog)
@@ -1973,6 +1993,11 @@ struct CloudKitDog {
     var updatedAt: Date
     var isArrivalTimeSet: Bool
     var isDeleted: Bool
+    var age: String
+    var gender: String
+    var vaccinationEndDate: Date?
+    var isNeuteredOrSpayed: Bool
+    var ownerPhoneNumber: String?
     
     // Records
     var feedingRecords: [FeedingRecord] = []
@@ -2013,7 +2038,12 @@ struct CloudKitDog {
         pottyRecords: [PottyRecord] = [],
         walkingRecords: [WalkingRecord] = [],
         isArrivalTimeSet: Bool = true,
-        isDeleted: Bool = false
+        isDeleted: Bool = false,
+        age: String,
+        gender: String,
+        vaccinationEndDate: Date? = nil,
+        isNeuteredOrSpayed: Bool = false,
+        ownerPhoneNumber: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -2037,6 +2067,11 @@ struct CloudKitDog {
         self.updatedAt = Date()
         self.isArrivalTimeSet = isArrivalTimeSet
         self.isDeleted = isDeleted
+        self.age = age
+        self.gender = gender
+        self.vaccinationEndDate = vaccinationEndDate
+        self.isNeuteredOrSpayed = isNeuteredOrSpayed
+        self.ownerPhoneNumber = ownerPhoneNumber
     }
     
     init(from record: CKRecord) {
@@ -2058,6 +2093,11 @@ struct CloudKitDog {
         self.updatedAt = record[CloudKitService.DogFields.updatedAt] as? Date ?? Date()
         self.isArrivalTimeSet = (record[CloudKitService.DogFields.isArrivalTimeSet] as? Int64 ?? 1) == 1
         self.isDeleted = (record[CloudKitService.DogFields.isDeleted] as? Int64 ?? 0) == 1
+        self.age = record[CloudKitService.DogFields.age] as? String ?? ""
+        self.gender = record[CloudKitService.DogFields.gender] as? String ?? ""
+        self.vaccinationEndDate = record[CloudKitService.DogFields.vaccinationEndDate] as? Date
+        self.isNeuteredOrSpayed = (record[CloudKitService.DogFields.isNeuteredOrSpayed] as? Int64 ?? 0) == 1
+        self.ownerPhoneNumber = record[CloudKitService.DogFields.ownerPhoneNumber] as? String
         
         // Initialize empty records arrays - they will be loaded separately
         self.feedingRecords = []

@@ -92,6 +92,18 @@ struct MedicationRecord: Codable, Identifiable {
     }
 }
 
+enum DogGender: String, Codable, CaseIterable, Identifiable {
+    case male, female, unknown
+    var id: String { self.rawValue }
+    var displayName: String {
+        switch self {
+        case .male: return "Male"
+        case .female: return "Female"
+        case .unknown: return "Unknown"
+        }
+    }
+}
+
 struct Dog: Codable, Identifiable {
     var id: UUID
     var name: String
@@ -115,6 +127,11 @@ struct Dog: Codable, Identifiable {
     var visitCount: Int = 1  // Track total visits for this dog
     var isArrivalTimeSet: Bool = true  // Track if arrival time has been set
     var isDeleted: Bool = false  // Track if dog is marked as deleted
+    var age: Int?
+    var gender: DogGender?
+    var vaccinationEndDate: Date?
+    var isNeuteredOrSpayed: Bool?
+    var ownerPhoneNumber: String?
     
     // Records
     var feedingRecords: [FeedingRecord] = []
@@ -138,7 +155,12 @@ struct Dog: Codable, Identifiable {
         notes: String? = nil,
         profilePictureData: Data? = nil,
         isArrivalTimeSet: Bool = true,
-        isDeleted: Bool = false
+        isDeleted: Bool = false,
+        age: Int? = nil,
+        gender: DogGender? = nil,
+        vaccinationEndDate: Date? = nil,
+        isNeuteredOrSpayed: Bool? = nil,
+        ownerPhoneNumber: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -160,6 +182,11 @@ struct Dog: Codable, Identifiable {
         self.lastModifiedBy = nil
         self.isArrivalTimeSet = isArrivalTimeSet
         self.isDeleted = isDeleted
+        self.age = age
+        self.gender = gender
+        self.vaccinationEndDate = vaccinationEndDate
+        self.isNeuteredOrSpayed = isNeuteredOrSpayed
+        self.ownerPhoneNumber = ownerPhoneNumber
     }
     
     mutating func addPottyRecord(type: PottyRecord.PottyType, notes: String? = nil, recordedBy: User? = nil) {

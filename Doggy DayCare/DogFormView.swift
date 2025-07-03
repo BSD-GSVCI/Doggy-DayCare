@@ -26,6 +26,11 @@ struct DogFormView: View {
     @State private var duplicateDog: Dog?
     @State private var bypassDuplicateCheck = false
     @State private var showingCamera = false
+    @State private var age: Int? = nil
+    @State private var gender: DogGender = .unknown
+    @State private var vaccinationEndDate: Date? = nil
+    @State private var isNeuteredOrSpayed: Bool = false
+    @State private var ownerPhoneNumber: String = ""
     
     let dog: Dog?
     
@@ -47,6 +52,11 @@ struct DogFormView: View {
             if let imageData = dog.profilePictureData {
                 _profileImage = State(initialValue: UIImage(data: imageData))
             }
+            _age = State(initialValue: dog.age)
+            _gender = State(initialValue: dog.gender ?? .unknown)
+            _vaccinationEndDate = State(initialValue: dog.vaccinationEndDate)
+            _isNeuteredOrSpayed = State(initialValue: dog.isNeuteredOrSpayed ?? false)
+            _ownerPhoneNumber = State(initialValue: dog.ownerPhoneNumber ?? "")
         } else {
             _name = State(initialValue: "")
             _ownerName = State(initialValue: "")
@@ -61,6 +71,11 @@ struct DogFormView: View {
             _allergiesAndFeedingInstructions = State(initialValue: "")
             _notes = State(initialValue: nil)
             _profileImage = State(initialValue: nil)
+            _age = State(initialValue: nil)
+            _gender = State(initialValue: .unknown)
+            _vaccinationEndDate = State(initialValue: nil)
+            _isNeuteredOrSpayed = State(initialValue: false)
+            _ownerPhoneNumber = State(initialValue: "")
         }
     }
     
@@ -167,6 +182,31 @@ struct DogFormView: View {
                     ), axis: .vertical)
                         .lineLimit(3...6)
                 }
+                
+                Section("Miscellaneous Details") {
+                    TextField("Age", value: $age, format: .number)
+                        .keyboardType(.numberPad)
+                    Picker("Gender", selection: $gender) {
+                        ForEach(DogGender.allCases, id: \ .self) { gender in
+                            Text(gender.displayName).tag(gender)
+                        }
+                    }
+                    if let vaccinationEndDate = vaccinationEndDate {
+                        DatePicker("Vaccination End Date", selection: Binding(get: { vaccinationEndDate }, set: { self.vaccinationEndDate = $0 }), displayedComponents: .date)
+                            .datePickerStyle(.compact)
+                            .labelsHidden()
+                        Button("Clear Vaccination Date") {
+                            self.vaccinationEndDate = nil
+                        }
+                    } else {
+                        Button("Set Vaccination End Date") {
+                            self.vaccinationEndDate = Date()
+                        }
+                    }
+                    Toggle("Neutered/Spayed", isOn: $isNeuteredOrSpayed)
+                    TextField("Owner's Phone Number", text: $ownerPhoneNumber)
+                        .keyboardType(.phonePad)
+                }
             }
             .navigationTitle(dog == nil ? "Add Dog" : "Edit Dog")
             .navigationBarTitleDisplayMode(.inline)
@@ -256,6 +296,11 @@ struct DogFormView: View {
         isDaycareFed = importedDog.isDaycareFed
         notes = importedDog.notes
         profileImage = importedDog.profilePictureData.flatMap { UIImage(data: $0) }
+        age = importedDog.age
+        gender = importedDog.gender ?? .unknown
+        vaccinationEndDate = importedDog.vaccinationEndDate
+        isNeuteredOrSpayed = importedDog.isNeuteredOrSpayed ?? false
+        ownerPhoneNumber = importedDog.ownerPhoneNumber ?? ""
         
         // Keep current arrival date and boarding status
         // arrivalDate stays as current date
@@ -284,6 +329,11 @@ struct DogFormView: View {
             updatedDog.isDaycareFed = isDaycareFed
             updatedDog.notes = notes
             updatedDog.profilePictureData = profilePictureData
+            updatedDog.age = age ?? existingDog.age
+            updatedDog.gender = (gender == .unknown ? existingDog.gender : gender)
+            updatedDog.vaccinationEndDate = vaccinationEndDate ?? existingDog.vaccinationEndDate
+            updatedDog.isNeuteredOrSpayed = isNeuteredOrSpayed ? true : (existingDog.isNeuteredOrSpayed ?? false)
+            updatedDog.ownerPhoneNumber = ownerPhoneNumber.isEmpty ? (existingDog.ownerPhoneNumber ?? "") : ownerPhoneNumber
             updatedDog.updatedAt = Date()
             updatedDog.lastModifiedBy = authService.currentUser
             
@@ -302,7 +352,12 @@ struct DogFormView: View {
                 walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
                 isDaycareFed: isDaycareFed,
                 notes: notes?.isEmpty == true ? nil : notes,
-                profilePictureData: profilePictureData
+                profilePictureData: profilePictureData,
+                age: age,
+                gender: gender,
+                vaccinationEndDate: vaccinationEndDate,
+                isNeuteredOrSpayed: isNeuteredOrSpayed,
+                ownerPhoneNumber: ownerPhoneNumber
             )
             
             await dataManager.addDog(newDog)
@@ -458,7 +513,7 @@ struct ImportDatabaseView: View {
             dogGroups[key]?.append(dog)
         }
         
-        print("�� Import: Created \(dogGroups.count) dog groups")
+        print("🔍 Import: Created \(dogGroups.count) dog groups")
         
         // For each group, if any dog is currently present, skip showing this group in the import list
         // Otherwise, show the most recent departed record, with the total visit count

@@ -7,7 +7,7 @@ class BackupService {
     
     private init() {}
     
-    func exportDogs(_ dogs: [Dog], filename: String? = nil) async throws -> URL {
+    func exportDogs(_ dogs: [Dog], filename: String? = nil, to backupFolderURL: URL? = nil) async throws -> URL {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "MM/dd/yy"
         
@@ -91,15 +91,21 @@ class BackupService {
             csvString.append(row + "\n")
         }
         
-        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        
         // Create a clean filename without invalid characters
         let cleanDateFormatter = DateFormatter()
         cleanDateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let cleanDateString = cleanDateFormatter.string(from: Date())
         let fileName = filename ?? "DoggyDayCare_Export_\(cleanDateString).csv"
         
-        let fileURL = documentsDirectory.appendingPathComponent(fileName)
+        let fileURL: URL
+        if let backupFolderURL = backupFolderURL {
+            // Use the selected backup folder
+            fileURL = backupFolderURL.appendingPathComponent(fileName)
+        } else {
+            // Use the default documents directory
+            let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            fileURL = documentsDirectory.appendingPathComponent(fileName)
+        }
         
         try csvString.write(to: fileURL, atomically: true, encoding: .utf8)
         

@@ -10,17 +10,20 @@ struct FeedingListView: View {
     @State private var selectedDog: Dog?
     @State private var selectedFeedingType: FeedingRecord.FeedingType = .breakfast
     @State private var selectedFilter: FeedingFilter = .all
+    @State private var selectedSort: FeedingSort = .alphabetical
     
     enum FeedingFilter {
         case all
         case daycare
         case boarding
+    }
+    
+    enum FeedingSort {
+        case alphabetical
         case breakfast
         case lunch
         case dinner
         case snack
-        case recentActivity
-        case alphabetical
     }
     
     private var filteredDogs: [Dog] {
@@ -31,8 +34,13 @@ struct FeedingListView: View {
             return true
         }
         
-        return dogs.filter { dog in
-            dog.isCurrentlyPresent
+        switch selectedFilter {
+        case .all:
+            return dogs.filter { $0.isCurrentlyPresent }
+        case .daycare:
+            return dogs.filter { $0.isCurrentlyPresent && $0.shouldBeTreatedAsDaycare }
+        case .boarding:
+            return dogs.filter { $0.isCurrentlyPresent && !$0.shouldBeTreatedAsDaycare }
         }
     }
     
@@ -47,16 +55,8 @@ struct FeedingListView: View {
     
     private var daycareDogs: [Dog] {
         let dogs = filteredDogs.filter { $0.shouldBeTreatedAsDaycare }
-        return selectedFilter == .recentActivity ? dogs.sorted { dog1, dog2 in
-            let dog1Recent = dog1.feedingRecords.contains { record in
-                record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
-            }
-            let dog2Recent = dog2.feedingRecords.contains { record in
-                record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
-            }
-            return (dog1Recent ? 1 : 0, dog1.name) < (dog2Recent ? 1 : 0, dog2.name)
-        } : dogs.sorted { dog1, dog2 in
-            switch selectedFilter {
+        return dogs.sorted { dog1, dog2 in
+            switch selectedSort {
             case .breakfast:
                 let t1 = mostRecentFeedingTimestamp(for: dog1, type: .breakfast)
                 let t2 = mostRecentFeedingTimestamp(for: dog2, type: .breakfast)
@@ -105,7 +105,7 @@ struct FeedingListView: View {
                     t2 ?? Date.distantPast,
                     dog2.name
                 )
-            default:
+            case .alphabetical:
                 return dog1.name.localizedCaseInsensitiveCompare(dog2.name) == .orderedAscending
             }
         }
@@ -113,16 +113,8 @@ struct FeedingListView: View {
     
     private var boardingDogs: [Dog] {
         let dogs = filteredDogs.filter { !$0.shouldBeTreatedAsDaycare }
-        return selectedFilter == .recentActivity ? dogs.sorted { dog1, dog2 in
-            let dog1Recent = dog1.feedingRecords.contains { record in
-                record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
-            }
-            let dog2Recent = dog2.feedingRecords.contains { record in
-                record.timestamp > Date().addingTimeInterval(-3 * 3600) // 3 hours ago
-            }
-            return (dog1Recent ? 1 : 0, dog1.name) < (dog2Recent ? 1 : 0, dog2.name)
-        } : dogs.sorted { dog1, dog2 in
-            switch selectedFilter {
+        return dogs.sorted { dog1, dog2 in
+            switch selectedSort {
             case .breakfast:
                 let t1 = mostRecentFeedingTimestamp(for: dog1, type: .breakfast)
                 let t2 = mostRecentFeedingTimestamp(for: dog2, type: .breakfast)
@@ -171,34 +163,13 @@ struct FeedingListView: View {
                     t2 ?? Date.distantPast,
                     dog2.name
                 )
-            default:
+            case .alphabetical:
                 return dog1.name.localizedCaseInsensitiveCompare(dog2.name) == .orderedAscending
             }
         }
     }
     
-    private var dogsNeedingFeeding: [Dog] {
-        switch selectedFilter {
-        case .all:
-            return filteredDogs
-        case .daycare:
-            return daycareDogs
-        case .boarding:
-            return boardingDogs
-        case .breakfast:
-            return filteredDogs.filter { $0.breakfastCount == 0 }
-        case .lunch:
-            return filteredDogs.filter { $0.lunchCount == 0 }
-        case .dinner:
-            return filteredDogs.filter { $0.dinnerCount == 0 }
-        case .snack:
-            return filteredDogs.filter { $0.snackCount == 0 }
-        case .recentActivity:
-            return filteredDogs
-        case .alphabetical:
-            return filteredDogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        }
-    }
+
     
     var body: some View {
         NavigationStack {
@@ -213,51 +184,14 @@ struct FeedingListView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 8)
                 List {
-                    if selectedFilter == .all {
-                        if daycareDogs.isEmpty && boardingDogs.isEmpty {
-                            ContentUnavailableView {
-                                Label("No Dogs Present", systemImage: "fork.knife")
-                            } description: {
-                                Text("Dogs that are currently present will appear here.")
-                            }
-                        } else {
-                            if !daycareDogs.isEmpty {
-                                Section {
-                                    ForEach(daycareDogs) { dog in
-                                        DogFeedingRow(dog: dog)
-                                            .buttonStyle(PlainButtonStyle())
-                                    }
-                                } header: {
-                                    Text("DAYCARE \(daycareDogs.count)")
-                                        .font(.headline)
-                                        .fontWeight(.bold)
-                                        .foregroundStyle(.primary)
-                                        .textCase(nil)
-                                }
-                            }
-                            if !boardingDogs.isEmpty {
-                                Section {
-                                    ForEach(boardingDogs) { dog in
-                                        DogFeedingRow(dog: dog)
-                                            .buttonStyle(PlainButtonStyle())
-                                    }
-                                } header: {
-                                    Text("BOARDING \(boardingDogs.count)")
-                                        .font(.headline)
-                                        .fontWeight(.bold)
-                                        .foregroundStyle(.primary)
-                                        .textCase(nil)
-                                }
-                            }
+                    if daycareDogs.isEmpty && boardingDogs.isEmpty {
+                        ContentUnavailableView {
+                            Label("No Dogs Present", systemImage: "fork.knife")
+                        } description: {
+                            Text("Dogs that are currently present will appear here.")
                         }
-                    } else if selectedFilter == .daycare {
-                        if daycareDogs.isEmpty {
-                            ContentUnavailableView {
-                                Label("No Daycare Dogs Present", systemImage: "fork.knife")
-                            } description: {
-                                Text("Daycare dogs that are currently present will appear here.")
-                            }
-                        } else {
+                    } else {
+                        if !daycareDogs.isEmpty {
                             Section {
                                 ForEach(daycareDogs) { dog in
                                     DogFeedingRow(dog: dog)
@@ -271,26 +205,18 @@ struct FeedingListView: View {
                                     .textCase(nil)
                             }
                         }
-                    } else if selectedFilter == .boarding {
-                        if boardingDogs.isEmpty {
-                            ContentUnavailableView {
-                                Label("No Boarding Dogs Present", systemImage: "fork.knife")
-                            } description: {
-                                Text("Boarding dogs that are currently present will appear here.")
-                            }
-                        } else {
+                        if !boardingDogs.isEmpty {
                             Section {
                                 ForEach(boardingDogs) { dog in
                                     DogFeedingRow(dog: dog)
                                         .buttonStyle(PlainButtonStyle())
-                                    }
-                                } header: {
-                                    Text("BOARDING \(boardingDogs.count)")
-                                        .font(.headline)
-                                        .fontWeight(.bold)
-                                        .foregroundStyle(.primary)
-                                        .textCase(nil)
                                 }
+                            } header: {
+                                Text("BOARDING \(boardingDogs.count)")
+                                    .font(.headline)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.primary)
+                                    .textCase(nil)
                             }
                         }
                     }
@@ -302,29 +228,29 @@ struct FeedingListView: View {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Menu {
                             Button {
-                                selectedFilter = .alphabetical
+                                selectedSort = .alphabetical
                             } label: {
-                                Label("Alphabetical", systemImage: selectedFilter == .alphabetical ? "checkmark" : "")
+                                Label("Alphabetical", systemImage: selectedSort == .alphabetical ? "checkmark" : "")
                             }
                             Button {
-                                selectedFilter = .breakfast
+                                selectedSort = .breakfast
                             } label: {
-                                Label("Breakfast", systemImage: selectedFilter == .breakfast ? "checkmark" : "")
+                                Label("Breakfast", systemImage: selectedSort == .breakfast ? "checkmark" : "")
                             }
                             Button {
-                                selectedFilter = .lunch
+                                selectedSort = .lunch
                             } label: {
-                                Label("Lunch", systemImage: selectedFilter == .lunch ? "checkmark" : "")
+                                Label("Lunch", systemImage: selectedSort == .lunch ? "checkmark" : "")
                             }
                             Button {
-                                selectedFilter = .dinner
+                                selectedSort = .dinner
                             } label: {
-                                Label("Dinner", systemImage: selectedFilter == .dinner ? "checkmark" : "")
+                                Label("Dinner", systemImage: selectedSort == .dinner ? "checkmark" : "")
                             }
                             Button {
-                                selectedFilter = .snack
+                                selectedSort = .snack
                             } label: {
-                                Label("Snack", systemImage: selectedFilter == .snack ? "checkmark" : "")
+                                Label("Snack", systemImage: selectedSort == .snack ? "checkmark" : "")
                             }
                         } label: {
                             Image(systemName: "line.3.horizontal.circle")
@@ -773,7 +699,9 @@ struct FeedingListView: View {
             }
         }
     }
-    #Preview {
-        FeedingListView()
-            .environmentObject(DataManager.shared)
-    }
+}
+
+#Preview {
+    FeedingListView()
+        .environmentObject(DataManager.shared)
+}

@@ -112,6 +112,7 @@ class DataManager: ObservableObject {
                 ownerName: dog.ownerName,
                 arrivalDate: dog.arrivalDate,
                 isBoarding: dog.isBoarding,
+                boardingEndDate: dog.boardingEndDate,
                 medications: dog.medications,
                 specialInstructions: dog.specialInstructions,
                 allergiesAndFeedingInstructions: dog.allergiesAndFeedingInstructions,
@@ -120,7 +121,13 @@ class DataManager: ObservableObject {
                 isDaycareFed: dog.isDaycareFed,
                 notes: dog.notes,
                 profilePictureData: dog.profilePictureData,
-                isArrivalTimeSet: dog.isArrivalTimeSet
+                isArrivalTimeSet: dog.isArrivalTimeSet,
+                isDeleted: dog.isDeleted,
+                age: dog.age,
+                gender: dog.gender,
+                vaccinationEndDate: dog.vaccinationEndDate,
+                isNeuteredOrSpayed: dog.isNeuteredOrSpayed,
+                ownerPhoneNumber: dog.ownerPhoneNumber
             )
             // Copy all the records
             updatedDog.feedingRecords = dog.feedingRecords
@@ -128,7 +135,6 @@ class DataManager: ObservableObject {
             updatedDog.pottyRecords = dog.pottyRecords
             updatedDog.walkingRecords = dog.walkingRecords
             // Copy additional properties
-            updatedDog.boardingEndDate = dog.boardingEndDate
             updatedDog.departureDate = dog.departureDate
             updatedDog.updatedAt = Date()
             updatedDog.createdAt = dog.createdAt
@@ -1019,6 +1025,12 @@ extension CloudKitDog {
         dog.pottyRecords = pottyRecords
         dog.walkingRecords = walkingRecords
         
+        dog.age = Int(age)
+        dog.gender = DogGender(rawValue: gender)
+        dog.vaccinationEndDate = vaccinationEndDate
+        dog.isNeuteredOrSpayed = isNeuteredOrSpayed
+        dog.ownerPhoneNumber = ownerPhoneNumber
+        
         return dog
     }
 }
@@ -1066,7 +1078,12 @@ extension Dog {
             pottyRecords: pottyRecords,
             walkingRecords: walkingRecords,
             isArrivalTimeSet: isArrivalTimeSet,
-            isDeleted: isDeleted
+            isDeleted: isDeleted,
+            age: age != nil ? String(age!) : "",
+            gender: gender?.rawValue ?? "unknown",
+            vaccinationEndDate: vaccinationEndDate,
+            isNeuteredOrSpayed: isNeuteredOrSpayed ?? false,
+            ownerPhoneNumber: ownerPhoneNumber
         )
     }
 }
