@@ -142,7 +142,13 @@ struct DogDetailView: View {
                 }
             }
             
-            // Miscellaneous Information Section
+            // Miscellaneous Information Section (moved here)
+            if dog.isCurrentlyPresent {
+                Section {
+                    // ... action buttons ...
+                }
+            }
+            
             Section("Miscellaneous Information") {
                 if let age = dog.age {
                     InfoRow(title: "Age", value: String(age))
@@ -164,32 +170,21 @@ struct DogDetailView: View {
                 }
             }
             
-            // Move Allergies & Feeding Instructions to just before Feeding Information
-            if let allergiesAndFeedingInstructions = dog.allergiesAndFeedingInstructions, !allergiesAndFeedingInstructions.isEmpty {
-                Section("Allergies & Feeding Instructions") {
-                    Text(allergiesAndFeedingInstructions)
-                        .font(.body)
-                }
-            }
-            
-            // Notes Section
+            // Reorder: Notes, Medications, Allergies, Feeding
             if let notes = dog.notes, !notes.isEmpty {
                 Section("Notes") {
                     Text(notes)
                         .font(.body)
                 }
             }
-            
-            // Medications Section
             if let medications = dog.medications, !medications.isEmpty || !dog.medicationRecords.isEmpty {
                 Section("Medications") {
                     if let medications = dog.medications, !medications.isEmpty {
                         Text(medications)
                             .font(.body)
                     }
-                    
                     if !dog.medicationRecords.isEmpty {
-                        ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                        ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \ .id) { record in
                             HStack {
                                 Image(systemName: "pills")
                                     .foregroundStyle(.purple)
@@ -212,8 +207,12 @@ struct DogDetailView: View {
                     }
                 }
             }
-            
-            // Feeding Section
+            if let allergiesAndFeedingInstructions = dog.allergiesAndFeedingInstructions, !allergiesAndFeedingInstructions.isEmpty {
+                Section("Allergies & Feeding Instructions") {
+                    Text(allergiesAndFeedingInstructions)
+                        .font(.body)
+                }
+            }
             if dog.isDaycareFed || !dog.feedingRecords.isEmpty {
                 Section("Feeding Information") {
                     if !dog.feedingRecords.isEmpty {
