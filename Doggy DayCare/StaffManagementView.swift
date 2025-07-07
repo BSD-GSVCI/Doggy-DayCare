@@ -375,6 +375,9 @@ struct StaffScheduleView: View {
     let staff: User
     
     @State private var selectedDays: Set<Int> = []
+    @State private var startTime: Date = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: Date()) ?? Date()
+    @State private var endTime: Date = Calendar.current.date(bySettingHour: 17, minute: 0, second: 0, of: Date()) ?? Date()
+    @State private var useWorkingHours: Bool = false
     
     private let weekdays = [
         (1, "Sunday"),
@@ -385,6 +388,12 @@ struct StaffScheduleView: View {
         (6, "Friday"),
         (7, "Saturday")
     ]
+    
+    private let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter
+    }()
     
     var body: some View {
         NavigationStack {
@@ -410,6 +419,38 @@ struct StaffScheduleView: View {
                         .foregroundStyle(.primary)
                     }
                 }
+                
+                Section("Working Hours") {
+                    Toggle("Set Working Hours", isOn: $useWorkingHours)
+                    
+                    if useWorkingHours {
+                        VStack(spacing: 8) {
+                            DatePicker("", selection: $startTime, displayedComponents: .hourAndMinute)
+                                .datePickerStyle(.wheel)
+                            
+                            Text("to")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            
+                            DatePicker("", selection: $endTime, displayedComponents: .hourAndMinute)
+                                .datePickerStyle(.wheel)
+                        }
+                        
+                        HStack {
+                            Text("Working Hours:")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("\(timeFormatter.string(from: startTime)) - \(timeFormatter.string(from: endTime))")
+                                .font(.caption)
+                                .foregroundStyle(.blue)
+                        }
+                    } else {
+                        Text("No time restrictions - staff can work all day on scheduled days")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
             .navigationTitle("Schedule Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -430,6 +471,13 @@ struct StaffScheduleView: View {
                 if let days = staff.scheduledDays {
                     selectedDays = Set(days)
                 }
+                
+                // Load existing working hours
+                if let start = staff.scheduleStartTime, let end = staff.scheduleEndTime {
+                    startTime = start
+                    endTime = end
+                    useWorkingHours = true
+                }
             }
         }
     }
@@ -438,8 +486,16 @@ struct StaffScheduleView: View {
         Task {
             var updatedStaff = staff
             updatedStaff.scheduledDays = Array(selectedDays).sorted()
-            updatedStaff.scheduleStartTime = nil
-            updatedStaff.scheduleEndTime = nil
+            
+            // Set working hours if enabled
+            if useWorkingHours {
+                updatedStaff.scheduleStartTime = startTime
+                updatedStaff.scheduleEndTime = endTime
+            } else {
+                updatedStaff.scheduleStartTime = nil
+                updatedStaff.scheduleEndTime = nil
+            }
+            
             updatedStaff.updatedAt = Date()
             await dataManager.updateUser(updatedStaff)
             // Refresh users from CloudKit to ensure latest data is loaded
@@ -550,6 +606,12 @@ private struct AddStaffView: View {
 private struct ScheduleInfoView: View {
     let user: User
     
+    private let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter
+    }()
+    
     private var dayNames: String {
         guard let days = user.scheduledDays, !days.isEmpty else { return "" }
         return days.map { day in
@@ -570,15 +632,36 @@ private struct ScheduleInfoView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     
+                    // Show working hours if set
+                    if let startTime = user.scheduleStartTime, let endTime = user.scheduleEndTime {
+                        Text("• Hours: \(timeFormatter.string(from: startTime)) - \(timeFormatter.string(from: endTime))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    
                     // Show current status
                     if user.canWorkToday {
-                        Text("Scheduled for work today")
+                        Text("Currently scheduled for work")
                             .font(.caption2)
                             .foregroundStyle(.green)
                     } else {
-                        Text("Not scheduled for today")
-                            .font(.caption2)
-                            .foregroundStyle(.red)
+                        if let days = user.scheduledDays, !days.isEmpty {
+                            let calendar = Calendar.current
+                            let today = calendar.component(.weekday, from: Date())
+                            if days.contains(today) {
+                                Text("Outside working hours")
+                                    .font(.caption2)
+                                    .foregroundStyle(.red)
+                            } else {
+                                Text("Not scheduled for today")
+                                    .font(.caption2)
+                                    .foregroundStyle(.red)
+                            }
+                        } else {
+                            Text("Not scheduled for today")
+                                .font(.caption2)
+                                .foregroundStyle(.red)
+                        }
                     }
                 } else {
                     Text("📅 No Schedule Set:")

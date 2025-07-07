@@ -53,9 +53,31 @@ struct User: Codable, Identifiable {
             
             print("DEBUG: User \(name) - Today is scheduled!")
             
-            // If day is scheduled, allow access for the entire day (no time constraints)
-            print("DEBUG: User \(name) - Day scheduled, allowing all-day access")
-            return true
+            // Check working hours if they are set
+            if let startTime = scheduleStartTime, let endTime = scheduleEndTime {
+                let now = Date()
+                let calendar = Calendar.current
+                
+                // Create today's start and end times
+                let todayStart = calendar.date(bySettingHour: calendar.component(.hour, from: startTime),
+                                             minute: calendar.component(.minute, from: startTime),
+                                             second: 0, of: now) ?? now
+                
+                let todayEnd = calendar.date(bySettingHour: calendar.component(.hour, from: endTime),
+                                           minute: calendar.component(.minute, from: endTime),
+                                           second: 0, of: now) ?? now
+                
+                print("DEBUG: User \(name) - Working hours: \(todayStart) to \(todayEnd), current time: \(now)")
+                
+                // Check if current time is within working hours
+                let isWithinHours = now >= todayStart && now <= todayEnd
+                print("DEBUG: User \(name) - Within working hours: \(isWithinHours)")
+                return isWithinHours
+            } else {
+                // If no time constraints are set, allow access for the entire day
+                print("DEBUG: User \(name) - No time constraints, allowing all-day access")
+                return true
+            }
         }
         
         // If no schedule is set, staff cannot work

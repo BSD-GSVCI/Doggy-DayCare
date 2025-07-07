@@ -18,7 +18,6 @@ extension View {
 struct CustomNavigationBar: View {
     @Binding var showingAddDog: Bool
     @Binding var showingExportData: Bool
-    @Binding var showingStaffManagement: Bool
     @Binding var showingLogoutConfirmation: Bool
     @ObservedObject var authService: AuthenticationService
     
@@ -59,12 +58,6 @@ struct CustomNavigationBar: View {
                     Menu {
                         if authService.currentUser?.isOwner == true {
                             Button {
-                                showingStaffManagement = true
-                            } label: {
-                                Label("Staff Management", systemImage: "person.2")
-                            }
-                            
-                            Button {
                                 showingExportData = true
                             } label: {
                                 Label("Export Data Manually", systemImage: "square.and.arrow.up")
@@ -94,7 +87,6 @@ struct ContentView: View {
     @EnvironmentObject var dataManager: DataManager
     @StateObject private var authService = AuthenticationService.shared
     @State private var showingAddDog = false
-    @State private var showingStaffManagement = false
     @State private var showingLogoutConfirmation = false
     @State private var searchText = ""
     @State private var selectedFilter: DogFilter = .all
@@ -271,9 +263,7 @@ struct ContentView: View {
                         }
                         
                         if authService.currentUser?.isOwner == true {
-                            Button {
-                                showingStaffManagement = true
-                            } label: {
+                            NavigationLink(destination: StaffManagementView()) {
                                 Image(systemName: "person.2")
                                     .foregroundStyle(.blue)
                             }
@@ -365,11 +355,7 @@ struct ContentView: View {
                     DogFormView()
                 }
             }
-            .sheet(isPresented: $showingStaffManagement) {
-                NavigationStack {
-                    StaffManagementView()
-                }
-            }
+
             .sheet(isPresented: Binding(
                 get: { exportState == .sheetShown },
                 set: { newValue in
@@ -420,13 +406,27 @@ private struct UserInfoView: View {
                 
                 if !user.isOwner {
                     if user.canWorkToday {
-                        Text("Working today")
+                        Text("Currently scheduled for work")
                             .font(.caption)
                             .foregroundStyle(.green)
                     } else {
-                        Text("Not scheduled to work today")
-                            .font(.caption)
-                            .foregroundStyle(.red)
+                        if let days = user.scheduledDays, !days.isEmpty {
+                            let calendar = Calendar.current
+                            let today = calendar.component(.weekday, from: Date())
+                            if days.contains(today) {
+                                Text("Outside working hours")
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            } else {
+                                Text("Not scheduled today")
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                            }
+                        } else {
+                            Text("No schedule set")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
                     }
                 }
             }
