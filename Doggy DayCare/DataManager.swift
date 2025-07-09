@@ -989,6 +989,58 @@ class DataManager: ObservableObject {
         
         isLoading = false
     }
+    
+    // MARK: - Optimized Import Methods
+    
+    func fetchDogsForImport() async -> [Dog] {
+        print("🚀 DataManager: Starting optimized fetchDogsForImport...")
+        
+        // Check cache first
+        let cachedCloudKitDogs = cloudKitService.getCachedDogs()
+        if !cachedCloudKitDogs.isEmpty {
+            print("✅ DataManager: Using cached dogs (\(cachedCloudKitDogs.count) dogs)")
+            return cachedCloudKitDogs.map { $0.toDog() }
+        }
+        
+        do {
+            let cloudKitDogs = try await cloudKitService.fetchDogsForImport()
+            print("✅ DataManager: Got \(cloudKitDogs.count) optimized CloudKit dogs")
+            
+            // Update cache
+            cloudKitService.updateDogCache(cloudKitDogs)
+            
+            let localDogs = cloudKitDogs.map { $0.toDog() }
+            print("✅ DataManager: Converted to \(localDogs.count) local dogs")
+            
+            return localDogs
+        } catch {
+            print("❌ DataManager: Failed to fetch dogs for import: \(error)")
+            return []
+        }
+    }
+    
+    func fetchSpecificDogWithRecords(for dogID: String) async -> Dog? {
+        print("🔍 DataManager: Fetching specific dog with records: \(dogID)")
+        
+        do {
+            guard let cloudKitDog = try await cloudKitService.fetchDogWithRecords(for: dogID) else {
+                print("❌ DataManager: Dog not found: \(dogID)")
+                return nil
+            }
+            
+            let localDog = cloudKitDog.toDog()
+            print("✅ DataManager: Successfully fetched dog with records: \(localDog.name)")
+            return localDog
+        } catch {
+            print("❌ DataManager: Failed to fetch specific dog: \(error)")
+            return nil
+        }
+    }
+    
+    func clearImportCache() {
+        cloudKitService.clearDogCache()
+        print("🧹 DataManager: Import cache cleared")
+    }
 }
 
 // MARK: - Conversion Extensions

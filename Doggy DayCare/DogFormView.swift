@@ -422,6 +422,17 @@ struct ImportDatabaseView: View {
                         dismiss()
                     }
                 }
+                
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Refresh") {
+                        Task {
+                            // Clear cache and reload
+                            dataManager.clearImportCache()
+                            await loadImportedDogs()
+                        }
+                    }
+                    .disabled(isLoading)
+                }
             }
             .alert("Permanently Delete Dog", isPresented: $showingDeleteAlert) {
                 Button("Cancel", role: .cancel) { }
@@ -494,11 +505,12 @@ struct ImportDatabaseView: View {
     private func loadImportedDogs() async {
         isLoading = true
         
-        // Get all dogs from the database (including deleted ones)
-        await dataManager.fetchAllDogsIncludingDeleted()
-        let allDogs = dataManager.allDogs
+        print("🚀 Import: Starting optimized loadImportedDogs...")
         
-        print("🔍 Import: Found \(allDogs.count) total dogs in database")
+        // Use optimized method that doesn't load all records
+        let allDogs = await dataManager.fetchDogsForImport()
+        
+        print("🔍 Import: Found \(allDogs.count) total dogs in database (optimized)")
         
         // Filter out deleted dogs and group by name+owner
         let activeDogs = allDogs.filter { !$0.isDeleted }
@@ -549,12 +561,28 @@ struct ImportDatabaseView: View {
         
         isLoading = false
     }
+    
+    // MARK: - Lazy Loading for Import
+    
+    private func importDogWithFullRecords(_ dog: Dog) async -> Dog? {
+        print("🔍 Import: Loading full records for \(dog.name)...")
+        
+        // Fetch the specific dog with all its records
+        guard let fullDog = await dataManager.fetchSpecificDogWithRecords(for: dog.id.uuidString) else {
+            print("❌ Import: Failed to load full records for \(dog.name)")
+            return nil
+        }
+        
+        print("✅ Import: Successfully loaded full records for \(fullDog.name)")
+        return fullDog
+    }
 }
 
 struct ImportedDogRow: View {
     let dog: Dog
     let onZoom: () -> Void
     let onImport: () -> Void
+    @State private var isImporting = false
     
     var body: some View {
         HStack(spacing: 12) {
@@ -602,7 +630,21 @@ struct ImportedDogRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture {
-            onImport()
+            importDog()
+        }
+    }
+    
+    private func importDog() {
+        isImporting = true
+        
+        Task {
+            // Simulate a brief delay to show loading state
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            
+            await MainActor.run {
+                onImport()
+                isImporting = false
+            }
         }
     }
 } 

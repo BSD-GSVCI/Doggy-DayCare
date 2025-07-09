@@ -1831,6 +1831,136 @@ class CloudKitService: ObservableObject {
         print("✅ Fetched \(dogs.count) total dogs from CloudKit")
         return dogs
     }
+    
+    // MARK: - Optimized Import Methods
+    
+    func fetchDogsForImport() async throws -> [CloudKitDog] {
+        let startTime = startPerformanceTimer("fetchDogsForImport")
+        print("🚀 Starting optimized fetchDogsForImport...")
+        
+        // Only fetch essential dog data without records
+        let predicate = NSPredicate(format: "\(DogFields.name) != %@", "")
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        
+        // Add sorting to get most recent first
+        query.sortDescriptors = [NSSortDescriptor(key: DogFields.createdAt, ascending: false)]
+        
+        print("🔍 Executing optimized CloudKit query: \(query)")
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        print("🔍 Found \(records.count) total dog records in CloudKit")
+        
+        var dogs: [CloudKitDog] = []
+        
+        for record in records {
+            print("🔍 Processing dog record: \(record[DogFields.name] as? String ?? "Unknown")")
+            let dog = CloudKitDog(from: record)
+            
+            // Skip deleted dogs
+            if dog.isDeleted {
+                print("⏭️ Skipping deleted dog: \(dog.name)")
+                continue
+            }
+            
+            // For import, we don't need to load all records - just basic info
+            // Records will be loaded only when the dog is actually imported
+            print("✅ Added dog for import: \(dog.name) (no records loaded)")
+            dogs.append(dog)
+        }
+        
+        // Sort dogs by creation date locally
+        dogs.sort { $0.createdAt > $1.createdAt }
+        
+        endPerformanceTimer("fetchDogsForImport", startTime: startTime)
+        print("✅ Fetched \(dogs.count) dogs for import (optimized)")
+        return dogs
+    }
+    
+    func fetchDogWithRecords(for dogID: String) async throws -> CloudKitDog? {
+        print("🔍 Fetching specific dog with records: \(dogID)")
+        
+        let predicate = NSPredicate(format: "\(DogFields.id) == %@", dogID)
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let record = records.first else {
+            print("❌ Dog not found: \(dogID)")
+            return nil
+        }
+        
+        var dog = CloudKitDog(from: record)
+        
+        // Load records for this specific dog
+        do {
+            let (feeding, medication, potty, walking) = try await loadRecords(for: dog.id)
+            dog.feedingRecords = feeding
+            dog.medicationRecords = medication
+            dog.pottyRecords = potty
+            dog.walkingRecords = walking
+            print("✅ Loaded records for \(dog.name): \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty, \(walking.count) walking")
+        } catch {
+            print("⚠️ Failed to load records for dog \(dog.name): \(error)")
+        }
+        
+        return dog
+    }
+    
+    // MARK: - Caching System
+    
+    private var dogCache: [String: CloudKitDog] = [:]
+    private var cacheTimestamp: Date = Date()
+    private let cacheExpirationInterval: TimeInterval = 300 // 5 minutes
+    
+    func getCachedDogs() -> [CloudKitDog] {
+        let now = Date()
+        if now.timeIntervalSince(cacheTimestamp) > cacheExpirationInterval {
+            print("🔄 Dog cache expired, clearing...")
+            dogCache.removeAll()
+            return []
+        }
+        return Array(dogCache.values)
+    }
+    
+    func updateDogCache(_ dogs: [CloudKitDog]) {
+        dogCache.removeAll()
+        for dog in dogs {
+            dogCache[dog.id] = dog
+        }
+        cacheTimestamp = Date()
+        print("✅ Updated dog cache with \(dogs.count) dogs")
+    }
+    
+    func clearDogCache() {
+        dogCache.removeAll()
+        cacheTimestamp = Date()
+        print("🧹 Dog cache cleared")
+    }
+    
+    // MARK: - Performance Monitoring
+    
+    private var performanceMetrics: [String: TimeInterval] = [:]
+    
+    private func startPerformanceTimer(_ operation: String) -> Date {
+        return Date()
+    }
+    
+    private func endPerformanceTimer(_ operation: String, startTime: Date) {
+        let duration = Date().timeIntervalSince(startTime)
+        performanceMetrics[operation] = duration
+        print("⏱️ Performance: \(operation) took \(String(format: "%.2f", duration))s")
+    }
+    
+    func getPerformanceMetrics() -> [String: TimeInterval] {
+        return performanceMetrics
+    }
+    
+    func clearPerformanceMetrics() {
+        performanceMetrics.removeAll()
+        print("🧹 Performance metrics cleared")
+    }
 }
 
 // MARK: - Error Types
