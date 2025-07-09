@@ -1892,15 +1892,51 @@ struct CloudKitUser {
             return true
         }
         
-        // Check if user is scheduled to work today
-        guard let scheduledDays = scheduledDays else {
+        // Staff must be active to work
+        guard isActive else {
             return false
         }
         
-        let today = Calendar.current.component(.weekday, from: Date())
-        let todayInt64 = Int64(today)
+        // Check if schedule-based access is enabled
+        if let days = scheduledDays, !days.isEmpty {
+            let calendar = Calendar.current
+            let today = calendar.component(.weekday, from: Date())
+            let todayInt64 = Int64(today)
+            
+            // Check if today is in the scheduled days
+            guard days.contains(todayInt64) else { 
+                return false 
+            }
+            
+            // Check working hours if they are set
+            if let startTime = scheduleStartTime, let endTime = scheduleEndTime {
+                let now = Date()
+                
+                // Extract time components from the stored times
+                let startHour = calendar.component(.hour, from: startTime)
+                let startMinute = calendar.component(.minute, from: startTime)
+                let endHour = calendar.component(.hour, from: endTime)
+                let endMinute = calendar.component(.minute, from: endTime)
+                
+                // Get current time components
+                let currentHour = calendar.component(.hour, from: now)
+                let currentMinute = calendar.component(.minute, from: now)
+                
+                // Convert to minutes for easier comparison
+                let startMinutes = startHour * 60 + startMinute
+                let endMinutes = endHour * 60 + endMinute
+                let currentMinutes = currentHour * 60 + currentMinute
+                
+                // Check if current time is within working hours
+                return currentMinutes >= startMinutes && currentMinutes <= endMinutes
+            } else {
+                // If no time constraints are set, allow access for the entire day
+                return true
+            }
+        }
         
-        return scheduledDays.contains(todayInt64)
+        // If no schedule is set, staff cannot work
+        return false
     }
     
     init(

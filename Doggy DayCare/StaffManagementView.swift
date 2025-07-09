@@ -429,7 +429,7 @@ struct StaffScheduleView: View {
                                 .datePickerStyle(.wheel)
                             
                             Text("to")
-                                .font(.caption)
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                             
                             DatePicker("", selection: $endTime, displayedComponents: .hourAndMinute)

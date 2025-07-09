@@ -7,6 +7,7 @@
 
 import SwiftUI
 import CloudKit
+import BackgroundTasks
 
 @main
 struct Doggy_DayCareApp: App {
@@ -15,6 +16,65 @@ struct Doggy_DayCareApp: App {
     @StateObject private var networkService = NetworkConnectivityService.shared
     @State private var isInitialized = false
     @State private var initializationError: String?
+    
+    init() {
+        // Register background tasks
+        registerBackgroundTasks()
+    }
+    
+    private func registerBackgroundTasks() {
+        // Register background task for automated backups
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: "com.doggydaycare.backup", using: nil) { task in
+            self.handleBackupBackgroundTask(task as! BGAppRefreshTask)
+        }
+        
+        // Register background task for midnight transitions
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: "com.doggydaycare.midnight", using: nil) { task in
+            self.handleMidnightBackgroundTask(task as! BGAppRefreshTask)
+        }
+        
+        print("✅ Background tasks registered in main app")
+    }
+    
+    private func handleBackupBackgroundTask(_ task: BGAppRefreshTask) {
+        print("🔄 Background backup task started")
+        
+        // Set up task expiration
+        task.expirationHandler = {
+            print("⏰ Backup background task expired")
+            task.setTaskCompleted(success: false)
+        }
+        
+        Task {
+            await AutomationService.shared.performAutomatedBackup()
+            task.setTaskCompleted(success: true)
+            
+            // Schedule next backup task
+            DispatchQueue.main.async {
+                AutomationService.shared.scheduleBackgroundTasks()
+            }
+        }
+    }
+    
+    private func handleMidnightBackgroundTask(_ task: BGAppRefreshTask) {
+        print("🔄 Background midnight task started")
+        
+        // Set up task expiration
+        task.expirationHandler = {
+            print("⏰ Midnight background task expired")
+            task.setTaskCompleted(success: false)
+        }
+        
+        Task {
+            await AutomationService.shared.handleMidnightTransition()
+            task.setTaskCompleted(success: true)
+            
+            // Schedule next midnight task
+            DispatchQueue.main.async {
+                AutomationService.shared.scheduleBackgroundTasks()
+            }
+        }
+    }
     
     var body: some Scene {
         WindowGroup {
@@ -87,6 +147,14 @@ struct Doggy_DayCareApp: App {
                             .environmentObject(authService)
                     }
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+                print("📱 App entering background")
+                AutomationService.shared.applicationDidEnterBackground()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                print("📱 App entering foreground")
+                AutomationService.shared.applicationWillEnterForeground()
             }
         }
     }

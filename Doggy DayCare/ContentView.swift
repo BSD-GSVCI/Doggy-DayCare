@@ -257,9 +257,11 @@ struct ContentView: View {
                                 .foregroundStyle(.blue)
                         }
                         
-                        NavigationLink(destination: PaymentsView()) {
-                            Image(systemName: "dollarsign")
-                                .foregroundStyle(.blue)
+                        if authService.currentUser?.isOwner == true {
+                            NavigationLink(destination: PaymentsView()) {
+                                Image(systemName: "dollarsign")
+                                    .foregroundStyle(.blue)
+                            }
                         }
                         
                         if authService.currentUser?.isOwner == true {
@@ -284,9 +286,9 @@ struct ContentView: View {
                                     } label: {
                                         Label("Clear Backup Folder", systemImage: "folder.badge.minus")
                                     }
+                                    
+                                    Divider()
                                 }
-                                
-                                Divider()
                             }
                             
                             Button {

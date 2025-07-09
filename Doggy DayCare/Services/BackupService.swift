@@ -14,7 +14,9 @@ class BackupService {
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "h:mm a"
         
-        var csvString = "Number,Dog Name,Owner Name,Arrival Date & Time,Departure Date & Time,Service Type,Boarding End Date,Stay Duration,Needs Walking,Walking Notes,Medications,Special Instructions,Allergies & Feeding Instructions,Is Daycare Fed,Notes,Feeding Records,Medication Records,Potty Records\n"
+        // Add BOM (Byte Order Mark) for better Excel compatibility
+        let bom = "\u{FEFF}"
+        var csvString = bom + "Number,Dog Name,Owner Name,Arrival Date & Time,Departure Date & Time,Service Type,Boarding End Date,Stay Duration,Needs Walking,Walking Notes,Medications,Special Instructions,Allergies & Feeding Instructions,Is Daycare Fed,Notes,Feeding Records,Medication Records,Potty Records\n"
         
         for (index, dog) in dogs.enumerated() {
             // Format dates properly
@@ -83,9 +85,12 @@ class BackupService {
                 pottyRecords.isEmpty ? "None" : pottyRecords
             ]
             
-            // Escape and quote values
+            // Escape and quote values properly for CSV
             let row = rowValues
-                .map { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }
+                .map { value in
+                    let escapedValue = value.replacingOccurrences(of: "\"", with: "\"\"")
+                    return "\"\(escapedValue)\""
+                }
                 .joined(separator: ",")
             
             csvString.append(row + "\n")
@@ -107,7 +112,16 @@ class BackupService {
             fileURL = documentsDirectory.appendingPathComponent(fileName)
         }
         
-        try csvString.write(to: fileURL, atomically: true, encoding: .utf8)
+        // Write with UTF-8 encoding and ensure proper line endings
+        let data = csvString.data(using: .utf8)!
+        try data.write(to: fileURL, options: .atomic)
+        
+        // Set proper file attributes for better compatibility
+        let attributesToSet: [FileAttributeKey: Any] = [
+            .posixPermissions: 0o644,  // Read/write for owner, read for others
+            .type: FileAttributeType.typeRegular
+        ]
+        try FileManager.default.setAttributes(attributesToSet, ofItemAtPath: fileURL.path)
         
         // Verify the file was created successfully
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
@@ -121,25 +135,31 @@ class BackupService {
         
         // Get file attributes to verify it's not empty
         let fileAttributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
-        let fileSize = fileAttributes[.size] as? Int64 ?? 0
+        let fileSize = fileAttributes[FileAttributeKey.size] as? Int64 ?? 0
         
         print("✅ File created successfully at: \(fileURL.path)")
         print("✅ File size: \(fileSize) bytes")
+        print("✅ File type: CSV with UTF-8 BOM for Excel compatibility")
+        print("✅ File permissions: \(fileAttributes[FileAttributeKey.posixPermissions] ?? "unknown")")
         
         if fileSize == 0 {
             throw NSError(domain: "BackupService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Export file is empty"])
         }
         
-        // Copy to temporary directory for better sharing
-        let tempDirectory = FileManager.default.temporaryDirectory
-        let tempFileName = "DoggyDayCare_Export_\(cleanDateString).csv"
-        let tempFileURL = tempDirectory.appendingPathComponent(tempFileName)
-        
-        try FileManager.default.copyItem(at: fileURL, to: tempFileURL)
-        
-        print("✅ File copied to temp directory: \(tempFileURL.path)")
-        
-        return tempFileURL
+        // For manual exports, copy to temporary directory for better sharing
+        if backupFolderURL == nil {
+            let tempDirectory = FileManager.default.temporaryDirectory
+            let tempFileName = "DoggyDayCare_Export_\(cleanDateString).csv"
+            let tempFileURL = tempDirectory.appendingPathComponent(tempFileName)
+            
+            try FileManager.default.copyItem(at: fileURL, to: tempFileURL)
+            
+            print("✅ File copied to temp directory: \(tempFileURL.path)")
+            return tempFileURL
+        } else {
+            // For automatic backups, return the original file URL
+            return fileURL
+        }
     }
     
     private func exportDogToCSV(_ dog: Dog) -> String {

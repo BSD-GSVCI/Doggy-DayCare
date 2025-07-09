@@ -5,6 +5,13 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
+		<string>background-processing</string>
+		<string>background-app-refresh</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.doggydaycare.backup</string>
+		<string>com.doggydaycare.midnight</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs access to the camera to take profile pictures of dogs.</string>

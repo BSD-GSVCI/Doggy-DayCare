@@ -58,20 +58,33 @@ struct User: Codable, Identifiable {
                 let now = Date()
                 let calendar = Calendar.current
                 
-                // Create today's start and end times
-                let todayStart = calendar.date(bySettingHour: calendar.component(.hour, from: startTime),
-                                             minute: calendar.component(.minute, from: startTime),
-                                             second: 0, of: now) ?? now
+                print("DEBUG: User \(name) - Raw start time: \(startTime)")
+                print("DEBUG: User \(name) - Raw end time: \(endTime)")
+                print("DEBUG: User \(name) - Current time: \(now)")
                 
-                let todayEnd = calendar.date(bySettingHour: calendar.component(.hour, from: endTime),
-                                           minute: calendar.component(.minute, from: endTime),
-                                           second: 0, of: now) ?? now
+                // Extract time components from the stored times
+                let startHour = calendar.component(.hour, from: startTime)
+                let startMinute = calendar.component(.minute, from: startTime)
+                let endHour = calendar.component(.hour, from: endTime)
+                let endMinute = calendar.component(.minute, from: endTime)
                 
-                print("DEBUG: User \(name) - Working hours: \(todayStart) to \(todayEnd), current time: \(now)")
+                // Get current time components
+                let currentHour = calendar.component(.hour, from: now)
+                let currentMinute = calendar.component(.minute, from: now)
+                
+                // Convert to minutes for easier comparison
+                let startMinutes = startHour * 60 + startMinute
+                let endMinutes = endHour * 60 + endMinute
+                let currentMinutes = currentHour * 60 + currentMinute
+                
+                print("DEBUG: User \(name) - Working hours: \(startHour):\(startMinute) to \(endHour):\(endMinute)")
+                print("DEBUG: User \(name) - Current time: \(currentHour):\(currentMinute)")
+                print("DEBUG: User \(name) - Start minutes: \(startMinutes), End minutes: \(endMinutes), Current minutes: \(currentMinutes)")
                 
                 // Check if current time is within working hours
-                let isWithinHours = now >= todayStart && now <= todayEnd
+                let isWithinHours = currentMinutes >= startMinutes && currentMinutes <= endMinutes
                 print("DEBUG: User \(name) - Within working hours: \(isWithinHours)")
+                print("DEBUG: User \(name) - Comparison: \(currentMinutes) >= \(startMinutes) && \(currentMinutes) <= \(endMinutes)")
                 return isWithinHours
             } else {
                 // If no time constraints are set, allow access for the entire day

@@ -159,9 +159,33 @@ class AuthenticationService: ObservableObject {
             }
             
             // Check if staff member is scheduled to work today
-            if !cloudKitUser.canWorkToday {
-                print("Staff member \(cloudKitUser.name) is not scheduled to work today")
-                throw AuthError.notScheduledToday
+            print("🔍 AUTH DEBUG: Checking if \(cloudKitUser.name) can work today...")
+            let canWork = cloudKitUser.canWorkToday
+            print("🔍 AUTH DEBUG: canWorkToday result: \(canWork)")
+            
+            if !canWork {
+                // Determine the specific reason for access denial
+                let calendar = Calendar.current
+                let today = calendar.component(.weekday, from: Date())
+                let todayInt64 = Int64(today)
+                
+                if let days = cloudKitUser.scheduledDays, !days.isEmpty {
+                    if days.contains(todayInt64) {
+                        // User is scheduled for today but outside working hours
+                        print("❌ AUTH ERROR: Staff member \(cloudKitUser.name) is outside working hours")
+                        throw AuthError.outsideWorkingHours
+                    } else {
+                        // User is not scheduled for today
+                        print("❌ AUTH ERROR: Staff member \(cloudKitUser.name) is not scheduled to work today")
+                        throw AuthError.notScheduledToday
+                    }
+                } else {
+                    // No schedule set
+                    print("❌ AUTH ERROR: Staff member \(cloudKitUser.name) has no schedule set")
+                    throw AuthError.noScheduleSet
+                }
+            } else {
+                print("✅ AUTH DEBUG: \(cloudKitUser.name) is allowed to work")
             }
             
             // Update last login time (only if we have write permissions)
@@ -375,6 +399,8 @@ enum AuthError: LocalizedError {
     case userNotFound
     case accountInactive
     case notScheduledToday
+    case outsideWorkingHours
+    case noScheduleSet
     case passwordRequired
     case invalidPassword
     case passwordResetFailed(String)
@@ -389,6 +415,10 @@ enum AuthError: LocalizedError {
             return "This account is inactive"
         case .notScheduledToday:
             return "You are not scheduled to work today"
+        case .outsideWorkingHours:
+            return "You are outside your scheduled working hours"
+        case .noScheduleSet:
+            return "No working schedule has been set for your account"
         case .passwordRequired:
             return "Password is required"
         case .invalidPassword:
