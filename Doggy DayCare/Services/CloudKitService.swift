@@ -1277,8 +1277,10 @@ class CloudKitService: ObservableObject {
     func checkoutDog(_ dogID: String) async throws {
         print("🔄 CloudKitService.checkoutDog called for dog ID: \(dogID)")
         
+        #if DEBUG
         // Debug: Check user identity
         await debugUserIdentity()
+        #endif
         
         // Fetch the existing dog record
         let predicate = NSPredicate(format: "\(DogFields.id) == %@", dogID)
@@ -1291,6 +1293,7 @@ class CloudKitService: ObservableObject {
             throw CloudKitError.recordNotFound
         }
         
+        #if DEBUG
         let departureDate = dogRecord[DogFields.departureDate] as? Date
         print("📅 Original record departure date: \(departureDate?.description ?? "nil")")
         
@@ -1308,6 +1311,10 @@ class CloudKitService: ObservableObject {
         let cloudKitUserRecordID = try await container.userRecordID()
         print("🔗 Current CloudKit user record ID: \(cloudKitUserRecordID.recordName)")
         print("🔗 App user ID: \(currentUser.id)")
+        #else
+        // Get the actual CloudKit user record ID
+        let cloudKitUserRecordID = try await container.userRecordID()
+        #endif
         
         // Update only the departure date
         dogRecord[DogFields.departureDate] = Date()
@@ -1318,8 +1325,10 @@ class CloudKitService: ObservableObject {
         let currentCount = dogRecord[DogFields.modificationCount] as? Int64 ?? 0
         dogRecord[DogFields.modificationCount] = currentCount + 1
         
+        #if DEBUG
         let updatedDepartureDate = dogRecord[DogFields.departureDate] as? Date
         print("📅 Updated record departure date: \(updatedDepartureDate?.description ?? "nil")")
+        #endif
         
         // Save the updated record
         do {
@@ -1327,30 +1336,41 @@ class CloudKitService: ObservableObject {
             print("✅ Checkout record saved successfully: \(savedRecord.recordID.recordName)")
         } catch let error as CKError {
             print("❌ CloudKit save error: \(error)")
+            #if DEBUG
             print("❌ Error code: \(error.code.rawValue)")
             print("❌ Error description: \(error.localizedDescription)")
             
-            if error.code == .notAuthenticated {
-                throw CloudKitError.userNotAuthenticated
-            } else if error.code == .permissionFailure {
+            if error.code == .permissionFailure {
                 print("❌ PERMISSION ERROR: User cannot modify this record")
                 print("❌ This is likely a CloudKit container security setting issue")
                 print("❌ Check CloudKit Dashboard → Schema → Security Roles")
                 print("❌ OR check Apple Developer Portal → CloudKit → Container Settings")
+            }
+            #endif
+            
+            if error.code == .notAuthenticated {
+                throw CloudKitError.userNotAuthenticated
+            } else if error.code == .permissionFailure {
                 throw CloudKitError.permissionDenied
             } else {
                 throw CloudKitError.unknownError(error.localizedDescription)
             }
         }
         
-        // Create audit trail entry
-        try await createDogChange(
-            dogID: dogID,
-            changeType: .departed,
-            fieldName: DogFields.departureDate,
-            oldValue: nil,
-            newValue: Date().description
-        )
+        // Create audit trail entry in background
+        Task.detached {
+            do {
+                try await self.createDogChange(
+                    dogID: dogID,
+                    changeType: .departed,
+                    fieldName: DogFields.departureDate,
+                    oldValue: nil,
+                    newValue: Date().description
+                )
+            } catch {
+                print("⚠️ Failed to create audit trail for checkout: \(error)")
+            }
+        }
     }
     
     func extendBoardingOptimized(_ dogID: String, newEndDate: Date) async throws {

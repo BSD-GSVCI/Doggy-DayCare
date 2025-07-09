@@ -759,8 +759,10 @@ class DataManager: ObservableObject {
     // MARK: - Optimized Dog Operations
     
     func checkoutDog(_ dog: Dog) async {
+        #if DEBUG
         isLoading = true
         errorMessage = nil
+        #endif
         
         print("🔄 Starting optimized checkout for dog: \(dog.name)")
         
@@ -773,23 +775,27 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Update CloudKit with only the checkout
-        do {
-            try await cloudKitService.checkoutDog(dog.id.uuidString)
-            print("✅ Checkout completed in CloudKit for \(dog.name)")
-        } catch {
-            print("❌ Failed to checkout dog in CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].departureDate = nil
-                    self.dogs[index].updatedAt = dog.updatedAt
-                    print("🔄 Reverted checkout in local cache due to CloudKit failure")
+        // Handle CloudKit operations in background without blocking UI
+        Task.detached {
+            do {
+                try await self.cloudKitService.checkoutDog(dog.id.uuidString)
+                print("✅ Checkout completed in CloudKit for \(dog.name)")
+            } catch {
+                print("❌ Failed to checkout dog in CloudKit: \(error)")
+                // Revert local cache if CloudKit update failed
+                await MainActor.run {
+                    if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                        self.dogs[index].departureDate = nil
+                        self.dogs[index].updatedAt = dog.updatedAt
+                        print("🔄 Reverted checkout in local cache due to CloudKit failure")
+                    }
                 }
             }
         }
         
+        #if DEBUG
         isLoading = false
+        #endif
     }
     
     func extendBoardingOptimized(for dog: Dog, newEndDate: Date) async {

@@ -474,10 +474,12 @@ struct DogDetailView: View {
         print("🔄 Starting checkout process for dog: \(dog.name)")
         print("📅 Current departure date: \(dog.departureDate?.description ?? "nil")")
         
+        // Update local cache and dismiss immediately for responsive UI
         await dataManager.checkoutDog(dog)
         
         print("✅ Checkout completed for dog: \(dog.name)")
         
+        // Dismiss immediately after local cache update
         dismiss()
     }
     
