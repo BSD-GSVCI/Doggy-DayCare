@@ -426,10 +426,23 @@ class CloudKitService: ObservableObject {
     }
     
     func fetchDogs() async throws -> [CloudKitDog] {
-        print("🔍 Starting fetchDogs...")
+        let startTime = startPerformanceTimer("fetchDogs")
+        print("🔍 Starting optimized fetchDogs...")
+        
+        // Check cache first for better performance
+        let cachedDogs = getCachedDogs()
+        if !cachedDogs.isEmpty {
+            print("✅ Using cached dogs (\(cachedDogs.count) dogs)")
+            endPerformanceTimer("fetchDogs", startTime: startTime)
+            return cachedDogs
+        }
+        
         // Fetch all dogs and filter out deleted ones locally
         let predicate = NSPredicate(format: "\(DogFields.name) != %@", "")
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        
+        // Add sorting to get most recent first (requires CloudKit index on createdAt)
+        query.sortDescriptors = [NSSortDescriptor(key: DogFields.createdAt, ascending: false)]
         
         print("🔍 Executing CloudKit query: \(query)")
         let result = try await publicDatabase.records(matching: query)
@@ -439,34 +452,59 @@ class CloudKitService: ObservableObject {
         
         var dogs: [CloudKitDog] = []
         
-        for record in records {
-            print("🔍 Processing dog record: \(record[DogFields.name] as? String ?? "Unknown")")
-            var dog = CloudKitDog(from: record)
+        // Process dogs in batches for better performance
+        let batchSize = 5
+        for i in stride(from: 0, to: records.count, by: batchSize) {
+            let batch = Array(records[i..<min(i + batchSize, records.count)])
             
-            // Skip deleted dogs
-            if dog.isDeleted {
-                print("⏭️ Skipping deleted dog: \(dog.name)")
-                continue
+            // Process batch concurrently
+            let batchDogs = await withTaskGroup(of: CloudKitDog?.self) { group in
+                for record in batch {
+                    group.addTask {
+                        print("🔍 Processing dog record: \(record[DogFields.name] as? String ?? "Unknown")")
+                        var dog = CloudKitDog(from: record)
+                        
+                        // Skip deleted dogs
+                        if dog.isDeleted {
+                            print("⏭️ Skipping deleted dog: \(dog.name)")
+                            return nil
+                        }
+                        
+                        // Load records for this dog
+                        do {
+                            let (feeding, medication, potty, walking) = try await self.loadRecords(for: dog.id)
+                            dog.feedingRecords = feeding
+                            dog.medicationRecords = medication
+                            dog.pottyRecords = potty
+                            dog.walkingRecords = walking
+                            print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty, \(walking.count) walking records for \(dog.name)")
+                        } catch {
+                            print("⚠️ Failed to load records for dog \(dog.name): \(error)")
+                        }
+                        
+                        return dog
+                    }
+                }
+                
+                var batchResults: [CloudKitDog] = []
+                for await dog in group {
+                    if let dog = dog {
+                        batchResults.append(dog)
+                    }
+                }
+                return batchResults
             }
             
-            // Load records for this dog
-            do {
-                let (feeding, medication, potty, walking) = try await loadRecords(for: dog.id)
-                dog.feedingRecords = feeding
-                dog.medicationRecords = medication
-                dog.pottyRecords = potty
-                dog.walkingRecords = walking
-                print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty, \(walking.count) walking records for \(dog.name)")
-            } catch {
-                print("⚠️ Failed to load records for dog \(dog.name): \(error)")
-            }
-            
-            dogs.append(dog)
+            dogs.append(contentsOf: batchDogs)
         }
         
         // Sort dogs by creation date locally
         dogs.sort { $0.createdAt > $1.createdAt }
         
+        // Update cache
+        updateDogCache(dogs)
+        
+        endPerformanceTimer("fetchDogs", startTime: startTime)
         print("✅ Fetched \(dogs.count) active dogs from CloudKit")
         return dogs
     }
@@ -1981,6 +2019,43 @@ class CloudKitService: ObservableObject {
         performanceMetrics.removeAll()
         print("🧹 Performance metrics cleared")
     }
+    
+    // MARK: - CloudKit Schema Recommendations for Performance
+    /*
+     For optimal performance, add these indices in CloudKit Dashboard:
+     
+     DOG RECORD TYPE:
+     - name: QUERYABLE (for filtering)
+     - createdAt: SORTABLE (for sorting by creation date)
+     - arrivalDate: SORTABLE (for date-based queries)
+     - departureDate: SORTABLE (for departed dogs)
+     - isDeleted: QUERYABLE (for filtering deleted dogs)
+     - isBoarding: QUERYABLE (for filtering boarding vs daycare)
+     - isCurrentlyPresent: QUERYABLE (for filtering present dogs)
+     
+     RECORD TYPES (Feeding, Medication, Potty, Walking):
+     - dogID: QUERYABLE (for finding records by dog)
+     - timestamp: SORTABLE (for chronological ordering)
+     - type: QUERYABLE (for filtering by record type)
+     
+     USER RECORD TYPE:
+     - name: QUERYABLE (for user lookups)
+     - email: QUERYABLE (for authentication)
+     - isActive: QUERYABLE (for filtering active users)
+     - isOwner: QUERYABLE (for owner vs staff filtering)
+     
+     DOGCHANGE RECORD TYPE:
+     - dogID: QUERYABLE (for audit trail lookups)
+     - timestamp: SORTABLE (for chronological audit trail)
+     - changeType: QUERYABLE (for filtering by change type)
+     
+     How to add indices:
+     1. Go to CloudKit Dashboard → Schema
+     2. Select each Record Type
+     3. For each field, click "Queryable" and/or "Sortable"
+     4. Queryable = Can be used in WHERE clauses (NSPredicate)
+     5. Sortable = Can be used in ORDER BY clauses (NSSortDescriptor)
+     */
 }
 
 // MARK: - Error Types

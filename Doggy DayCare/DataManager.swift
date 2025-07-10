@@ -720,8 +720,17 @@ class DataManager: ObservableObject {
     
     func refreshData() async {
         print("🔄 DataManager: Manual refresh requested")
+        
+        // Clear cache to force fresh data
+        cloudKitService.clearDogCache()
+        
         await fetchDogs()
         await fetchUsers()
+    }
+    
+    func clearCache() {
+        cloudKitService.clearDogCache()
+        print("🧹 DataManager: Cache cleared")
     }
     
     // MARK: - Error Handling
