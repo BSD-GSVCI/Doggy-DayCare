@@ -184,7 +184,8 @@ struct DogDetailView: View {
                             .font(.body)
                     }
                     if !dog.medicationRecords.isEmpty {
-                        ForEach(dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \ .id) { record in
+                        let sortedMedicationRecords = dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp })
+                        ForEach(sortedMedicationRecords, id: \ .id) { record in
                             HStack {
                                 Image(systemName: "pills")
                                     .foregroundStyle(.purple)
@@ -216,7 +217,8 @@ struct DogDetailView: View {
             if dog.isDaycareFed || !dog.feedingRecords.isEmpty {
                 Section("Feeding Information") {
                     if !dog.feedingRecords.isEmpty {
-                        ForEach(dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                        let sortedFeedingRecords = dog.feedingRecords.sorted(by: { $0.timestamp > $1.timestamp })
+                        ForEach(sortedFeedingRecords, id: \.id) { record in
                             HStack {
                                 Image(systemName: iconForFeedingType(record.type))
                                     .foregroundStyle(colorForFeedingType(record.type))
@@ -290,7 +292,8 @@ struct DogDetailView: View {
             if dog.needsWalking || !dog.walkingRecords.isEmpty {
                 Section("Walking Information") {
                     if !dog.walkingRecords.isEmpty {
-                        ForEach(dog.walkingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                        let sortedWalkingRecords = dog.walkingRecords.sorted(by: { $0.timestamp > $1.timestamp })
+                        ForEach(sortedWalkingRecords, id: \.id) { record in
                             HStack {
                                 Image(systemName: "figure.walk")
                                     .foregroundStyle(.blue)
@@ -314,7 +317,8 @@ struct DogDetailView: View {
                     
                     // Individual potty instances
                     if !dog.pottyRecords.isEmpty {
-                        ForEach(dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
+                        let sortedPottyRecords = dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp })
+                        ForEach(sortedPottyRecords, id: \.id) { record in
                             HStack {
                                 if record.type == .pee {
                                     Image(systemName: "drop.fill")
@@ -346,26 +350,25 @@ struct DogDetailView: View {
                         }
                     }
                     
-                    // Potty counts
+                    // Potty counts - Total for entire stay
                     HStack(spacing: 16) {
-                        let todaysPottyRecords = dog.pottyRecords.filter { record in
-                            Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
-                        }
+                        let totalPeeCount = dog.pottyRecords.filter { $0.type == .pee || $0.type == .both }.count
+                        let totalPoopCount = dog.pottyRecords.filter { $0.type == .poop || $0.type == .both }.count
                         
-                        let todaysPeeCount = todaysPottyRecords.filter { $0.type == .pee || $0.type == .both }.count
-                        let todaysPoopCount = todaysPottyRecords.filter { $0.type == .poop || $0.type == .both }.count
+                        // Debug: Print the counts
+                        let _ = print("🐕 Total potty counts for \(dog.name): pee=\(totalPeeCount), poop=\(totalPoopCount), total records=\(dog.pottyRecords.count)")
                         
                         HStack {
                             Image(systemName: "drop.fill")
                                 .foregroundStyle(.yellow)
-                            Text("\(todaysPeeCount)")
+                            Text("\(totalPeeCount)")
                                 .font(.headline)
                                 .foregroundStyle(.blue)
                         }
                         
                         HStack {
                             Text("💩")
-                            Text("\(todaysPoopCount)")
+                            Text("\(totalPoopCount)")
                                 .font(.headline)
                                 .foregroundStyle(.blue)
                         }

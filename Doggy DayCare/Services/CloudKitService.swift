@@ -1970,7 +1970,7 @@ class CloudKitService: ObservableObject {
     
     private var dogCache: [String: CloudKitDog] = [:]
     private var cacheTimestamp: Date = Date()
-    private let cacheExpirationInterval: TimeInterval = 300 // 5 minutes
+    private let cacheExpirationInterval: TimeInterval = 28800 // 8 hours (3 shifts per day: morning, midday, overnight)
     
     func getCachedDogs() -> [CloudKitDog] {
         let now = Date()

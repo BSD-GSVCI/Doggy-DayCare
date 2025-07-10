@@ -79,28 +79,30 @@ struct DogFormView: View {
         }
     }
     
+
+    
     var body: some View {
         NavigationStack {
             Form {
-                // Import from Database Section (only show when adding new dog)
-                if dog == nil {
-                    Section {
-                        Button {
-                            showingImportDatabase = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "arrow.down.doc")
-                                    .foregroundStyle(.blue)
-                                Text("Import from Database")
-                                    .foregroundStyle(.blue)
+                    // Import from Database Section (only show when adding new dog)
+                    if dog == nil {
+                        Section {
+                            Button {
+                                showingImportDatabase = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "arrow.down.doc")
+                                        .foregroundStyle(.blue)
+                                    Text("Import from Database")
+                                        .foregroundStyle(.blue)
+                                }
                             }
+                        } header: {
+                            Text("Quick Import")
+                        } footer: {
+                            Text("Import saved dog entries to avoid re-entering information")
                         }
-                    } header: {
-                        Text("Quick Import")
-                    } footer: {
-                        Text("Import saved dog entries to avoid re-entering information")
                     }
-                }
                 
                 Section {
                     // Profile Picture
@@ -124,7 +126,8 @@ struct DogFormView: View {
                                 }
                         }
                         
-                        Button(profileImage == nil ? "Add Profile Picture from Library" : "Change Picture") {
+                        let buttonTitle = profileImage == nil ? "Add Profile Picture from Library" : "Change Picture"
+                        Button(buttonTitle) {
                             showingImagePicker = true
                         }
                         .font(.caption)
@@ -144,12 +147,13 @@ struct DogFormView: View {
                         }
                     
                     if isBoarding {
+                        let boardingEndDateBinding = Binding(
+                            get: { boardingEndDate ?? Calendar.current.startOfDay(for: Date()) },
+                            set: { boardingEndDate = $0 }
+                        )
                         DatePicker(
                             "Boarding End Date",
-                            selection: Binding(
-                                get: { boardingEndDate ?? Calendar.current.startOfDay(for: Date()) },
-                                set: { boardingEndDate = $0 }
-                            ),
+                            selection: boardingEndDateBinding,
                             displayedComponents: .date
                         )
                         .datePickerStyle(.compact)
@@ -176,10 +180,11 @@ struct DogFormView: View {
                         .lineLimit(3...6)
                     TextField("Allergies and Feeding Instructions", text: $allergiesAndFeedingInstructions, axis: .vertical)
                         .lineLimit(3...6)
-                    TextField("Additional Notes", text: Binding(
+                    let additionalNotesBinding = Binding(
                         get: { notes ?? "" },
                         set: { notes = $0.isEmpty ? nil : $0 }
-                    ), axis: .vertical)
+                    )
+                    TextField("Additional Notes", text: additionalNotesBinding, axis: .vertical)
                         .lineLimit(3...6)
                 }
                 
@@ -187,12 +192,17 @@ struct DogFormView: View {
                     TextField("Age", value: $age, format: .number)
                         .keyboardType(.numberPad)
                     Picker("Gender", selection: $gender) {
-                        ForEach(DogGender.allCases, id: \ .self) { gender in
+                        let genderCases = DogGender.allCases
+                        ForEach(genderCases, id: \ .self) { gender in
                             Text(gender.displayName).tag(gender)
                         }
                     }
                     if let vaccinationEndDate = vaccinationEndDate {
-                        DatePicker("Vaccination End Date", selection: Binding(get: { vaccinationEndDate }, set: { self.vaccinationEndDate = $0 }), displayedComponents: .date)
+                        let vaccinationEndDateBinding = Binding(
+                            get: { vaccinationEndDate },
+                            set: { self.vaccinationEndDate = $0 }
+                        )
+                        DatePicker("Vaccination End Date", selection: vaccinationEndDateBinding, displayedComponents: .date)
                             .datePickerStyle(.compact)
                             .labelsHidden()
                         Button("Clear Vaccination Date") {
@@ -235,6 +245,12 @@ struct DogFormView: View {
                                 .background(.regularMaterial)
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+                // Add a small delay to let the keyboard fully appear
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    // The form will naturally scroll to the focused field
                 }
             }
         }
