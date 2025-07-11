@@ -140,6 +140,7 @@ struct WalkingListView: View {
                     AddWalkingView(dog: dog)
                 }
             }
+            .imageOverlay()
         }
     }
 }

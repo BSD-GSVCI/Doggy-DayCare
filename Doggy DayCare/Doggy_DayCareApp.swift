@@ -14,8 +14,12 @@ struct Doggy_DayCareApp: App {
     @StateObject private var dataManager = DataManager.shared
     @StateObject private var authService = AuthenticationService.shared
     @StateObject private var networkService = NetworkConnectivityService.shared
+    @StateObject private var performanceMonitor = PerformanceMonitor.shared
+    @StateObject private var advancedCache = AdvancedCache.shared
     @State private var isInitialized = false
     @State private var initializationError: String?
+    @State private var ownerExists = false
+    @State private var hasCheckedOwnerExistence = false
     
     init() {
         // Register background tasks
@@ -76,6 +80,38 @@ struct Doggy_DayCareApp: App {
         }
     }
     
+    private func checkOwnerExistence() async {
+        print("🔍 APP DEBUG: Starting owner existence check at app level...")
+        
+        if hasCheckedOwnerExistence {
+            print("🔍 APP DEBUG: Owner existence already checked, skipping...")
+            return
+        }
+        
+        do {
+            let cloudKitService = CloudKitService.shared
+            let allUsers = try await cloudKitService.fetchAllUsers()
+            let owners = allUsers.filter { $0.isOwner && $0.isActive }
+            
+            print("🔍 APP DEBUG: Found \(owners.count) active owners")
+            for owner in owners {
+                print("🔍 APP DEBUG: Owner: \(owner.name), email: \(owner.email ?? "none"), isOriginalOwner: \(owner.isOriginalOwner)")
+            }
+            
+            await MainActor.run {
+                ownerExists = !owners.isEmpty
+                hasCheckedOwnerExistence = true
+                print("🔍 APP DEBUG: ownerExists set to: \(ownerExists)")
+            }
+        } catch {
+            print("🔍 APP DEBUG: Error checking for owner: \(error)")
+            await MainActor.run {
+                ownerExists = false
+                hasCheckedOwnerExistence = true
+            }
+        }
+    }
+    
     var body: some Scene {
         WindowGroup {
             Group {
@@ -108,23 +144,26 @@ struct Doggy_DayCareApp: App {
                     }
                     .padding()
                 } else if !isInitialized {
-                    // Show loading screen
-                    VStack(spacing: 20) {
-                        ProgressView("Initializing CloudKit...")
-                            .scaleEffect(1.2)
-                        
-                        Text("Setting up data sync...")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    // Show login screen immediately, load data in background
+                    Group {
+                        if authService.currentUser == nil {
+                            LoginView(ownerExists: ownerExists, hasCheckedOwnerExistence: hasCheckedOwnerExistence)
+                                .environmentObject(dataManager)
+                                .environmentObject(authService)
+                        } else {
+                            ContentView()
+                                .environmentObject(dataManager)
+                                .environmentObject(authService)
+                        }
                     }
                     .task {
-                        print("🚀 Starting CloudKit initialization...")
+                        print("🚀 Starting background CloudKit initialization...")
                         do {
                             try await dataManager.authenticate()
                             print("✅ CloudKit initialization completed successfully")
                             
-                            // Password migration disabled - passwords already migrated and new users auto-save to CloudKit
-                            // await authService.migrateExistingPasswords()
+                            // Check owner existence at app level
+                            await checkOwnerExistence()
                             
                             // Initialize automation service for automatic backups
                             _ = AutomationService.shared
@@ -138,7 +177,7 @@ struct Doggy_DayCareApp: App {
                     }
                 } else {
                     if authService.currentUser == nil {
-                        LoginView()
+                        LoginView(ownerExists: ownerExists, hasCheckedOwnerExistence: hasCheckedOwnerExistence)
                             .environmentObject(dataManager)
                             .environmentObject(authService)
                     } else {

@@ -128,6 +128,7 @@ struct MedicationsListView: View {
                     AddMedicationView(dog: dog)
                 }
             }
+            .imageOverlay()
         }
     }
 }

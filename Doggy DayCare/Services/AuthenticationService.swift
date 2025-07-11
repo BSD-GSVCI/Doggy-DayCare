@@ -317,6 +317,11 @@ class AuthenticationService: ObservableObject {
         print("User signed out")
     }
     
+    func resetLoginState() {
+        print("Resetting login state for fresh login")
+        // This will be called when the app needs to check owner existence again
+    }
+    
     func resetOwnerPassword() async throws {
         // Verify owner exists
         let allUsers = try await cloudKitService.fetchAllUsers()

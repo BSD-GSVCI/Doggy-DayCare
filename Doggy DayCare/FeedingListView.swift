@@ -262,6 +262,7 @@ struct FeedingListView: View {
                         AddFeedingView(dog: dog, feedingType: selectedFeedingType)
                     }
                 }
+                .imageOverlay()
             }
         }
     }

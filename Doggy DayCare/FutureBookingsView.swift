@@ -53,6 +53,7 @@ struct FutureBookingsView: View {
                     FutureBookingFormView()
                 }
             }
+            .imageOverlay()
         }
     }
 }

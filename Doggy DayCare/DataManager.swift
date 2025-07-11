@@ -20,9 +20,11 @@ class DataManager: ObservableObject {
     
     func authenticate() async throws {
         try await cloudKitService.authenticate()
-        // After successful authentication, fetch the data
-        await fetchDogs()
-        await fetchUsers()
+        // After successful authentication, fetch the data in background
+        Task {
+            await fetchDogs()
+            await fetchUsers()
+        }
     }
     
     // MARK: - Dog Management

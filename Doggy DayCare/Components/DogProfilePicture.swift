@@ -30,32 +30,71 @@ struct DogProfilePicture: View {
                     .foregroundStyle(.gray)
             }
         }
-        .sheet(isPresented: $showingEnlargedImage) {
-            if let profilePictureData = dog.profilePictureData,
-               let uiImage = UIImage(data: profilePictureData) {
-                NavigationStack {
-                    VStack {
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .padding()
-                        
-                        Text(dog.name)
-                            .font(.headline)
-                            .padding(.bottom)
-                    }
-                    .navigationTitle("Profile Picture")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("Done") {
-                                showingEnlargedImage = false
-                            }
-                        }
-                    }
-                }
+        .onChange(of: showingEnlargedImage) { oldValue, newValue in
+            if newValue {
+                NotificationCenter.default.post(name: .showImageOverlay, object: (dog, showingEnlargedImage))
             }
         }
+    }
+}
+
+// MARK: - Notification Names
+extension Notification.Name {
+    static let showImageOverlay = Notification.Name("showImageOverlay")
+}
+
+// MARK: - View Modifier for Image Overlay
+struct ImageOverlayModifier: ViewModifier {
+    @State private var showingOverlay = false
+    @State private var currentDog: Dog?
+    
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if showingOverlay, let dog = currentDog, let profilePictureData = dog.profilePictureData, let uiImage = UIImage(data: profilePictureData) {
+                    Color.black.opacity(0.8)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            showingOverlay = false
+                        }
+                        .overlay {
+                            VStack {
+                                Spacer()
+                                
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(maxWidth: UIScreen.main.bounds.width * 0.8, maxHeight: UIScreen.main.bounds.height * 0.6)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .shadow(radius: 20)
+                                
+                                Spacer()
+                                
+                                Button("Close") {
+                                    showingOverlay = false
+                                }
+                                .foregroundStyle(.white)
+                                .padding()
+                                .background(.blue)
+                                .clipShape(Capsule())
+                                .padding(.bottom, 50)
+                            }
+                        }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .showImageOverlay)) { notification in
+                if let (dog, showing) = notification.object as? (Dog, Bool) {
+                    currentDog = dog
+                    showingOverlay = showing
+                }
+            }
+    }
+}
+
+// MARK: - View Extension
+extension View {
+    func imageOverlay() -> some View {
+        modifier(ImageOverlayModifier())
     }
 }
 

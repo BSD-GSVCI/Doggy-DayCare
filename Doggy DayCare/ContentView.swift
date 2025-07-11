@@ -195,6 +195,10 @@ struct ContentView: View {
                 // User info at the top
                 UserInfoView(user: authService.currentUser)
                 
+                // Show sync status
+                SyncStatusView()
+                    .padding(.bottom, 8)
+                
                 // Filter buttons
                 HStack(spacing: 12) {
                     ContentFilterButton(title: "All", isSelected: selectedFilter == .all) {

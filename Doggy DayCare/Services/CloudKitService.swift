@@ -427,7 +427,7 @@ class CloudKitService: ObservableObject {
     
     func fetchDogs() async throws -> [CloudKitDog] {
         let startTime = startPerformanceTimer("fetchDogs")
-        print("🔍 Starting optimized fetchDogs...")
+        print("🔍 Starting progressive fetchDogs...")
         
         // Check cache first for better performance
         let cachedDogs = getCachedDogs()
@@ -436,6 +436,10 @@ class CloudKitService: ObservableObject {
             endPerformanceTimer("fetchDogs", startTime: startTime)
             return cachedDogs
         }
+        
+        // Start performance monitoring
+        PerformanceMonitor.shared.startOperation("fetchDogs")
+        PerformanceMonitor.shared.updateProgress(0.1)
         
         // Fetch all dogs and filter out deleted ones locally
         let predicate = NSPredicate(format: "\(DogFields.name) != %@", "")
@@ -454,8 +458,16 @@ class CloudKitService: ObservableObject {
         
         // Process dogs in batches for better performance
         let batchSize = 10
+        let totalBatches = (records.count + batchSize - 1) / batchSize
+        var currentBatch = 0
+        
         for i in stride(from: 0, to: records.count, by: batchSize) {
             let batch = Array(records[i..<min(i + batchSize, records.count)])
+            currentBatch += 1
+            
+            // Update progress
+            let progress = 0.1 + (Double(currentBatch) / Double(totalBatches)) * 0.8
+            PerformanceMonitor.shared.updateProgress(progress)
             
             // Process batch concurrently
             let batchDogs = await withTaskGroup(of: CloudKitDog?.self) { group in
@@ -504,8 +516,98 @@ class CloudKitService: ObservableObject {
         // Update cache
         updateDogCache(dogs)
         
+        // Complete performance monitoring
+        PerformanceMonitor.shared.updateProgress(1.0)
+        PerformanceMonitor.shared.completeOperation("fetchDogs")
+        
         endPerformanceTimer("fetchDogs", startTime: startTime)
         print("✅ Fetched \(dogs.count) active dogs from CloudKit")
+        return dogs
+    }
+    
+    // MARK: - Background Operations (No Performance Monitoring)
+    
+    func fetchDogsForBackup() async throws -> [CloudKitDog] {
+        print("🔍 Starting fetchDogsForBackup (background operation)...")
+        
+        // Check cache first
+        let cachedDogs = getCachedDogs()
+        if !cachedDogs.isEmpty {
+            print("✅ Using cached dogs for backup (\(cachedDogs.count) dogs)")
+            return cachedDogs
+        }
+        
+        // Fetch all dogs and filter out deleted ones locally
+        let predicate = NSPredicate(format: "\(DogFields.name) != %@", "")
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        
+        // Add sorting to get most recent first (requires CloudKit index on createdAt)
+        query.sortDescriptors = [NSSortDescriptor(key: DogFields.createdAt, ascending: false)]
+        
+        print("🔍 Executing CloudKit query for backup: \(query)")
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        print("🔍 Found \(records.count) total dog records in CloudKit for backup")
+        
+        var dogs: [CloudKitDog] = []
+        
+        // Process dogs in batches for better performance
+        let batchSize = 10
+        var currentBatch = 0
+        
+        for i in stride(from: 0, to: records.count, by: batchSize) {
+            let batch = Array(records[i..<min(i + batchSize, records.count)])
+            currentBatch += 1
+            
+            // Process batch concurrently
+            let batchDogs = await withTaskGroup(of: CloudKitDog?.self) { group in
+                for record in batch {
+                    group.addTask {
+                        print("🔍 Processing dog record for backup: \(record[DogFields.name] as? String ?? "Unknown")")
+                        var dog = CloudKitDog(from: record)
+                        
+                        // Skip deleted dogs
+                        if dog.isDeleted {
+                            print("⏭️ Skipping deleted dog for backup: \(dog.name)")
+                            return nil
+                        }
+                        
+                        // Load records for this dog
+                        do {
+                            let (feeding, medication, potty, walking) = try await self.loadRecords(for: dog.id)
+                            dog.feedingRecords = feeding
+                            dog.medicationRecords = medication
+                            dog.pottyRecords = potty
+                            dog.walkingRecords = walking
+                            print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty, \(walking.count) walking records for backup: \(dog.name)")
+                        } catch {
+                            print("⚠️ Failed to load records for backup dog \(dog.name): \(error)")
+                        }
+                        
+                        return dog
+                    }
+                }
+                
+                var batchResults: [CloudKitDog] = []
+                for await dog in group {
+                    if let dog = dog {
+                        batchResults.append(dog)
+                    }
+                }
+                return batchResults
+            }
+            
+            dogs.append(contentsOf: batchDogs)
+        }
+        
+        // Sort dogs by creation date locally
+        dogs.sort { $0.createdAt > $1.createdAt }
+        
+        // Update cache
+        updateDogCache(dogs)
+        
+        print("✅ Fetched \(dogs.count) active dogs from CloudKit for backup")
         return dogs
     }
     
@@ -968,6 +1070,13 @@ class CloudKitService: ObservableObject {
     // MARK: - Schema Setup
     
     func setupCloudKitSchema() async {
+        // Check if schema setup has already been completed
+        let schemaSetupKey = "cloudkit_schema_setup_completed"
+        if UserDefaults.standard.bool(forKey: schemaSetupKey) {
+            print("🔧 CloudKit schema already verified, skipping setup...")
+            return
+        }
+        
         print("🔧 Setting up CloudKit schema...")
         
         // Create record types
@@ -1046,7 +1155,9 @@ class CloudKitService: ObservableObject {
             }
         }
         
-        print("🔧 CloudKit schema setup completed")
+        // Mark schema setup as completed
+        UserDefaults.standard.set(true, forKey: schemaSetupKey)
+        print("🔧 CloudKit schema setup completed and cached")
     }
     
     // MARK: - Schema Verification

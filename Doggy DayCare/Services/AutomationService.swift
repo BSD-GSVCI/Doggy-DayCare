@@ -47,7 +47,8 @@ class AutomationService: ObservableObject {
         do {
             print("📥 Fetching dogs from CloudKit...")
             let cloudKitService = CloudKitService.shared
-            let allCloudKitDogs = try await cloudKitService.fetchDogs()
+            // Use a separate fetch method that doesn't affect the UI sync status
+            let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
             let allDogs = allCloudKitDogs.map { $0.toDog() }
             print("📊 Found \(allDogs.count) dogs to backup")
             
@@ -147,7 +148,7 @@ class AutomationService: ObservableObject {
     func handleMidnightTransition() async {
         do {
             let cloudKitService = CloudKitService.shared
-            let allCloudKitDogs = try await cloudKitService.fetchDogs()
+            let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
             let allDogs = allCloudKitDogs.map { $0.toDog() }
             
             let today = Date()
@@ -342,7 +343,7 @@ class AutomationService: ObservableObject {
     private func checkDaycareDepartures() async {
         do {
             let cloudKitService = CloudKitService.shared
-            let allCloudKitDogs = try await cloudKitService.fetchDogs()
+            let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
             let allDogs = allCloudKitDogs.map { $0.toDog() }
             let daycareDogs = allDogs.filter { $0.shouldBeTreatedAsDaycare && $0.isCurrentlyPresent }
             
@@ -369,7 +370,7 @@ class AutomationService: ObservableObject {
     private func checkVaccinationExpiries() async {
         do {
             let cloudKitService = CloudKitService.shared
-            let allCloudKitDogs = try await cloudKitService.fetchDogs()
+            let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
             let allDogs = allCloudKitDogs.map { $0.toDog() }
             let today = Calendar.current.startOfDay(for: Date())
             let expiredDogs = allDogs.filter {
