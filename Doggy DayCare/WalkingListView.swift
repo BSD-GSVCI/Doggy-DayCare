@@ -174,6 +174,9 @@ struct DogWalkingRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
+                DogProfilePicture(dog: dog, size: 40)
+                    .padding(.trailing, 8)
+                
                 VStack(alignment: .leading) {
                     Text(dog.name)
                         .font(.headline)

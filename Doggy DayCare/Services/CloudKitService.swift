@@ -453,7 +453,7 @@ class CloudKitService: ObservableObject {
         var dogs: [CloudKitDog] = []
         
         // Process dogs in batches for better performance
-        let batchSize = 5
+        let batchSize = 10
         for i in stride(from: 0, to: records.count, by: batchSize) {
             let batch = Array(records[i..<min(i + batchSize, records.count)])
             

@@ -72,6 +72,9 @@ struct FutureBookingRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
+                DogProfilePicture(dog: dog, size: 40)
+                    .padding(.trailing, 8)
+                
                 VStack(alignment: .leading, spacing: 4) {
                     Text(dog.name)
                         .font(.headline)
