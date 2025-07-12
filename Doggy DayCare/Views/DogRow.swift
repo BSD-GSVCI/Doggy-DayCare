@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DogRow: View {
     let dog: Dog
+    @Binding var selectedDogForOverlay: Dog?
     @EnvironmentObject var dataManager: DataManager
     @State private var showingDetail = false
     @State private var showingDeleteAlert = false
@@ -27,6 +28,10 @@ struct DogRow: View {
         NavigationLink(destination: DogDetailView(dog: dog)) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
+                    // Profile picture with local overlay
+                    LocalDogProfilePicture(dog: dog, size: 50, selectedDogForOverlay: $selectedDogForOverlay)
+                        .padding(.trailing, 8)
+                    
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 4) {
                             Text(dog.name)
@@ -244,5 +249,39 @@ struct DogRow: View {
     
     private func setArrivalTime() async {
         await dataManager.setArrivalTimeOptimized(for: dog, newArrivalTime: newArrivalTime)
+    }
+}
+
+// MARK: - Local Dog Profile Picture (Independent Overlay)
+struct LocalDogProfilePicture: View {
+    let dog: Dog
+    let size: CGFloat
+    @Binding var selectedDogForOverlay: Dog?
+    
+    var body: some View {
+        Group {
+            if let profilePictureData = dog.profilePictureData,
+               let uiImage = UIImage(data: profilePictureData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                    )
+                    .onTapGesture {
+                        selectedDogForOverlay = dog
+                    }
+            } else {
+                // Default dog icon
+                Image(systemName: "pawprint.circle.fill")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size, height: size)
+                    .foregroundStyle(.gray)
+            }
+        }
     }
 } 

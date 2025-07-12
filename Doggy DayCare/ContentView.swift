@@ -448,6 +448,7 @@ private struct DogsListView: View {
     let daycareDogs: [Dog]
     let boardingDogs: [Dog]
     let departedDogs: [Dog]
+    @State private var selectedDogForOverlay: Dog?
     
     private let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -466,7 +467,7 @@ private struct DogsListView: View {
             if !daycareDogs.isEmpty {
                 Section {
                     ForEach(daycareDogs) { dog in
-                        DogRow(dog: dog)
+                        DogRow(dog: dog, selectedDogForOverlay: $selectedDogForOverlay)
                             .listRowBackground(
                                 Calendar.current.isDateInToday(dog.arrivalDate) && !dog.isArrivalTimeSet ? 
                                 Color.red.opacity(0.1) : Color.clear
@@ -485,7 +486,7 @@ private struct DogsListView: View {
             if !boardingDogs.isEmpty {
                 Section {
                     ForEach(boardingDogs) { dog in
-                        DogRow(dog: dog)
+                        DogRow(dog: dog, selectedDogForOverlay: $selectedDogForOverlay)
                             .listRowBackground(
                                 Calendar.current.isDateInToday(dog.arrivalDate) && !dog.isArrivalTimeSet ? 
                                 Color.red.opacity(0.1) : Color.clear
@@ -504,7 +505,7 @@ private struct DogsListView: View {
             if !departedDogs.isEmpty {
                 Section {
                     ForEach(departedDogs) { dog in
-                        DogRow(dog: dog)
+                        DogRow(dog: dog, selectedDogForOverlay: $selectedDogForOverlay)
                             .listRowBackground(Color.clear)
                     }
                 } header: {
@@ -518,6 +519,38 @@ private struct DogsListView: View {
         }
         .refreshable {
             await dataManager.refreshData()
+        }
+        .overlay {
+            if let selectedDog = selectedDogForOverlay, let profilePictureData = selectedDog.profilePictureData, let uiImage = UIImage(data: profilePictureData) {
+                Color.black.opacity(0.8)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        selectedDogForOverlay = nil
+                    }
+                    .overlay {
+                        VStack {
+                            Spacer()
+                            
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxWidth: UIScreen.main.bounds.width * 0.8, maxHeight: UIScreen.main.bounds.height * 0.6)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .shadow(radius: 20)
+                            
+                            Spacer()
+                            
+                            Button("Close") {
+                                selectedDogForOverlay = nil
+                            }
+                            .foregroundStyle(.white)
+                            .padding()
+                            .background(.blue)
+                            .clipShape(Capsule())
+                            .padding(.bottom, 50)
+                        }
+                    }
+            }
         }
     }
 }

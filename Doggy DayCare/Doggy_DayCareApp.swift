@@ -20,6 +20,8 @@ struct Doggy_DayCareApp: App {
     @State private var initializationError: String?
     @State private var ownerExists = false
     @State private var hasCheckedOwnerExistence = false
+    @State private var isCheckingOwnerExistence = false
+    @State private var isInitializingCloudKit = false
     
     init() {
         // Register background tasks
@@ -88,6 +90,10 @@ struct Doggy_DayCareApp: App {
             return
         }
         
+        await MainActor.run {
+            isCheckingOwnerExistence = true
+        }
+        
         do {
             let cloudKitService = CloudKitService.shared
             let allUsers = try await cloudKitService.fetchAllUsers()
@@ -101,6 +107,7 @@ struct Doggy_DayCareApp: App {
             await MainActor.run {
                 ownerExists = !owners.isEmpty
                 hasCheckedOwnerExistence = true
+                isCheckingOwnerExistence = false
                 print("🔍 APP DEBUG: ownerExists set to: \(ownerExists)")
             }
         } catch {
@@ -108,6 +115,7 @@ struct Doggy_DayCareApp: App {
             await MainActor.run {
                 ownerExists = false
                 hasCheckedOwnerExistence = true
+                isCheckingOwnerExistence = false
             }
         }
     }
@@ -144,25 +152,38 @@ struct Doggy_DayCareApp: App {
                     }
                     .padding()
                 } else if !isInitialized {
-                    // Show login screen immediately, load data in background
-                    Group {
-                        if authService.currentUser == nil {
-                            LoginView(ownerExists: ownerExists, hasCheckedOwnerExistence: hasCheckedOwnerExistence)
-                                .environmentObject(dataManager)
-                                .environmentObject(authService)
-                        } else {
-                            ContentView()
-                                .environmentObject(dataManager)
-                                .environmentObject(authService)
+                    // Show CloudKit initialization loading screen
+                    VStack(spacing: 30) {
+                        Image("GreenHouse_With_Dog")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 120, height: 120)
+                        
+                        VStack(spacing: 15) {
+                            Text("Green House Doggy DayCare")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                            
+                            Text("Initializing CloudKit...")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                            
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .scaleEffect(1.2)
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemBackground))
                     .task {
-                        print("🚀 Starting background CloudKit initialization...")
+                        isInitializingCloudKit = true
+                        print("🚀 Starting CloudKit initialization...")
+                        
                         do {
                             try await dataManager.authenticate()
                             print("✅ CloudKit initialization completed successfully")
                             
-                            // Check owner existence at app level
+                            // Check owner existence immediately after CloudKit is ready
                             await checkOwnerExistence()
                             
                             // Initialize automation service for automatic backups
@@ -170,9 +191,11 @@ struct Doggy_DayCareApp: App {
                             print("✅ Automation service initialized")
                             
                             isInitialized = true
+                            isInitializingCloudKit = false
                         } catch {
                             print("❌ CloudKit initialization failed: \(error)")
                             initializationError = "CloudKit setup failed: \(error.localizedDescription)"
+                            isInitializingCloudKit = false
                         }
                     }
                 } else {
@@ -189,11 +212,27 @@ struct Doggy_DayCareApp: App {
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
                 print("📱 App entering background")
+                UserDefaults.standard.set(Date(), forKey: "app_background_time")
                 AutomationService.shared.applicationDidEnterBackground()
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                 print("📱 App entering foreground")
                 AutomationService.shared.applicationWillEnterForeground()
+                
+                // Reset owner existence check if app was in background for a while
+                if hasCheckedOwnerExistence {
+                    let backgroundTime = UserDefaults.standard.object(forKey: "app_background_time") as? Date ?? Date()
+                    let timeInBackground = Date().timeIntervalSince(backgroundTime)
+                    
+                    // If app was in background for more than 5 minutes, recheck owner existence
+                    if timeInBackground > 300 {
+                        print("🔍 APP DEBUG: App was in background for \(timeInBackground) seconds, rechecking owner existence")
+                        hasCheckedOwnerExistence = false
+                        Task {
+                            await checkOwnerExistence()
+                        }
+                    }
+                }
             }
         }
     }

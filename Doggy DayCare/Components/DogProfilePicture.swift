@@ -35,12 +35,18 @@ struct DogProfilePicture: View {
                 NotificationCenter.default.post(name: .showImageOverlay, object: (dog, showingEnlargedImage))
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .hideImageOverlay)) { notification in
+            if let dog = notification.object as? Dog, dog.id == self.dog.id {
+                showingEnlargedImage = false
+            }
+        }
     }
 }
 
 // MARK: - Notification Names
 extension Notification.Name {
     static let showImageOverlay = Notification.Name("showImageOverlay")
+    static let hideImageOverlay = Notification.Name("hideImageOverlay")
 }
 
 // MARK: - View Modifier for Image Overlay
@@ -56,6 +62,7 @@ struct ImageOverlayModifier: ViewModifier {
                         .ignoresSafeArea()
                         .onTapGesture {
                             showingOverlay = false
+                            NotificationCenter.default.post(name: .hideImageOverlay, object: currentDog)
                         }
                         .overlay {
                             VStack {
@@ -72,6 +79,7 @@ struct ImageOverlayModifier: ViewModifier {
                                 
                                 Button("Close") {
                                     showingOverlay = false
+                                    NotificationCenter.default.post(name: .hideImageOverlay, object: currentDog)
                                 }
                                 .foregroundStyle(.white)
                                 .padding()
