@@ -135,19 +135,22 @@ struct LoginView: View {
                                         await signUp()
                                     }
                                 } label: {
-                                    if isLoading {
-                                        ProgressView()
-                                            .progressViewStyle(.circular)
-                                            .tint(.white)
-                                    } else {
-                                        Text("Create Account")
+                                    HStack {
+                                        if isLoading {
+                                            ProgressView()
+                                                .progressViewStyle(.circular)
+                                                .tint(.white)
+                                        } else {
+                                            Text("Create Account")
+                                        }
                                     }
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(.blue)
+                                    .foregroundStyle(.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(.blue)
-                                .foregroundStyle(.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .buttonStyle(PlainButtonStyle())
                                 .padding(.horizontal)
                                 .disabled(isLoading || !isSignupValid)
                                 
@@ -195,19 +198,22 @@ struct LoginView: View {
                                         await signIn()
                                     }
                                 } label: {
-                                    if isLoading {
-                                        ProgressView()
-                                            .progressViewStyle(.circular)
-                                            .tint(.white)
-                                    } else {
-                                        Text("Sign In")
+                                    HStack {
+                                        if isLoading {
+                                            ProgressView()
+                                                .progressViewStyle(.circular)
+                                                .tint(.white)
+                                        } else {
+                                            Text("Sign In")
+                                        }
                                     }
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(.blue)
+                                    .foregroundStyle(.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(.blue)
-                                .foregroundStyle(.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .buttonStyle(PlainButtonStyle())
                                 .padding(.horizontal)
                                 .disabled(isLoading || !isFormValid)
                                 
@@ -317,19 +323,22 @@ struct LoginView: View {
                                     await signIn()
                                 }
                             } label: {
-                                if isLoading {
-                                    ProgressView()
-                                        .progressViewStyle(.circular)
-                                        .tint(.white)
-                                } else {
-                                    Text("Sign In")
+                                HStack {
+                                    if isLoading {
+                                        ProgressView()
+                                            .progressViewStyle(.circular)
+                                            .tint(.white)
+                                    } else {
+                                        Text("Sign In")
+                                    }
                                 }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(.blue)
+                                .foregroundStyle(.white)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(.blue)
-                            .foregroundStyle(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .buttonStyle(PlainButtonStyle())
                             .padding(.horizontal)
                             .disabled(isLoading || !isFormValid)
                         }

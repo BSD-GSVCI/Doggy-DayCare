@@ -11,6 +11,7 @@ class DataManager: ObservableObject {
     @Published var errorMessage: String?
     
     private let cloudKitService = CloudKitService.shared
+    private let historyService = HistoryService.shared
     
     private init() {
         print("📱 DataManager initialized")
@@ -56,6 +57,11 @@ class DataManager: ObservableObject {
                     self.isLoading = false
                 }
                 print("✅ DataManager: Set \(localDogs.count) dogs in local array")
+                
+                // Record daily snapshot for history
+                Task {
+                    await self.recordDailySnapshotIfNeeded()
+                }
             }
         } catch {
             await MainActor.run {
@@ -204,13 +210,12 @@ class DataManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        print("🔄 Starting permanent delete dog: \(dog.name)")
+        print("🔄 Starting permanent delete dog from database: \(dog.name)")
         
-        // Remove from local cache immediately for responsive UI
+        // Only remove from allDogs array (database view), NOT from main dogs list
         await MainActor.run {
-            self.dogs.removeAll { $0.id == dog.id }
-            self.allDogs.removeAll { $0.id == dog.id }  // Also remove from allDogs array
-            print("✅ Removed dog from local cache and allDogs array")
+            self.allDogs.removeAll { $0.id == dog.id }
+            print("✅ Removed dog from database view only")
         }
         
         // Permanently delete from CloudKit
@@ -221,11 +226,10 @@ class DataManager: ObservableObject {
             print("❌ Failed to permanently delete dog: \(error)")
             errorMessage = "Failed to permanently delete dog: \(error.localizedDescription)"
             
-            // Restore to local cache if CloudKit update failed
+            // Restore to database view if CloudKit update failed
             await MainActor.run {
-                self.dogs.append(dog)
-                self.allDogs.append(dog)  // Also restore to allDogs array
-                print("🔄 Restored dog to local cache due to CloudKit failure")
+                self.allDogs.append(dog)
+                print("🔄 Restored dog to database view due to CloudKit failure")
             }
         }
         
@@ -728,6 +732,34 @@ class DataManager: ObservableObject {
         
         await fetchDogs()
         await fetchUsers()
+    }
+    
+    // MARK: - History Management
+    
+    private func recordDailySnapshotIfNeeded() async {
+        let today = Calendar.current.startOfDay(for: Date())
+        
+        // Check if we already recorded a snapshot for today
+        let todayRecords = historyService.getHistoryForDate(today)
+        if !todayRecords.isEmpty {
+            print("📅 Daily snapshot already recorded for today")
+            return
+        }
+        
+        // Get visible dogs (same logic as ContentView)
+        let visibleDogs = dogs.filter { dog in
+            // Include dogs that are currently present (daycare and boarding)
+            let isCurrentlyPresent = dog.isCurrentlyPresent
+            let isDaycare = isCurrentlyPresent && dog.shouldBeTreatedAsDaycare
+            let isBoarding = isCurrentlyPresent && !dog.shouldBeTreatedAsDaycare
+            let isDepartedToday = dog.departureDate != nil && Calendar.current.isDateInToday(dog.departureDate!)
+            
+            return isDaycare || isBoarding || isDepartedToday
+        }
+        
+        // Record snapshot for only visible dogs
+        historyService.recordDailySnapshot(dogs: visibleDogs)
+        print("📅 Recorded daily snapshot for \(visibleDogs.count) visible dogs")
     }
     
     func clearCache() {

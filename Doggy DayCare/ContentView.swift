@@ -88,6 +88,8 @@ struct ContentView: View {
     @StateObject private var authService = AuthenticationService.shared
     @State private var showingAddDog = false
     @State private var showingLogoutConfirmation = false
+    @State private var showingHistoryView = false
+    @State private var showingStaffManagement = false
     @State private var searchText = ""
     @State private var selectedFilter: DogFilter = .all
     
@@ -262,15 +264,15 @@ struct ContentView: View {
                         }
                         
                         if authService.currentUser?.isOwner == true {
-                            NavigationLink(destination: PaymentsView()) {
-                                Image(systemName: "dollarsign")
+                            NavigationLink(destination: DatabaseView()) {
+                                Image(systemName: "externaldrive")
                                     .foregroundStyle(.blue)
                             }
                         }
                         
                         if authService.currentUser?.isOwner == true {
-                            NavigationLink(destination: StaffManagementView()) {
-                                Image(systemName: "person.2")
+                            NavigationLink(destination: PaymentsView()) {
+                                Image(systemName: "dollarsign")
                                     .foregroundStyle(.blue)
                             }
                         }
@@ -293,6 +295,24 @@ struct ContentView: View {
                                     
                                     Divider()
                                 }
+                                
+
+                            }
+                            
+                            Button {
+                                showingHistoryView = true
+                            } label: {
+                                Label("History", systemImage: "scroll")
+                            }
+                            
+                            if authService.currentUser?.isOwner == true {
+                                Button {
+                                    showingStaffManagement = true
+                                } label: {
+                                    Label("Staff Management", systemImage: "person.2")
+                                }
+                                
+                                Divider()
                             }
                             
                             Button {
@@ -359,6 +379,16 @@ struct ContentView: View {
             .sheet(isPresented: $showingAddDog) {
                 NavigationStack {
                     DogFormView()
+                }
+            }
+            .sheet(isPresented: $showingHistoryView) {
+                NavigationStack {
+                    HistoryView()
+                }
+            }
+            .sheet(isPresented: $showingStaffManagement) {
+                NavigationStack {
+                    StaffManagementView()
                 }
             }
 

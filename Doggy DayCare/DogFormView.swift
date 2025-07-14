@@ -261,7 +261,7 @@ struct DogFormView: View {
             CameraPicker(image: $profileImage)
         }
         .sheet(isPresented: $showingImportDatabase) {
-            ImportDatabaseView { importedDog in
+            ImportSingleDogView { importedDog in
                 loadDogFromImport(importedDog)
             }
         }
@@ -384,15 +384,15 @@ struct DogFormView: View {
     }
 }
 
-struct ImportDatabaseView: View {
+// MARK: - Import from Database (for adding new dogs)
+
+struct ImportSingleDogView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var dataManager: DataManager
     @State private var searchText = ""
     @State private var isLoading = false
     @State private var importedDogs: [Dog] = []
     @State private var zoomedDog: Dog?
-    @State private var showingDeleteAlert = false
-    @State private var dogToDelete: Dog?
     
     let onImport: (Dog) -> Void
     
@@ -416,14 +416,6 @@ struct ImportDatabaseView: View {
                             }) {
                                 onImport(dog)
                                 dismiss()
-                            }
-                            .contextMenu {
-                                Button(role: .destructive) {
-                                    dogToDelete = dog
-                                    showingDeleteAlert = true
-                                } label: {
-                                    Label("Permanently Delete", systemImage: "trash")
-                                }
                             }
                         }
                     }
@@ -450,25 +442,7 @@ struct ImportDatabaseView: View {
                     .disabled(isLoading)
                 }
             }
-            .alert("Permanently Delete Dog", isPresented: $showingDeleteAlert) {
-                Button("Cancel", role: .cancel) { }
-                Button("Delete", role: .destructive) {
-                    if let dog = dogToDelete {
-                        print("🗑️ User confirmed permanent delete for dog: \(dog.name)")
-                        Task {
-                            print("🔄 Starting permanent delete process...")
-                            await dataManager.permanentlyDeleteDog(dog)
-                            print("🔄 Permanent delete completed, refreshing import list...")
-                            await loadImportedDogs()
-                            print("✅ Import list refresh completed")
-                        }
-                    }
-                }
-            } message: {
-                if let dog = dogToDelete {
-                    Text("Are you sure you want to permanently delete '\(dog.name)'? This action cannot be undone and will remove the dog from the database completely.")
-                }
-            }
+
             .overlay {
                 if let dog = zoomedDog, let imageData = dog.profilePictureData, let uiImage = UIImage(data: imageData) {
                     Color.black.opacity(0.8)

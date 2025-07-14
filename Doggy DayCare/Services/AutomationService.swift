@@ -9,6 +9,8 @@ class AutomationService: ObservableObject {
     private var backupTimer: Timer?
     private var midnightTimer: Timer?
     
+    private let historyService = HistoryService.shared
+    
     private init() {
         print("🚀 AutomationService initializing...")
         setupNotifications()
@@ -153,6 +155,23 @@ class AutomationService: ObservableObject {
             
             let today = Date()
             print("Starting midnight transition for \(today.formatted())")
+            
+            // Record daily snapshot for history before making any changes
+            print("📅 Recording daily snapshot for history...")
+            
+            // Get only visible dogs (same logic as ContentView)
+            let visibleDogs = allDogs.filter { dog in
+                // Include dogs that are currently present (daycare and boarding)
+                let isCurrentlyPresent = dog.isCurrentlyPresent
+                let isDaycare = isCurrentlyPresent && dog.shouldBeTreatedAsDaycare
+                let isBoarding = isCurrentlyPresent && !dog.shouldBeTreatedAsDaycare
+                let isDepartedToday = dog.departureDate != nil && Calendar.current.isDateInToday(dog.departureDate!)
+                
+                return isDaycare || isBoarding || isDepartedToday
+            }
+            
+            historyService.recordDailySnapshot(dogs: visibleDogs)
+            print("✅ Daily snapshot recorded for \(visibleDogs.count) visible dogs")
             
             for dog in allDogs {
                 var updatedDog = dog
@@ -394,5 +413,32 @@ class AutomationService: ObservableObject {
         } catch {
             print("Error checking vaccination expiries: \(error.localizedDescription)")
         }
+    }
+    
+    // MARK: - History Management
+    
+    func recordDailySnapshot() {
+        print("📅 Manually recording daily snapshot...")
+        let dataManager = DataManager.shared
+        
+        // Get only visible dogs (same logic as ContentView)
+        let visibleDogs = dataManager.dogs.filter { dog in
+            // Include dogs that are currently present (daycare and boarding)
+            let isCurrentlyPresent = dog.isCurrentlyPresent
+            let isDaycare = isCurrentlyPresent && dog.shouldBeTreatedAsDaycare
+            let isBoarding = isCurrentlyPresent && !dog.shouldBeTreatedAsDaycare
+            let isDepartedToday = dog.departureDate != nil && Calendar.current.isDateInToday(dog.departureDate!)
+            
+            return isDaycare || isBoarding || isDepartedToday
+        }
+        
+        historyService.recordDailySnapshot(dogs: visibleDogs)
+        print("✅ Daily snapshot recorded for \(visibleDogs.count) visible dogs")
+    }
+    
+    func cleanupOldHistoryRecords() {
+        print("🧹 Cleaning up old history records...")
+        historyService.cleanupOldRecords()
+        print("✅ History cleanup completed")
     }
 } 

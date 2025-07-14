@@ -306,7 +306,7 @@ struct FutureBookingFormView: View {
             }
         }
         .sheet(isPresented: $showingImportDatabase) {
-            ImportDatabaseView { importedDog in
+            ImportSingleDogView { importedDog in
                 loadDogFromImport(importedDog)
             }
         }

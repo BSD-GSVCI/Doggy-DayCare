@@ -425,6 +425,40 @@ class CloudKitService: ObservableObject {
         print("✅ Dog marked as deleted (remains in database): \(dog.name)")
     }
     
+    func permanentlyDeleteDog(_ dog: CloudKitDog) async throws {
+        print("🗑️ Starting permanent deletion of dog: \(dog.name)")
+        
+        // Find the record first
+        let predicate = NSPredicate(format: "\(DogFields.id) == %@", dog.id)
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let record = records.first else {
+            throw CloudKitError.recordNotFound
+        }
+        
+        // Delete all associated records first
+        try await deleteFeedingRecords(for: dog.id)
+        try await deleteMedicationRecords(for: dog.id)
+        try await deletePottyRecords(for: dog.id)
+        try await deleteWalkingRecords(for: dog.id)
+        
+        // Delete the dog record permanently
+        try await publicDatabase.deleteRecord(withID: record.recordID)
+        
+        // Create audit trail entry
+        try await createDogChange(
+            dogID: dog.id,
+            changeType: .deleted,
+            fieldName: "dog",
+            oldValue: dog.name,
+            newValue: nil
+        )
+        
+        print("✅ Dog permanently deleted from CloudKit: \(dog.name)")
+    }
+    
     func fetchDogs() async throws -> [CloudKitDog] {
         let startTime = startPerformanceTimer("fetchDogs")
         print("🔍 Starting progressive fetchDogs...")
@@ -1930,36 +1964,7 @@ class CloudKitService: ObservableObject {
         }
     }
 
-    func permanentlyDeleteDog(_ dog: CloudKitDog) async throws {
-        let predicate = NSPredicate(format: "\(DogFields.id) == %@", dog.id)
-        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
-        let result = try await publicDatabase.records(matching: query)
-        let records = result.matchResults.compactMap { try? $0.1.get() }
-        
-        guard let record = records.first else {
-            throw CloudKitError.recordNotFound
-        }
-        
-        // Delete all associated records first
-        try await deleteFeedingRecords(for: dog.id)
-        try await deleteMedicationRecords(for: dog.id)
-        try await deletePottyRecords(for: dog.id)
-        try await deleteWalkingRecords(for: dog.id)
-        
-        // Delete the dog record permanently
-        try await publicDatabase.deleteRecord(withID: record.recordID)
-        
-        // Create audit trail entry
-        try await createDogChange(
-            dogID: dog.id,
-            changeType: .deleted,
-            fieldName: "dog",
-            oldValue: dog.name,
-            newValue: nil
-        )
-        
-        print("✅ Dog permanently deleted from database: \(dog.name)")
-    }
+
 
     func fetchAllDogsIncludingDeleted() async throws -> [CloudKitDog] {
         print("🔍 Starting fetchAllDogsIncludingDeleted...")
