@@ -203,6 +203,7 @@ struct DogWalkingRow: View {
                 HStack {
                     Image(systemName: "drop.fill")
                         .foregroundStyle(.yellow)
+                        .font(.system(size: 15))
                     Text("\(todaysPeeCount)")
                         .font(.headline)
                         .foregroundStyle(.blue)
@@ -210,6 +211,7 @@ struct DogWalkingRow: View {
                 
                 HStack {
                     Text("💩")
+                        .font(.system(size: 15))
                     Text("\(todaysPoopCount)")
                         .font(.headline)
                         .foregroundStyle(.blue)

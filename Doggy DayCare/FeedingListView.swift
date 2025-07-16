@@ -307,9 +307,10 @@ struct FeedingListView: View {
                     let todaysSnackCount = todaysFeedingRecords.filter { $0.type == .snack }.count
                     
                     HStack {
-                        Image(systemName: "sunrise.fill")
-                            .foregroundStyle(.orange)
-                        Text("\(todaysBreakfastCount)")
+                        Image(systemName: "moon.stars.fill")
+                            .foregroundStyle(.purple)
+                            .font(.system(size: 15))
+                        Text("\(todaysDinnerCount)")
                             .font(.headline)
                             .foregroundStyle(.blue)
                     }
@@ -317,23 +318,26 @@ struct FeedingListView: View {
                     HStack {
                         Image(systemName: "sun.max.fill")
                             .foregroundStyle(.yellow)
+                            .font(.system(size: 15))
                         Text("\(todaysLunchCount)")
                             .font(.headline)
                             .foregroundStyle(.blue)
                     }
                     
                     HStack {
-                        Image(systemName: "sunset.fill")
-                            .foregroundStyle(.red)
-                        Text("\(todaysDinnerCount)")
+                        Image(systemName: "carrot.fill")
+                            .foregroundStyle(.orange)
+                            .font(.system(size: 15))
+                        Text("\(todaysSnackCount)")
                             .font(.headline)
                             .foregroundStyle(.blue)
                     }
                     
                     HStack {
-                        Image(systemName: "pawprint.fill")
+                        Image(systemName: "cup.and.saucer.fill")
                             .foregroundStyle(.brown)
-                        Text("\(todaysSnackCount)")
+                            .font(.system(size: 15))
+                        Text("\(todaysBreakfastCount)")
                             .font(.headline)
                             .foregroundStyle(.blue)
                     }
@@ -489,19 +493,19 @@ struct FeedingListView: View {
         
         private func iconForFeedingType(_ type: FeedingRecord.FeedingType) -> String {
             switch type {
-            case .breakfast: return "sunrise.fill"
+            case .breakfast: return "cup.and.saucer.fill"
             case .lunch: return "sun.max.fill"
-            case .dinner: return "sunset.fill"
-            case .snack: return "pawprint.fill"
+            case .dinner: return "moon.stars.fill"
+            case .snack: return "carrot.fill"
             }
         }
         
         private func colorForFeedingType(_ type: FeedingRecord.FeedingType) -> Color {
             switch type {
-            case .breakfast: return .orange
+            case .breakfast: return .brown
             case .lunch: return .yellow
-            case .dinner: return .red
-            case .snack: return .brown
+            case .dinner: return .purple
+            case .snack: return .orange
             }
         }
     }
@@ -626,12 +630,12 @@ struct FeedingListView: View {
                     
                     Section("Feeding Type") {
                         Button {
-                            addFeedingRecord(.breakfast)
+                            addFeedingRecord(.dinner)
                         } label: {
                             HStack {
-                                Image(systemName: "sunrise.fill")
-                                    .foregroundStyle(.orange)
-                                Text("Breakfast")
+                                Image(systemName: "moon.stars.fill")
+                                    .foregroundStyle(.purple)
+                                Text("Dinner")
                             }
                         }
                         .foregroundStyle(.primary)
@@ -648,23 +652,23 @@ struct FeedingListView: View {
                         .foregroundStyle(.primary)
                         
                         Button {
-                            addFeedingRecord(.dinner)
+                            addFeedingRecord(.snack)
                         } label: {
                             HStack {
-                                Image(systemName: "sunset.fill")
-                                    .foregroundStyle(.red)
-                                Text("Dinner")
+                                Image(systemName: "carrot.fill")
+                                    .foregroundStyle(.orange)
+                                Text("Snack")
                             }
                         }
                         .foregroundStyle(.primary)
                         
                         Button {
-                            addFeedingRecord(.snack)
+                            addFeedingRecord(.breakfast)
                         } label: {
                             HStack {
-                                Image(systemName: "pawprint.fill")
+                                Image(systemName: "cup.and.saucer.fill")
                                     .foregroundStyle(.brown)
-                                Text("Snack")
+                                Text("Breakfast")
                             }
                         }
                         .foregroundStyle(.primary)

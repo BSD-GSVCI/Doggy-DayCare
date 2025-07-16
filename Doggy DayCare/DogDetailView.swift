@@ -243,9 +243,10 @@ struct DogDetailView: View {
                     // Feeding counts
                     HStack(spacing: 16) {
                         HStack {
-                            Image(systemName: "sunrise.fill")
-                                .foregroundStyle(.orange)
-                            Text("\(dog.breakfastCount)")
+                            Image(systemName: "moon.stars.fill")
+                                .foregroundStyle(.purple)
+                                .font(.system(size: 15))
+                            Text("\(dog.dinnerCount)")
                                 .font(.headline)
                                 .foregroundStyle(.blue)
                         }
@@ -253,23 +254,26 @@ struct DogDetailView: View {
                         HStack {
                             Image(systemName: "sun.max.fill")
                                 .foregroundStyle(.yellow)
+                                .font(.system(size: 15))
                             Text("\(dog.lunchCount)")
                                 .font(.headline)
                                 .foregroundStyle(.blue)
                         }
                         
                         HStack {
-                            Image(systemName: "sunset.fill")
-                                .foregroundStyle(.red)
-                            Text("\(dog.dinnerCount)")
+                            Image(systemName: "carrot.fill")
+                                .foregroundStyle(.orange)
+                                .font(.system(size: 15))
+                            Text("\(dog.snackCount)")
                                 .font(.headline)
                                 .foregroundStyle(.blue)
                         }
                         
                         HStack {
-                            Image(systemName: "pawprint.fill")
+                            Image(systemName: "cup.and.saucer.fill")
                                 .foregroundStyle(.brown)
-                            Text("\(dog.snackCount)")
+                                .font(.system(size: 15))
+                            Text("\(dog.breakfastCount)")
                                 .font(.headline)
                                 .foregroundStyle(.blue)
                         }
@@ -361,6 +365,7 @@ struct DogDetailView: View {
                         HStack {
                             Image(systemName: "drop.fill")
                                 .foregroundStyle(.yellow)
+                                .font(.system(size: 15))
                             Text("\(totalPeeCount)")
                                 .font(.headline)
                                 .foregroundStyle(.blue)
@@ -368,6 +373,7 @@ struct DogDetailView: View {
                         
                         HStack {
                             Text("💩")
+                                .font(.system(size: 15))
                             Text("\(totalPoopCount)")
                                 .font(.headline)
                                 .foregroundStyle(.blue)
@@ -493,19 +499,19 @@ struct DogDetailView: View {
     
     private func iconForFeedingType(_ type: FeedingRecord.FeedingType) -> String {
         switch type {
-        case .breakfast: return "sunrise.fill"
+        case .breakfast: return "cup.and.saucer.fill"
         case .lunch: return "sun.max.fill"
-        case .dinner: return "sunset.fill"
-        case .snack: return "pawprint.fill"
+        case .dinner: return "moon.stars.fill"
+        case .snack: return "carrot.fill"
         }
     }
     
     private func colorForFeedingType(_ type: FeedingRecord.FeedingType) -> Color {
         switch type {
-        case .breakfast: return .orange
+        case .breakfast: return .brown
         case .lunch: return .yellow
-        case .dinner: return .red
-        case .snack: return .brown
+        case .dinner: return .purple
+        case .snack: return .orange
         }
     }
 }

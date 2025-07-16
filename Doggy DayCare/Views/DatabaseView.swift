@@ -10,6 +10,7 @@ struct DatabaseView: View {
     @State private var dogToDelete: Dog?
     @State private var showingEditDog = false
     @State private var dogToEdit: Dog?
+    @State private var isLoadingEdit = false
     @State private var errorMessage: String?
     @State private var showingExportSheet = false
     @State private var showingImportSheet = false
@@ -116,6 +117,18 @@ struct DatabaseView: View {
                     }
                 }
             }
+            .overlay {
+                if isLoadingEdit {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .overlay {
+                            ProgressView("Loading dog information...")
+                                .padding()
+                                .background(.regularMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                }
+            }
             .sheet(isPresented: $showingExportSheet) {
                 NavigationStack {
                     ExportDatabaseView(exportData: exportData)
@@ -197,17 +210,23 @@ struct DatabaseView: View {
     private func loadFullDogForEdit(_ dog: Dog) async {
         print("🔍 Loading full dog information for editing: \(dog.name)")
         
+        await MainActor.run {
+            self.isLoadingEdit = true
+        }
+        
         // Fetch the complete dog with all records
         guard let fullDog = await dataManager.fetchSpecificDogWithRecords(for: dog.id.uuidString) else {
             print("❌ Failed to load full dog information for \(dog.name)")
             await MainActor.run {
                 self.errorMessage = "Failed to load dog information"
+                self.isLoadingEdit = false
             }
             return
         }
         
         await MainActor.run {
             self.dogToEdit = fullDog
+            self.isLoadingEdit = false
             self.showingEditDog = true
             print("✅ Loaded full dog information for editing: \(fullDog.name)")
         }
@@ -331,7 +350,7 @@ struct DatabaseDogRow: View {
             // Show status indicators
             HStack(spacing: 4) {
                 if dog.isCurrentlyPresent {
-                    Text("PRESENT")
+                    Text("EXISTS ON MAIN PAGE")
                         .font(.caption)
                         .fontWeight(.bold)
                         .foregroundStyle(.green)
