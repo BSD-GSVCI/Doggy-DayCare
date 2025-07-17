@@ -1,3 +1,18 @@
+# Development Guidelines
+
+## Critical Requirement: Careful, Thorough, and Precise Work
+
+- **Always approach code changes and debugging with maximum attention to detail.**
+- **Do not make assumptions.** Every step must be justified by evidence from the codebase, documentation, or direct observation.
+- **Be methodical and step-by-step.** Analyze the root cause, confirm types and signatures, and double-check all logic before making changes.
+- **Document reasoning and decisions.** If a fix is made, explain why it is correct and how it addresses the specific error or requirement.
+- **Prioritize clarity and maintainability.**
+- **If in doubt, investigate further before acting.**
+
+This requirement is mandatory for all contributors and applies to all code, documentation, and review activities.
+
+---
+
 # Development Guidelines for Doggy DayCare App
 
 ## Critical Principles (ALWAYS FOLLOW)

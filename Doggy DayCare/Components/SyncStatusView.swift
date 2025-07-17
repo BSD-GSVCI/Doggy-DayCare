@@ -1,5 +1,36 @@
 import SwiftUI
 
+private func getUserFriendlyOperationName(_ operation: String) -> String {
+    switch operation {
+    case "fetchDogs":
+        return "Load Dogs from Cloud"
+    case "fetchUsers":
+        return "Load Staff from Cloud"
+    case "fetchDogsForBackup":
+        return "Backup Dogs Data"
+    case "fetchDogsForImport":
+        return "Import Dogs Data"
+    case "fetchDogWithRecords":
+        return "Load Dog Details"
+    case "addDog":
+        return "Add New Dog"
+    case "updateDog":
+        return "Update Dog Info"
+    case "deleteDog":
+        return "Delete Dog"
+    case "addFeedingRecord":
+        return "Add Feeding Record"
+    case "addMedicationRecord":
+        return "Add Medication Record"
+    case "addPottyRecord":
+        return "Add Potty Record"
+    case "addWalkingRecord":
+        return "Add Walking Record"
+    default:
+        return operation.capitalized
+    }
+}
+
 struct SyncStatusView: View {
     @StateObject private var performanceMonitor = PerformanceMonitor.shared
     @State private var showingPerformanceReport = false
@@ -14,7 +45,7 @@ struct SyncStatusView: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: .blue))
                     
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(performanceMonitor.currentOperation)
+                        Text(getUserFriendlyOperationName(performanceMonitor.currentOperation))
                             .font(.caption)
                             .fontWeight(.medium)
                         
@@ -73,7 +104,7 @@ struct SyncStatusView: View {
 struct PerformanceReportView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var performanceMonitor = PerformanceMonitor.shared
-    @StateObject private var advancedCache = AdvancedCache.shared
+    @StateObject private var dataManager = DataManager.shared
     @State private var cacheStats: (memoryCount: Int, diskSize: String) = (0, "0 KB")
     
     var body: some View {
@@ -92,7 +123,7 @@ struct PerformanceReportView: View {
                     ForEach(Array(performanceMonitor.syncTimes.keys.sorted()), id: \.self) { operation in
                         if let time = performanceMonitor.syncTimes[operation] {
                             HStack {
-                                Text(operation)
+                                Text(getUserFriendlyOperationName(operation))
                                 Spacer()
                                 Text(String(format: "%.2fs", time))
                                     .foregroundStyle(.secondary)
@@ -120,14 +151,14 @@ struct PerformanceReportView: View {
                 Section("Performance Analysis") {
                     let slowest = performanceMonitor.getSlowestOperations()
                     if !slowest.isEmpty {
-                        ForEach(slowest, id: \.0) { operation, time in
-                            HStack {
-                                Text(operation)
-                                Spacer()
-                                Text(String(format: "%.2fs avg", time))
-                                    .foregroundStyle(.secondary)
-                            }
+                                            ForEach(slowest, id: \.0) { operation, time in
+                        HStack {
+                            Text(getUserFriendlyOperationName(operation))
+                            Spacer()
+                            Text(String(format: "%.2fs avg", time))
+                                .foregroundStyle(.secondary)
                         }
+                    }
                     } else {
                         Text("No performance data available")
                             .foregroundStyle(.secondary)
@@ -151,8 +182,17 @@ struct PerformanceReportView: View {
                 }
             }
             .task {
-                cacheStats = await advancedCache.getCacheStats()
+                await updateCacheStats()
             }
+        }
+    }
+    
+    private func updateCacheStats() async {
+        // Get the actual cache statistics from DataManager
+        let stats = dataManager.getCacheStats()
+        
+        await MainActor.run {
+            cacheStats = stats
         }
     }
 }

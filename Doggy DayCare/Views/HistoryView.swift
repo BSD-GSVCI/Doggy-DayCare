@@ -1,13 +1,16 @@
 import SwiftUI
 
 struct HistoryView: View {
-    @StateObject private var historyService = HistoryService.shared
+    @StateObject private var cloudKitHistoryService = CloudKitHistoryService.shared
     @EnvironmentObject var dataManager: DataManager
     @State private var selectedDate = Date()
     @State private var searchText = ""
     @State private var selectedFilter: HistoryFilter = .all
     @State private var showingDatePicker = false
     @State private var showingExportSheet = false
+    @State private var availableDates: [Date] = []
+    @State private var filteredRecords: [DogHistoryRecord] = []
+    @State private var isLoading = false
     
     enum HistoryFilter {
         case all
@@ -16,34 +19,41 @@ struct HistoryView: View {
         case departed
     }
     
-    private var availableDates: [Date] {
-        historyService.getAvailableDates()
-    }
-    
-    private var filteredRecords: [DogHistoryRecord] {
-        let records = historyService.getHistoryForDate(selectedDate)
+    private func loadHistoryData() async {
+        isLoading = true
         
+        availableDates = await cloudKitHistoryService.getAvailableDates()
+        let records = await cloudKitHistoryService.getHistoryForDate(selectedDate)
+        print("[HistoryView] Loaded \(records.count) records for \(selectedDate): \(records.map { $0.dogName })")
+        
+        // Break down the complex filter logic
         let filtered = records.filter { record in
-            if !searchText.isEmpty {
-                return record.dogName.localizedCaseInsensitiveContains(searchText) ||
-                       (record.ownerName?.localizedCaseInsensitiveContains(searchText) ?? false)
+            if searchText.isEmpty {
+                return true
             }
-            return true
+            
+            let dogNameMatch = record.dogName.localizedCaseInsensitiveContains(searchText)
+            let ownerNameMatch = record.ownerName?.localizedCaseInsensitiveContains(searchText) ?? false
+            
+            return dogNameMatch || ownerNameMatch
         }
         
         switch selectedFilter {
         case .all:
-            return filtered
+            filteredRecords = filtered
         case .daycare:
-            return filtered.filter { !$0.isBoarding }
+            filteredRecords = filtered.filter { !$0.isBoarding }
         case .boarding:
-            return filtered.filter { $0.isBoarding }
+            filteredRecords = filtered.filter { $0.isBoarding }
         case .departed:
-            return filtered.filter { record in
+            filteredRecords = filtered.filter { record in
                 guard let departureDate = record.departureDate else { return false }
-                return Calendar.current.isDate(departureDate, inSameDayAs: selectedDate)
+                let isSameDay = Calendar.current.isDate(departureDate, inSameDayAs: selectedDate)
+                return isSameDay
             }
         }
+        
+        isLoading = false
     }
     
     private var presentRecords: [DogHistoryRecord] {
@@ -53,7 +63,8 @@ struct HistoryView: View {
     private var departedRecords: [DogHistoryRecord] {
         filteredRecords.filter { record in
             guard let departureDate = record.departureDate else { return false }
-            return Calendar.current.isDate(departureDate, inSameDayAs: selectedDate)
+            let isSameDay = Calendar.current.isDate(departureDate, inSameDayAs: selectedDate)
+            return isSameDay
         }
     }
     
@@ -75,7 +86,8 @@ struct HistoryView: View {
                     } label: {
                         HStack {
                             Image(systemName: "calendar")
-                            Text(selectedDate.formatted(date: .abbreviated, time: .omitted))
+                            let dateText = selectedDate.formatted(date: .abbreviated, time: .omitted)
+                            Text(dateText)
                                 .fontWeight(.medium)
                         }
                         .foregroundStyle(.blue)
@@ -114,11 +126,24 @@ struct HistoryView: View {
                 .padding(.vertical, 8)
                 
                 // Records list
-                if filteredRecords.isEmpty {
+                if isLoading {
+                    VStack(spacing: 16) {
+                        ProgressView("Loading history data...")
+                            .scaleEffect(1.2)
+                        
+                        if cloudKitHistoryService.isLoading {
+                            Text("Syncing with CloudKit...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if filteredRecords.isEmpty {
+                    let dateString = selectedDate.formatted(date: .abbreviated, time: .omitted)
                     ContentUnavailableView {
                         Label("No Records Found", systemImage: "clock.arrow.circlepath")
                     } description: {
-                        Text("No dog records found for \(selectedDate.formatted(date: .abbreviated, time: .omitted)).")
+                        Text("No dog records found for \(dateString).")
                     }
                 } else {
                     List {
@@ -179,18 +204,35 @@ struct HistoryView: View {
                         }
                     }
                     .refreshable {
-                        // Record today's snapshot if viewing today
-                        if Calendar.current.isDateInToday(selectedDate) {
-                            // Get visible dogs (same logic as ContentView)
-                            let visibleDogs = dataManager.dogs.filter { dog in
-                                let isCurrentlyPresent = dog.isCurrentlyPresent
-                                let isDaycare = isCurrentlyPresent && dog.shouldBeTreatedAsDaycare
-                                let isBoarding = isCurrentlyPresent && !dog.shouldBeTreatedAsDaycare
-                                let isDepartedToday = dog.departureDate != nil && Calendar.current.isDateInToday(dog.departureDate!)
-                                
-                                return isDaycare || isBoarding || isDepartedToday
+                        // Force refresh the current date's data
+                        let records = await cloudKitHistoryService.forceRefreshHistoryForDate(selectedDate)
+                        print("[HistoryView] Force refreshed \(records.count) records for \(selectedDate)")
+                        
+                        // Update the filtered records
+                        let filtered = records.filter { record in
+                            if searchText.isEmpty {
+                                return true
                             }
-                            historyService.recordDailySnapshot(dogs: visibleDogs)
+                            
+                            let dogNameMatch = record.dogName.localizedCaseInsensitiveContains(searchText)
+                            let ownerNameMatch = record.ownerName?.localizedCaseInsensitiveContains(searchText) ?? false
+                            
+                            return dogNameMatch || ownerNameMatch
+                        }
+                        
+                        switch selectedFilter {
+                        case .all:
+                            filteredRecords = filtered
+                        case .daycare:
+                            filteredRecords = filtered.filter { !$0.isBoarding }
+                        case .boarding:
+                            filteredRecords = filtered.filter { $0.isBoarding }
+                        case .departed:
+                            filteredRecords = filtered.filter { record in
+                                guard let departureDate = record.departureDate else { return false }
+                                let isSameDay = Calendar.current.isDate(departureDate, inSameDayAs: selectedDate)
+                                return isSameDay
+                            }
                         }
                     }
                 }
@@ -198,19 +240,37 @@ struct HistoryView: View {
             .searchable(text: $searchText, prompt: "Search dogs by name or owner")
             .navigationTitle("History")
             .navigationBarTitleDisplayMode(.inline)
-            .onReceive(dataManager.$dogs) { _ in
-                // Update history when dogs change (e.g., when a dog checks out)
+            .task {
+                // Debug current history data
+                await cloudKitHistoryService.debugHistoryData()
+                
+                // Always record a snapshot for today using current visible dogs
                 if Calendar.current.isDateInToday(selectedDate) {
-                    // Get visible dogs (same logic as ContentView)
                     let visibleDogs = dataManager.dogs.filter { dog in
                         let isCurrentlyPresent = dog.isCurrentlyPresent
                         let isDaycare = isCurrentlyPresent && dog.shouldBeTreatedAsDaycare
                         let isBoarding = isCurrentlyPresent && !dog.shouldBeTreatedAsDaycare
                         let isDepartedToday = dog.departureDate != nil && Calendar.current.isDateInToday(dog.departureDate!)
-                        
                         return isDaycare || isBoarding || isDepartedToday
                     }
-                    historyService.recordDailySnapshot(dogs: visibleDogs)
+                    print("[HistoryView] Visible dogs for snapshot: \(visibleDogs.count) - \(visibleDogs.map { $0.name })")
+                    await cloudKitHistoryService.recordDailySnapshot(dogs: visibleDogs)
+                }
+                await loadHistoryData()
+            }
+            .onChange(of: selectedDate) {
+                Task {
+                    await loadHistoryData()
+                }
+            }
+            .onChange(of: searchText) {
+                Task {
+                    await loadHistoryData()
+                }
+            }
+            .onChange(of: selectedFilter) {
+                Task {
+                    await loadHistoryData()
                 }
             }
             .toolbar {
@@ -223,7 +283,10 @@ struct HistoryView: View {
                         }
                         
                         Button(role: .destructive) {
-                            historyService.cleanupOldRecords()
+                            Task {
+                                await cloudKitHistoryService.cleanupOldRecords()
+                                await loadHistoryData()
+                            }
                         } label: {
                             Label("Cleanup Old Records", systemImage: "trash")
                         }
@@ -257,22 +320,6 @@ struct HistoryView: View {
             .sheet(isPresented: $showingExportSheet) {
                 NavigationStack {
                     ExportHistoryView()
-                }
-            }
-            .onAppear {
-                // Record today's snapshot if viewing today and no records exist
-                if Calendar.current.isDateInToday(selectedDate) && 
-                   historyService.getHistoryForDate(selectedDate).isEmpty {
-                    // Get visible dogs (same logic as ContentView)
-                    let visibleDogs = dataManager.dogs.filter { dog in
-                        let isCurrentlyPresent = dog.isCurrentlyPresent
-                        let isDaycare = isCurrentlyPresent && dog.shouldBeTreatedAsDaycare
-                        let isBoarding = isCurrentlyPresent && !dog.shouldBeTreatedAsDaycare
-                        let isDepartedToday = dog.departureDate != nil && Calendar.current.isDateInToday(dog.departureDate!)
-                        
-                        return isDaycare || isBoarding || isDepartedToday
-                    }
-                    historyService.recordDailySnapshot(dogs: visibleDogs)
                 }
             }
         }
@@ -548,7 +595,7 @@ struct HistoryDogDetailView: View {
 
 struct ExportHistoryView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var historyService = HistoryService.shared
+    @StateObject private var cloudKitHistoryService = CloudKitHistoryService.shared
     @State private var csvData: String = ""
     
     var body: some View {
@@ -584,15 +631,17 @@ struct ExportHistoryView: View {
             Spacer()
             
             Button {
-                csvData = historyService.exportHistoryRecords()
-                let activityVC = UIActivityViewController(activityItems: [csvData], applicationActivities: nil)
+                Task {
+                    csvData = await cloudKitHistoryService.exportHistoryRecords()
+                    let activityVC = UIActivityViewController(activityItems: [csvData], applicationActivities: nil)
                 
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                   let window = windowScene.windows.first {
-                    window.rootViewController?.present(activityVC, animated: true)
+                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                       let window = windowScene.windows.first {
+                        window.rootViewController?.present(activityVC, animated: true)
+                    }
+                    
+                    dismiss()
                 }
-                
-                dismiss()
             } label: {
                 HStack {
                     Image(systemName: "square.and.arrow.up")

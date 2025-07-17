@@ -14,10 +14,12 @@ struct DatabaseView: View {
     @State private var errorMessage: String?
     @State private var showingExportSheet = false
     @State private var showingImportSheet = false
+    @State private var showingAddDogSheet = false
     @State private var exportData: String = ""
     @State private var isExporting = false
     @State private var isImporting = false
     @State private var dogVisitCounts: [String: Int] = [:]
+    @State private var selectedDogForOverlay: Dog?
     
     private var filteredDogs: [Dog] {
         if searchText.isEmpty {
@@ -39,7 +41,7 @@ struct DatabaseView: View {
                 } else {
                     List {
                         ForEach(filteredDogs) { dog in
-                            DatabaseDogRow(dog: dog, visitCount: dogVisitCounts[dog.id.uuidString] ?? 1)
+                            DatabaseDogRow(dog: dog, visitCount: dogVisitCounts[dog.id.uuidString] ?? 1, selectedDogForOverlay: $selectedDogForOverlay)
                                 .contextMenu {
                                     Button {
                                         Task {
@@ -77,6 +79,12 @@ struct DatabaseView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
+                        Button {
+                            showingAddDogSheet = true
+                        } label: {
+                            Label("Add Dog", systemImage: "plus")
+                        }
+                        
                         Button {
                             Task {
                                 await exportDatabase()
@@ -129,6 +137,38 @@ struct DatabaseView: View {
                         }
                 }
             }
+            .overlay {
+                if let selectedDog = selectedDogForOverlay, let profilePictureData = selectedDog.profilePictureData, let uiImage = UIImage(data: profilePictureData) {
+                    Color.black.opacity(0.8)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            selectedDogForOverlay = nil
+                        }
+                        .overlay {
+                            VStack {
+                                Spacer()
+                                
+                                Image(uiImage: uiImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(maxWidth: UIScreen.main.bounds.width * 0.8, maxHeight: UIScreen.main.bounds.height * 0.6)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .shadow(radius: 20)
+                                
+                                Spacer()
+                                
+                                Button("Close") {
+                                    selectedDogForOverlay = nil
+                                }
+                                .foregroundStyle(.white)
+                                .padding()
+                                .background(.blue)
+                                .clipShape(Capsule())
+                                .padding(.bottom, 50)
+                            }
+                        }
+                }
+            }
             .sheet(isPresented: $showingExportSheet) {
                 NavigationStack {
                     ExportDatabaseView(exportData: exportData)
@@ -141,6 +181,11 @@ struct DatabaseView: View {
                             await importDatabase(importedDogs)
                         }
                     }
+                }
+            }
+            .sheet(isPresented: $showingAddDogSheet) {
+                NavigationStack {
+                    DogFormView(dog: nil)
                 }
             }
             .alert("Error", isPresented: .constant(errorMessage != nil)) {
@@ -303,6 +348,7 @@ struct DatabaseView: View {
 struct DatabaseDogRow: View {
     let dog: Dog
     let visitCount: Int
+    @Binding var selectedDogForOverlay: Dog?
     
     var body: some View {
         HStack(spacing: 12) {
@@ -313,6 +359,9 @@ struct DatabaseDogRow: View {
                     .aspectRatio(contentMode: .fill)
                     .frame(width: 50, height: 50)
                     .clipShape(Circle())
+                    .onTapGesture {
+                        selectedDogForOverlay = dog
+                    }
             } else {
                 Image(systemName: "dog")
                     .font(.title2)

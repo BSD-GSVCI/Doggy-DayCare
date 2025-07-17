@@ -12,6 +12,7 @@ class DataManager: ObservableObject {
     
     private let cloudKitService = CloudKitService.shared
     private let historyService = HistoryService.shared
+    private let cloudKitHistoryService = CloudKitHistoryService.shared
     
     private init() {
         print("📱 DataManager initialized")
@@ -740,7 +741,7 @@ class DataManager: ObservableObject {
         let today = Calendar.current.startOfDay(for: Date())
         
         // Check if we already recorded a snapshot for today
-        let todayRecords = historyService.getHistoryForDate(today)
+        let todayRecords = await cloudKitHistoryService.getHistoryForDate(today)
         if !todayRecords.isEmpty {
             print("📅 Daily snapshot already recorded for today")
             return
@@ -758,7 +759,7 @@ class DataManager: ObservableObject {
         }
         
         // Record snapshot for only visible dogs
-        historyService.recordDailySnapshot(dogs: visibleDogs)
+        await cloudKitHistoryService.recordDailySnapshot(dogs: visibleDogs)
         print("📅 Recorded daily snapshot for \(visibleDogs.count) visible dogs")
     }
     
@@ -1089,6 +1090,18 @@ class DataManager: ObservableObject {
     func clearImportCache() {
         cloudKitService.clearDogCache()
         print("🧹 DataManager: Import cache cleared")
+    }
+    
+    func getCacheStats() -> (memoryCount: Int, diskSize: String) {
+        let cachedDogs = cloudKitService.getCachedDogs()
+        let memoryCount = cachedDogs.count
+        
+        // Calculate approximate disk size (rough estimate)
+        let estimatedSizePerDog = 2048 // 2KB per dog record
+        let totalSizeBytes = memoryCount * estimatedSizePerDog
+        let diskSize = ByteCountFormatter.string(fromByteCount: Int64(totalSizeBytes), countStyle: .file)
+        
+        return (memoryCount, diskSize)
     }
 }
 

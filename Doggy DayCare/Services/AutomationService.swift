@@ -10,6 +10,7 @@ class AutomationService: ObservableObject {
     private var midnightTimer: Timer?
     
     private let historyService = HistoryService.shared
+    private let cloudKitHistoryService = CloudKitHistoryService.shared
     
     private init() {
         print("🚀 AutomationService initializing...")
@@ -170,7 +171,7 @@ class AutomationService: ObservableObject {
                 return isDaycare || isBoarding || isDepartedToday
             }
             
-            historyService.recordDailySnapshot(dogs: visibleDogs)
+            await cloudKitHistoryService.recordDailySnapshot(dogs: visibleDogs)
             print("✅ Daily snapshot recorded for \(visibleDogs.count) visible dogs")
             
             for dog in allDogs {
@@ -417,7 +418,7 @@ class AutomationService: ObservableObject {
     
     // MARK: - History Management
     
-    func recordDailySnapshot() {
+    func recordDailySnapshot() async {
         print("📅 Manually recording daily snapshot...")
         let dataManager = DataManager.shared
         
@@ -432,13 +433,13 @@ class AutomationService: ObservableObject {
             return isDaycare || isBoarding || isDepartedToday
         }
         
-        historyService.recordDailySnapshot(dogs: visibleDogs)
+        await cloudKitHistoryService.recordDailySnapshot(dogs: visibleDogs)
         print("✅ Daily snapshot recorded for \(visibleDogs.count) visible dogs")
     }
     
-    func cleanupOldHistoryRecords() {
+    func cleanupOldHistoryRecords() async {
         print("🧹 Cleaning up old history records...")
-        historyService.cleanupOldRecords()
+        await cloudKitHistoryService.cleanupOldRecords()
         print("✅ History cleanup completed")
     }
 } 
