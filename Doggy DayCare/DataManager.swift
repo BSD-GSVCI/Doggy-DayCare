@@ -14,6 +14,9 @@ class DataManager: ObservableObject {
     private let historyService = HistoryService.shared
     private let cloudKitHistoryService = CloudKitHistoryService.shared
     
+    // Incremental sync tracking
+    private var lastSyncTime: Date = Date.distantPast
+    
     private init() {
         print("📱 DataManager initialized")
     }
@@ -59,6 +62,9 @@ class DataManager: ObservableObject {
                 }
                 print("✅ DataManager: Set \(localDogs.count) dogs in local array")
                 
+                // Update last sync time
+                self.lastSyncTime = Date()
+                
                 // Record daily snapshot for history
                 Task {
                     await self.recordDailySnapshotIfNeeded()
@@ -71,6 +77,49 @@ class DataManager: ObservableObject {
                     self.isLoading = false
                 }
                 print("❌ DataManager: Failed to fetch dogs: \(error)")
+            }
+        }
+    }
+    
+    func fetchDogsIncremental() async {
+        // Don't show loading indicator for background refreshes
+        let shouldShowLoading = !isLoading
+        if shouldShowLoading {
+            isLoading = true
+        }
+        errorMessage = nil
+        
+        print("🔍 DataManager: Starting incremental fetchDogs...")
+        print("🔍 DataManager: Last sync time: \(lastSyncTime)")
+        
+        do {
+            let cloudKitDogs = try await cloudKitService.fetchDogsIncremental(since: lastSyncTime)
+            print("🔍 DataManager: Got \(cloudKitDogs.count) incremental CloudKit dogs")
+            
+            if !cloudKitDogs.isEmpty {
+                let localDogs = cloudKitDogs.map { $0.toDog() }
+                print("🔍 DataManager: Converted to \(localDogs.count) local dogs")
+                
+                // Update cache with only changed dogs
+                await updateDogsCache(with: localDogs)
+                
+                // Update last sync time
+                lastSyncTime = Date()
+                print("✅ DataManager: Updated cache with \(localDogs.count) changed dogs")
+            } else {
+                print("✅ DataManager: No changes found, using existing cache")
+            }
+            
+            if shouldShowLoading {
+                self.isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                self.errorMessage = "Failed to fetch dogs incrementally: \(error.localizedDescription)"
+                if shouldShowLoading {
+                    self.isLoading = false
+                }
+                print("❌ DataManager: Failed to fetch dogs incrementally: \(error)")
             }
         }
     }
@@ -96,6 +145,7 @@ class DataManager: ObservableObject {
             let addedDog = addedCloudKitDog.toDog()
             await MainActor.run {
                 self.dogs.append(addedDog)
+                self.lastSyncTime = Date() // Update sync time for new dog
                 self.isLoading = false
                 print("✅ Added dog: \(addedDog.name)")
             }
@@ -186,6 +236,7 @@ class DataManager: ObservableObject {
             }
             
             await MainActor.run {
+                self.lastSyncTime = Date() // Update sync time for dog update
                 self.isLoading = false
             }
         } catch {
@@ -224,6 +275,8 @@ class DataManager: ObservableObject {
             }
         }
         
+        // Update sync time for successful deletion
+        lastSyncTime = Date()
         isLoading = false
     }
     
@@ -549,6 +602,8 @@ class DataManager: ObservableObject {
         do {
             try await cloudKitService.addPottyRecord(newRecord, for: dog.id.uuidString)
             print("✅ Potty record added to CloudKit for \(dog.name)")
+            // Update sync time for new record
+            lastSyncTime = Date()
         } catch {
             print("❌ Failed to add potty record to CloudKit: \(error)")
             // Revert local cache if CloudKit update failed
@@ -617,6 +672,8 @@ class DataManager: ObservableObject {
         do {
             try await cloudKitService.addFeedingRecord(newRecord, for: dog.id.uuidString)
             print("✅ Feeding record added to CloudKit for \(dog.name)")
+            // Update sync time for new record
+            lastSyncTime = Date()
         } catch {
             print("❌ Failed to add feeding record to CloudKit: \(error)")
             // Revert local cache if CloudKit update failed
@@ -684,6 +741,8 @@ class DataManager: ObservableObject {
         do {
             try await cloudKitService.addMedicationRecord(newRecord, for: dog.id.uuidString)
             print("✅ Medication record added to CloudKit for \(dog.name)")
+            // Update sync time for new record
+            lastSyncTime = Date()
         } catch {
             print("❌ Failed to add medication record to CloudKit: \(error)")
             // Revert local cache if CloudKit update failed
@@ -720,6 +779,8 @@ class DataManager: ObservableObject {
         do {
             try await cloudKitService.addWalkingRecord(newRecord, for: dog.id.uuidString)
             print("✅ Walking record added to CloudKit for \(dog.name)")
+            // Update sync time for new record
+            lastSyncTime = Date()
         } catch {
             print("❌ Failed to add walking record to CloudKit: \(error)")
             // Revert local cache if CloudKit update failed
@@ -748,10 +809,8 @@ class DataManager: ObservableObject {
     func refreshData() async {
         print("🔄 DataManager: Manual refresh requested")
         
-        // Clear cache to force fresh data
-        cloudKitService.clearDogCache()
-        
-        await fetchDogs()
+        // Use incremental sync instead of full sync
+        await fetchDogsIncremental()
         await fetchUsers()
     }
     
@@ -786,6 +845,38 @@ class DataManager: ObservableObject {
     func clearCache() {
         cloudKitService.clearDogCache()
         print("🧹 DataManager: Cache cleared")
+    }
+    
+    private func updateDogsCache(with changedDogs: [Dog]) async {
+        print("🔄 DataManager: Updating cache with \(changedDogs.count) changed dogs")
+        
+        // Convert to CloudKitDogs for cache update
+        let cloudKitDogs = changedDogs.map { $0.toCloudKitDog() }
+        
+        // Update the CloudKit service cache with only changed dogs
+        cloudKitService.updateDogCacheIncremental(cloudKitDogs)
+        
+        // Update local dogs array with changed dogs
+        for changedDog in changedDogs {
+            if let index = dogs.firstIndex(where: { $0.id == changedDog.id }) {
+                // Update existing dog
+                dogs[index] = changedDog
+                print("🔄 Updated dog in cache: \(changedDog.name)")
+            } else {
+                // Add new dog
+                dogs.append(changedDog)
+                print("🔄 Added new dog to cache: \(changedDog.name)")
+            }
+        }
+        
+        // Remove deleted dogs
+        dogs.removeAll { dog in
+            changedDogs.contains { changedDog in
+                changedDog.id == dog.id && changedDog.isDeleted
+            }
+        }
+        
+        print("✅ DataManager: Cache updated successfully")
     }
     
     // MARK: - Error Handling

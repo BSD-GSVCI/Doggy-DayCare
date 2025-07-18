@@ -645,6 +645,80 @@ class CloudKitService: ObservableObject {
         return dogs
     }
     
+    func fetchDogsIncremental(since lastSync: Date) async throws -> [CloudKitDog] {
+        print("🔍 Starting incremental fetchDogs since \(lastSync)...")
+        
+        // Query only dogs modified since last sync
+        let predicate = NSPredicate(format: "\(DogFields.updatedAt) > %@", lastSync as NSDate)
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        
+        // Add sorting to get most recent first
+        query.sortDescriptors = [NSSortDescriptor(key: DogFields.updatedAt, ascending: false)]
+        
+        print("🔍 Executing incremental CloudKit query: \(query)")
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        print("🔍 Found \(records.count) changed dog records in CloudKit")
+        
+        var dogs: [CloudKitDog] = []
+        
+        // Process dogs in batches for better performance
+        let batchSize = 10
+        var currentBatch = 0
+        
+        for i in stride(from: 0, to: records.count, by: batchSize) {
+            let batch = Array(records[i..<min(i + batchSize, records.count)])
+            currentBatch += 1
+            
+            // Process batch concurrently
+            let batchDogs = await withTaskGroup(of: CloudKitDog?.self) { group in
+                for record in batch {
+                    group.addTask {
+                        print("🔍 Processing changed dog record: \(record[DogFields.name] as? String ?? "Unknown")")
+                        var dog = CloudKitDog(from: record)
+                        
+                        // Skip deleted dogs
+                        if dog.isDeleted {
+                            print("⏭️ Skipping deleted dog: \(dog.name)")
+                            return nil
+                        }
+                        
+                        // Load records for this dog
+                        do {
+                            let (feeding, medication, potty, walking) = try await self.loadRecords(for: dog.id)
+                            dog.feedingRecords = feeding
+                            dog.medicationRecords = medication
+                            dog.pottyRecords = potty
+                            dog.walkingRecords = walking
+                            print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty, \(walking.count) walking records for \(dog.name)")
+                        } catch {
+                            print("⚠️ Failed to load records for dog \(dog.name): \(error)")
+                        }
+                        
+                        return dog
+                    }
+                }
+                
+                var batchResults: [CloudKitDog] = []
+                for await dog in group {
+                    if let dog = dog {
+                        batchResults.append(dog)
+                    }
+                }
+                return batchResults
+            }
+            
+            dogs.append(contentsOf: batchDogs)
+        }
+        
+        // Sort dogs by creation date locally
+        dogs.sort { $0.createdAt > $1.createdAt }
+        
+        print("✅ Fetched \(dogs.count) changed dogs from CloudKit")
+        return dogs
+    }
+    
     func updateDog(_ dog: CloudKitDog) async throws -> CloudKitDog {
         print("🔄 CloudKitService.updateDog called for: \(dog.name)")
         print("📅 CloudKit dog departure date: \(dog.departureDate?.description ?? "nil")")
@@ -2105,6 +2179,26 @@ class CloudKitService: ObservableObject {
         }
         cacheTimestamp = Date()
         print("✅ Updated dog cache with \(dogs.count) dogs")
+    }
+    
+    func updateDogCacheIncremental(_ changedDogs: [CloudKitDog]) {
+        print("🔄 Updating dog cache incrementally with \(changedDogs.count) changed dogs")
+        
+        for dog in changedDogs {
+            if dog.isDeleted {
+                // Remove deleted dogs from cache
+                dogCache.removeValue(forKey: dog.id)
+                print("🗑️ Removed deleted dog from cache: \(dog.name)")
+            } else {
+                // Update or add dogs to cache
+                dogCache[dog.id] = dog
+                print("🔄 Updated dog in cache: \(dog.name)")
+            }
+        }
+        
+        // Update cache timestamp
+        cacheTimestamp = Date()
+        print("✅ Dog cache updated incrementally")
     }
     
     func clearDogCache() {
