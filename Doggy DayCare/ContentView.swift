@@ -150,6 +150,11 @@ struct ContentView: View {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
+    // Add this property to always show the correct count
+    private var currentlyPresentCount: Int {
+        dataManager.dogs.filter { $0.isCurrentlyPresent }.count
+    }
+    
     private func loadBackupFolderBookmark() {
         guard let bookmarkData = UserDefaults.standard.data(forKey: "backup_folder_bookmark") else {
             print("No backup folder bookmark found")
@@ -221,6 +226,14 @@ struct ContentView: View {
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 8)
+                
+                // Currently Present count - only show when "All" filter is active
+                if selectedFilter == .all {
+                    Text("Currently Present: \(currentlyPresentCount)")
+                        .font(.headline)
+                        .foregroundColor(.accentColor)
+                        .padding(.bottom, 4)
+                }
                 
                 // Dogs list
                 DogsListView(

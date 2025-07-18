@@ -100,6 +100,12 @@ struct LoginView: View {
                                     .keyboardType(.emailAddress)
                                     .autocorrectionDisabled()
                                     .padding(.horizontal)
+                                    .onTapGesture {
+                                        print("[LoginView] Email TextField tapped at \(Date())")
+                                    }
+                                    .onChange(of: email) {
+                                        print("[LoginView] Email TextField editing began/changed at \(Date()), value: \(email)")
+                                    }
                                 
                                 SecureField("Password", text: $ownerPassword)
                                     .textFieldStyle(.roundedBorder)

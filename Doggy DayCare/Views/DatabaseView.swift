@@ -70,13 +70,28 @@ struct DatabaseView: View {
                     }
                 }
             }
-            .navigationTitle("Database")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("") // Remove default title
+            .navigationBarTitleDisplayMode(.inline)
+            
             .searchable(text: $searchText, prompt: "Search dogs by name or owner")
             .task {
                 await loadAllDogs()
             }
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 12) {
+                        Text("Database")
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                        Text("Total Dogs: \(allDogs.count)")
+                            .font(.headline)
+                            .foregroundColor(.accentColor)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 10)
+                            .background(.regularMaterial)
+                            .clipShape(Capsule())
+                    }
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {
