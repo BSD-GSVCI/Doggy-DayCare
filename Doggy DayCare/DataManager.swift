@@ -718,6 +718,72 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
+    func updateFeedingRecordTimestamp(_ record: FeedingRecord, newTimestamp: Date, in dog: Dog) async {
+        isLoading = true
+        errorMessage = nil
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+               let recordIndex = self.dogs[dogIndex].feedingRecords.firstIndex(where: { $0.id == record.id }) {
+                self.dogs[dogIndex].feedingRecords[recordIndex].timestamp = newTimestamp
+                self.dogs[dogIndex].updatedAt = Date()
+            }
+        }
+        
+        // Update CloudKit
+        do {
+            try await cloudKitService.updateFeedingRecordTimestamp(record, newTimestamp: newTimestamp, for: dog.id.uuidString)
+            print("✅ Feeding record timestamp updated in CloudKit for \(dog.name)")
+            // Update sync time for record update
+            lastSyncTime = Date()
+        } catch {
+            print("❌ Failed to update feeding record timestamp in CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+                   let recordIndex = self.dogs[dogIndex].feedingRecords.firstIndex(where: { $0.id == record.id }) {
+                    self.dogs[dogIndex].feedingRecords[recordIndex].timestamp = record.timestamp
+                }
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    func updatePottyRecordTimestamp(_ record: PottyRecord, newTimestamp: Date, in dog: Dog) async {
+        isLoading = true
+        errorMessage = nil
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+               let recordIndex = self.dogs[dogIndex].pottyRecords.firstIndex(where: { $0.id == record.id }) {
+                self.dogs[dogIndex].pottyRecords[recordIndex].timestamp = newTimestamp
+                self.dogs[dogIndex].updatedAt = Date()
+            }
+        }
+        
+        // Update CloudKit
+        do {
+            try await cloudKitService.updatePottyRecordTimestamp(record, newTimestamp: newTimestamp, for: dog.id.uuidString)
+            print("✅ Potty record timestamp updated in CloudKit for \(dog.name)")
+            // Update sync time for record update
+            lastSyncTime = Date()
+        } catch {
+            print("❌ Failed to update potty record timestamp in CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+                   let recordIndex = self.dogs[dogIndex].pottyRecords.firstIndex(where: { $0.id == record.id }) {
+                    self.dogs[dogIndex].pottyRecords[recordIndex].timestamp = record.timestamp
+                }
+            }
+        }
+        
+        isLoading = false
+    }
+    
     func addMedicationRecord(to dog: Dog, notes: String?, recordedBy: String?) async {
         isLoading = true
         errorMessage = nil
@@ -749,6 +815,39 @@ class DataManager: ObservableObject {
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                     self.dogs[index].medicationRecords.removeLast()
+                }
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    func updateMedicationRecordTimestamp(_ record: MedicationRecord, newTimestamp: Date, in dog: Dog) async {
+        isLoading = true
+        errorMessage = nil
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+               let recordIndex = self.dogs[dogIndex].medicationRecords.firstIndex(where: { $0.id == record.id }) {
+                self.dogs[dogIndex].medicationRecords[recordIndex].timestamp = newTimestamp
+                self.dogs[dogIndex].updatedAt = Date()
+            }
+        }
+        
+        // Update CloudKit
+        do {
+            try await cloudKitService.updateMedicationRecordTimestamp(record, newTimestamp: newTimestamp, for: dog.id.uuidString)
+            print("✅ Medication record timestamp updated in CloudKit for \(dog.name)")
+            // Update sync time for record update
+            lastSyncTime = Date()
+        } catch {
+            print("❌ Failed to update medication record timestamp in CloudKit: \(error)")
+            // Revert local cache if CloudKit update failed
+            await MainActor.run {
+                if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+                   let recordIndex = self.dogs[dogIndex].medicationRecords.firstIndex(where: { $0.id == record.id }) {
+                    self.dogs[dogIndex].medicationRecords[recordIndex].timestamp = record.timestamp
                 }
             }
         }

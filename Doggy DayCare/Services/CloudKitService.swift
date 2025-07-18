@@ -1395,6 +1395,72 @@ class CloudKitService: ObservableObject {
         print("✅ Feeding record notes updated in CloudKit: \(savedRecord.recordID.recordName)")
     }
     
+    func updateFeedingRecordTimestamp(_ record: FeedingRecord, newTimestamp: Date, for dogID: String) async throws {
+        print("🔄 CloudKit: Updating feeding record timestamp for record ID: \(record.id)")
+        
+        let predicate = NSPredicate(format: "\(RecordFields.id) == %@ AND \(RecordFields.dogID) == %@", record.id.uuidString, dogID)
+        let query = CKQuery(recordType: RecordTypes.feedingRecord, predicate: predicate)
+        
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let recordToUpdate = records.first else {
+            print("❌ CloudKit: No feeding record found to update")
+            throw CloudKitError.recordNotFound
+        }
+        
+        // Update the timestamp field
+        recordToUpdate[RecordFields.timestamp] = newTimestamp
+        recordToUpdate[RecordFields.updatedAt] = Date()
+        
+        let savedRecord = try await publicDatabase.save(recordToUpdate)
+        print("✅ Feeding record timestamp updated in CloudKit: \(savedRecord.recordID.recordName)")
+    }
+    
+    func updateMedicationRecordTimestamp(_ record: MedicationRecord, newTimestamp: Date, for dogID: String) async throws {
+        print("🔄 CloudKit: Updating medication record timestamp for record ID: \(record.id)")
+        
+        let predicate = NSPredicate(format: "\(RecordFields.id) == %@ AND \(RecordFields.dogID) == %@", record.id.uuidString, dogID)
+        let query = CKQuery(recordType: RecordTypes.medicationRecord, predicate: predicate)
+        
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let recordToUpdate = records.first else {
+            print("❌ CloudKit: No medication record found to update")
+            throw CloudKitError.recordNotFound
+        }
+        
+        // Update the timestamp field
+        recordToUpdate[RecordFields.timestamp] = newTimestamp
+        recordToUpdate[RecordFields.updatedAt] = Date()
+        
+        let savedRecord = try await publicDatabase.save(recordToUpdate)
+        print("✅ Medication record timestamp updated in CloudKit: \(savedRecord.recordID.recordName)")
+    }
+    
+    func updatePottyRecordTimestamp(_ record: PottyRecord, newTimestamp: Date, for dogID: String) async throws {
+        print("🔄 CloudKit: Updating potty record timestamp for record ID: \(record.id)")
+        
+        let predicate = NSPredicate(format: "\(RecordFields.id) == %@ AND \(RecordFields.dogID) == %@", record.id.uuidString, dogID)
+        let query = CKQuery(recordType: RecordTypes.pottyRecord, predicate: predicate)
+        
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        guard let recordToUpdate = records.first else {
+            print("❌ CloudKit: No potty record found to update")
+            throw CloudKitError.recordNotFound
+        }
+        
+        // Update the timestamp field
+        recordToUpdate[RecordFields.timestamp] = newTimestamp
+        recordToUpdate[RecordFields.updatedAt] = Date()
+        
+        let savedRecord = try await publicDatabase.save(recordToUpdate)
+        print("✅ Potty record timestamp updated in CloudKit: \(savedRecord.recordID.recordName)")
+    }
+    
     func addMedicationRecord(_ record: MedicationRecord, for dogID: String) async throws {
         let ckRecord = CKRecord(recordType: RecordTypes.medicationRecord)
         

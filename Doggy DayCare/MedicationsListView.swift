@@ -106,6 +106,9 @@ struct MedicationsListView: View {
                     }
                 }
             }
+            .refreshable {
+                await dataManager.fetchDogsIncremental()
+            }
             .navigationTitle("Medications")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchText, prompt: "Search dogs")
@@ -314,9 +317,19 @@ struct MedicationInstanceView: View {
     let record: MedicationRecord
     let onUpdateNote: (String?) -> Void
     let onDelete: () -> Void
+    @EnvironmentObject var dataManager: DataManager
     @State private var showingNoteAlert = false
     @State private var showingEditNote = false
     @State private var editedNotes = ""
+    @State private var showingEditTimestamp = false
+    @State private var editedTimestamp = Date()
+    @State private var showingEditSheet = false
+    @State private var editMode: EditMode = .note
+    
+    enum EditMode {
+        case note
+        case timestamp
+    }
     
     var body: some View {
         Button(action: {
@@ -349,17 +362,24 @@ struct MedicationInstanceView: View {
         .onLongPressGesture {
             onDelete()
         }
-        .alert("Medication Record Notes", isPresented: $showingNoteAlert) {
+        .alert("Medication Record Options", isPresented: $showingNoteAlert) {
             if let notes = record.notes, !notes.isEmpty {
                 Button("Edit Note") {
+                    editMode = .note
                     editedNotes = notes
-                    showingEditNote = true
+                    showingEditSheet = true
                 }
             } else {
                 Button("Add Note") {
+                    editMode = .note
                     editedNotes = ""
-                    showingEditNote = true
+                    showingEditSheet = true
                 }
+            }
+            Button("Edit Timestamp") {
+                editMode = .timestamp
+                editedTimestamp = record.timestamp
+                showingEditSheet = true
             }
             Button("Cancel", role: .cancel) { }
         } message: {
@@ -369,15 +389,65 @@ struct MedicationInstanceView: View {
                 Text("This record has no notes associated with it.")
             }
         }
-        .alert("Edit Note", isPresented: $showingEditNote) {
-            TextField("Notes", text: $editedNotes, axis: .vertical)
-                .lineLimit(3...6)
-            Button("Save") {
-                onUpdateNote(editedNotes.isEmpty ? nil : editedNotes)
+        .sheet(isPresented: $showingEditSheet) {
+            NavigationStack {
+                VStack(spacing: 20) {
+                    if editMode == .note {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Edit Note")
+                                .font(.headline)
+                                .padding(.top)
+                            
+                            TextField("Notes", text: $editedNotes, axis: .vertical)
+                                .textFieldStyle(.roundedBorder)
+                                .lineLimit(3...6)
+                        }
+                        .padding()
+                    } else {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Edit Timestamp")
+                                .font(.headline)
+                                .padding(.top)
+                            
+                            DatePicker("Timestamp", selection: $editedTimestamp, displayedComponents: [.date, .hourAndMinute])
+                                .datePickerStyle(.compact)
+                        }
+                        .padding()
+                    }
+                    
+                    Spacer()
+                }
+                .navigationTitle(editMode == .note ? "Edit Note" : "Edit Timestamp")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showingEditSheet = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            Task {
+                                if editMode == .note {
+                                    onUpdateNote(editedNotes.isEmpty ? nil : editedNotes)
+                                } else {
+                                    await updateMedicationRecordTimestamp()
+                                }
+                                showingEditSheet = false
+                            }
+                        }
+                    }
+                }
             }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Edit notes for this medication record")
+        }
+    }
+    
+    private func updateMedicationRecordTimestamp() async {
+        // Find the dog that contains this record
+        if let dog = dataManager.dogs.first(where: { dog in
+            dog.medicationRecords.contains { $0.id == record.id }
+        }) {
+            await dataManager.updateMedicationRecordTimestamp(record, newTimestamp: editedTimestamp, in: dog)
         }
     }
 }

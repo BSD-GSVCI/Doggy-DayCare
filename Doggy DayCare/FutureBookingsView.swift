@@ -37,6 +37,9 @@ struct FutureBookingsView: View {
                     }
                 }
             }
+            .refreshable {
+                await dataManager.fetchDogsIncremental()
+            }
             .navigationTitle("Future Bookings")
             .searchable(text: $searchText, prompt: "Search dogs")
             .toolbar {

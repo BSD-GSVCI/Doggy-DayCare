@@ -221,6 +221,9 @@ struct FeedingListView: View {
                         }
                     }
                 }
+                .refreshable {
+                    await dataManager.fetchDogsIncremental()
+                }
                 .navigationTitle("Feeding List")
                 .navigationBarTitleDisplayMode(.inline)
                 .searchable(text: $searchText, prompt: "Search dogs")
@@ -411,6 +414,15 @@ struct FeedingListView: View {
         @State private var showingNoteAlert = false
         @State private var showingEditNote = false
         @State private var editedNotes = ""
+        @State private var showingEditTimestamp = false
+        @State private var editedTimestamp = Date()
+        @State private var showingEditSheet = false
+        @State private var editMode: EditMode = .note
+        
+        enum EditMode {
+            case note
+            case timestamp
+        }
         
         var body: some View {
             Button(action: {
@@ -448,17 +460,24 @@ struct FeedingListView: View {
             .onLongPressGesture {
                 onDelete()
             }
-            .alert("Feeding Record Notes", isPresented: $showingNoteAlert) {
+            .alert("Feeding Record Options", isPresented: $showingNoteAlert) {
                 if let notes = record.notes, !notes.isEmpty {
                     Button("Edit Note") {
+                        editMode = .note
                         editedNotes = notes
-                        showingEditNote = true
+                        showingEditSheet = true
                     }
                 } else {
                     Button("Add Note") {
+                        editMode = .note
                         editedNotes = ""
-                        showingEditNote = true
+                        showingEditSheet = true
                     }
+                }
+                Button("Edit Timestamp") {
+                    editMode = .timestamp
+                    editedTimestamp = record.timestamp
+                    showingEditSheet = true
                 }
                 Button("Cancel", role: .cancel) { }
             } message: {
@@ -468,17 +487,56 @@ struct FeedingListView: View {
                     Text("This record has no notes associated with it.")
                 }
             }
-            .alert("Edit Note", isPresented: $showingEditNote) {
-                TextField("Notes", text: $editedNotes, axis: .vertical)
-                    .lineLimit(3...6)
-                Button("Save") {
-                    Task {
-                        await updateFeedingRecordNotes()
+            .sheet(isPresented: $showingEditSheet) {
+                NavigationStack {
+                    VStack(spacing: 20) {
+                        if editMode == .note {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Edit Note")
+                                    .font(.headline)
+                                    .padding(.top)
+                                
+                                TextField("Notes", text: $editedNotes, axis: .vertical)
+                                    .textFieldStyle(.roundedBorder)
+                                    .lineLimit(3...6)
+                            }
+                            .padding()
+                        } else {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Edit Timestamp")
+                                    .font(.headline)
+                                    .padding(.top)
+                                
+                                DatePicker("Timestamp", selection: $editedTimestamp, displayedComponents: [.date, .hourAndMinute])
+                                    .datePickerStyle(.compact)
+                            }
+                            .padding()
+                        }
+                        
+                        Spacer()
+                    }
+                    .navigationTitle(editMode == .note ? "Edit Note" : "Edit Timestamp")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") {
+                                showingEditSheet = false
+                            }
+                        }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Save") {
+                                Task {
+                                    if editMode == .note {
+                                        await updateFeedingRecordNotes()
+                                    } else {
+                                        await updateFeedingRecordTimestamp()
+                                    }
+                                    showingEditSheet = false
+                                }
+                            }
+                        }
                     }
                 }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("Edit notes for this feeding record")
             }
         }
         
@@ -488,6 +546,15 @@ struct FeedingListView: View {
                 dog.feedingRecords.contains { $0.id == record.id }
             }) {
                 await dataManager.updateFeedingRecordNotes(record, newNotes: editedNotes.isEmpty ? nil : editedNotes, in: dog)
+            }
+        }
+        
+        private func updateFeedingRecordTimestamp() async {
+            // Find the dog that contains this record
+            if let dog = dataManager.dogs.first(where: { dog in
+                dog.feedingRecords.contains { $0.id == record.id }
+            }) {
+                await dataManager.updateFeedingRecordTimestamp(record, newTimestamp: editedTimestamp, in: dog)
             }
         }
         

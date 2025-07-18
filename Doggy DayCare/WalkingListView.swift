@@ -113,6 +113,9 @@ struct WalkingListView: View {
                         }
                     }
                 }
+                .refreshable {
+                    await dataManager.fetchDogsIncremental()
+                }
             }
             .navigationTitle("Walking List")
             .navigationBarTitleDisplayMode(.inline)
@@ -306,42 +309,39 @@ struct PottyInstanceView: View {
     @State private var showingNoteAlert = false
     @State private var showingEditNote = false
     @State private var editedNotes = ""
+    @State private var showingEditTimestamp = false
+    @State private var editedTimestamp = Date()
+    @State private var showingEditSheet = false
+    @State private var editMode: EditMode = .note
+    
+    enum EditMode {
+        case note
+        case timestamp
+    }
     
     var body: some View {
         Button(action: {
             showingNoteAlert = true
         }) {
             HStack(spacing: 2) {
-                // Potty type icons
-                if record.type == .pee {
-                    Image(systemName: "drop.fill")
-                        .foregroundStyle(.yellow)
-                        .font(.caption)
-                } else if record.type == .poop {
-                    Text("💩")
-                        .font(.caption)
-                } else if record.type == .both {
+                if record.type == .both {
                     HStack(spacing: 1) {
-                        Image(systemName: "drop.fill")
-                            .foregroundStyle(.yellow)
+                        Image(systemName: iconForPottyType(record.type))
+                            .foregroundStyle(colorForPottyType(record.type))
                             .font(.caption2)
                         Text("💩")
                             .font(.caption2)
                     }
-                } else if record.type == .nothing {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.red)
+                } else {
+                    Image(systemName: iconForPottyType(record.type))
+                        .foregroundStyle(colorForPottyType(record.type))
                         .font(.caption)
                 }
-                
-                // Time
                 Text(record.timestamp.formatted(date: .omitted, time: .shortened))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(1.0)
-                
-                // Note icon if record has notes
                 if let notes = record.notes, !notes.isEmpty {
                     Text("📝")
                         .font(.caption2)
@@ -349,10 +349,10 @@ struct PottyInstanceView: View {
                         .background(Color.blue.opacity(0.1))
                         .clipShape(Circle())
                 }
-                            }
-                .padding(.horizontal, 1)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 1)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity)
             .background(Color.gray.opacity(0.1))
             .clipShape(RoundedRectangle(cornerRadius: 4))
         }
@@ -360,17 +360,24 @@ struct PottyInstanceView: View {
         .onLongPressGesture {
             onDelete()
         }
-        .alert("Potty Record Notes", isPresented: $showingNoteAlert) {
+        .alert("Potty Record Options", isPresented: $showingNoteAlert) {
             if let notes = record.notes, !notes.isEmpty {
                 Button("Edit Note") {
+                    editMode = .note
                     editedNotes = notes
-                    showingEditNote = true
+                    showingEditSheet = true
                 }
             } else {
                 Button("Add Note") {
+                    editMode = .note
                     editedNotes = ""
-                    showingEditNote = true
+                    showingEditSheet = true
                 }
+            }
+            Button("Edit Timestamp") {
+                editMode = .timestamp
+                editedTimestamp = record.timestamp
+                showingEditSheet = true
             }
             Button("Cancel", role: .cancel) { }
         } message: {
@@ -380,17 +387,56 @@ struct PottyInstanceView: View {
                 Text("This record has no notes associated with it.")
             }
         }
-        .alert("Edit Note", isPresented: $showingEditNote) {
-            TextField("Notes", text: $editedNotes, axis: .vertical)
-                .lineLimit(3...6)
-            Button("Save") {
-                Task {
-                    await updatePottyRecordNotes()
+        .sheet(isPresented: $showingEditSheet) {
+            NavigationStack {
+                VStack(spacing: 20) {
+                    if editMode == .note {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Edit Note")
+                                .font(.headline)
+                                .padding(.top)
+                            
+                            TextField("Notes", text: $editedNotes, axis: .vertical)
+                                .textFieldStyle(.roundedBorder)
+                                .lineLimit(3...6)
+                        }
+                        .padding()
+                    } else {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Edit Timestamp")
+                                .font(.headline)
+                                .padding(.top)
+                            
+                            DatePicker("Timestamp", selection: $editedTimestamp, displayedComponents: [.date, .hourAndMinute])
+                                .datePickerStyle(.compact)
+                        }
+                        .padding()
+                    }
+                    
+                    Spacer()
+                }
+                .navigationTitle(editMode == .note ? "Edit Note" : "Edit Timestamp")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showingEditSheet = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") {
+                            Task {
+                                if editMode == .note {
+                                    await updatePottyRecordNotes()
+                                } else {
+                                    await updatePottyRecordTimestamp()
+                                }
+                                showingEditSheet = false
+                            }
+                        }
+                    }
                 }
             }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Edit notes for this potty record")
         }
     }
     
@@ -400,6 +446,40 @@ struct PottyInstanceView: View {
             dog.pottyRecords.contains { $0.id == record.id }
         }) {
             await dataManager.updatePottyRecordNotes(record, newNotes: editedNotes.isEmpty ? nil : editedNotes, in: dog)
+        }
+    }
+    
+    private func updatePottyRecordTimestamp() async {
+        if let dog = dataManager.dogs.first(where: { dog in
+            dog.pottyRecords.contains { $0.id == record.id }
+        }) {
+            await dataManager.updatePottyRecordTimestamp(record, newTimestamp: editedTimestamp, in: dog)
+        }
+    }
+    
+    private func iconForPottyType(_ type: PottyRecord.PottyType) -> String {
+        switch type {
+        case .pee:
+            return "drop.fill"
+        case .poop:
+            return "circle.fill"
+        case .both:
+            return "drop.fill" // This will be combined with emoji in the view
+        case .nothing:
+            return "xmark.circle.fill"
+        }
+    }
+    
+    private func colorForPottyType(_ type: PottyRecord.PottyType) -> Color {
+        switch type {
+        case .pee:
+            return .yellow
+        case .poop:
+            return .brown
+        case .both:
+            return .yellow
+        case .nothing:
+            return .red
         }
     }
 }
