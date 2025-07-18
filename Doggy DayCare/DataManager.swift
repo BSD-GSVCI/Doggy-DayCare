@@ -108,6 +108,26 @@ class DataManager: ObservableObject {
         }
     }
     
+    func addDogToDatabase(_ dog: Dog) async {
+        isLoading = true
+        errorMessage = nil
+        do {
+            let cloudKitDog = dog.toCloudKitDog()
+            let addedCloudKitDog = try await cloudKitService.createDog(cloudKitDog)
+            let addedDog = addedCloudKitDog.toDog()
+            await MainActor.run {
+                self.isLoading = false
+                print("✅ Added dog to database only: \(addedDog.name)")
+            }
+        } catch {
+            await MainActor.run {
+                self.errorMessage = "Failed to add dog to database: \(error.localizedDescription)"
+                self.isLoading = false
+                print("❌ Failed to add dog to database: \(error)")
+            }
+        }
+    }
+    
     func updateDog(_ dog: Dog) async {
         print("🔄 DataManager.updateDog called for: \(dog.name)")
         print("📅 Departure date being set: \(dog.departureDate?.description ?? "nil")")

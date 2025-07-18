@@ -1,6 +1,7 @@
 import SwiftUI
 import UserNotifications
 import BackgroundTasks
+import CloudKit
 
 @MainActor
 class AutomationService: ObservableObject {
@@ -33,17 +34,18 @@ class AutomationService: ObservableObject {
     func performAutomatedBackup() async {
         print("🔄 Starting automated backup process...")
         
-        // Only perform automatic backups for owners, not staff members
+        // Only perform automatic backups for owners and promoted owners, not staff members
         let authService = AuthenticationService.shared
         guard let currentUser = authService.currentUser else {
             print("❌ No current user found - skipping backup")
             return
         }
         
-        print("👤 Current user: \(currentUser.name), isOwner: \(currentUser.isOwner)")
+        print("👤 Current user: \(currentUser.name), isOwner: \(currentUser.isOwner), isOriginalOwner: \(currentUser.isOriginalOwner)")
         
-        guard currentUser.isOwner else {
-            print("⏭️ Skipping automatic backup - user is not an owner")
+        // Allow both original owners and promoted owners to perform backups
+        guard currentUser.isOwner || currentUser.isOriginalOwner else {
+            print("⏭️ Skipping automatic backup - user is not an owner or promoted owner")
             return
         }
         
@@ -53,7 +55,20 @@ class AutomationService: ObservableObject {
             // Use a separate fetch method that doesn't affect the UI sync status
             let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
             let allDogs = allCloudKitDogs.map { $0.toDog() }
-            print("📊 Found \(allDogs.count) dogs to backup")
+            print("📊 Found \(allDogs.count) total dogs in CloudKit")
+            
+            // Filter to only include visible dogs (same logic as ContentView)
+            let visibleDogs = allDogs.filter { dog in
+                // Include dogs that are currently present (daycare and boarding)
+                let isCurrentlyPresent = dog.isCurrentlyPresent
+                let isDaycare = isCurrentlyPresent && dog.shouldBeTreatedAsDaycare
+                let isBoarding = isCurrentlyPresent && !dog.shouldBeTreatedAsDaycare
+                let isDepartedToday = dog.departureDate != nil && Calendar.current.isDateInToday(dog.departureDate!)
+                
+                return isDaycare || isBoarding || isDepartedToday
+            }
+            
+            print("📊 Filtered to \(visibleDogs.count) visible dogs for backup")
             
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm"
@@ -81,8 +96,9 @@ class AutomationService: ObservableObject {
                 }
             }
             
-            let url = try await BackupService.shared.exportDogs(allDogs, filename: "backup_\(timestamp)", to: backupFolderURL)
-            print("✅ Automated backup created successfully at: \(url.path) for owner: \(currentUser.name)")
+            // Add .csv extension to the filename
+            let url = try await BackupService.shared.exportDogs(visibleDogs, filename: "backup_\(timestamp).csv", to: backupFolderURL)
+            print("✅ Automated backup created successfully at: \(url.path) for user: \(currentUser.name)")
             
             // Additional debugging for file accessibility
             let fileManager = FileManager.default
@@ -109,7 +125,7 @@ class AutomationService: ObservableObject {
             // Send notification about successful backup
             let content = UNMutableNotificationContent()
             content.title = "Backup Completed"
-            content.body = "Daily backup completed successfully with \(allDogs.count) dogs"
+            content.body = "Daily backup completed successfully with \(visibleDogs.count) visible dogs"
             content.sound = .default
             
             let request = UNNotificationRequest(
@@ -122,6 +138,27 @@ class AutomationService: ObservableObject {
             
         } catch {
             print("❌ Error performing automated backup: \(error.localizedDescription)")
+            
+            // Log specific error details for debugging
+            if let cloudKitError = error as? CKError {
+                print("❌ CloudKit error code: \(cloudKitError.code.rawValue)")
+                print("❌ CloudKit error description: \(cloudKitError.localizedDescription)")
+                
+                switch cloudKitError.code {
+                case .permissionFailure:
+                    print("❌ PERMISSION ERROR: User cannot access CloudKit records")
+                    print("❌ This might be due to CloudKit container security settings")
+                    print("❌ Check CloudKit Dashboard → Schema → Security Roles")
+                case .notAuthenticated:
+                    print("❌ AUTHENTICATION ERROR: User is not authenticated with CloudKit")
+                case .networkFailure, .networkUnavailable:
+                    print("❌ NETWORK ERROR: Cannot connect to CloudKit")
+                case .quotaExceeded:
+                    print("❌ QUOTA ERROR: CloudKit storage quota exceeded")
+                default:
+                    print("❌ Other CloudKit error: \(cloudKitError.code)")
+                }
+            }
             
             // Create timestamp for error notification
             let dateFormatter = DateFormatter()

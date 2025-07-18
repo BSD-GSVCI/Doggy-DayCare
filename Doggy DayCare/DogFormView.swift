@@ -33,9 +33,11 @@ struct DogFormView: View {
     @State private var ownerPhoneNumber: String = ""
     
     let dog: Dog?
+    let addToDatabaseOnly: Bool
     
-    init(dog: Dog? = nil) {
+    init(dog: Dog? = nil, addToDatabaseOnly: Bool = false) {
         self.dog = dog
+        self.addToDatabaseOnly = addToDatabaseOnly
         if let dog = dog {
             _name = State(initialValue: dog.name)
             _ownerName = State(initialValue: dog.ownerName ?? "")
@@ -376,7 +378,15 @@ struct DogFormView: View {
                 ownerPhoneNumber: ownerPhoneNumber
             )
             
-            await dataManager.addDog(newDog)
+            print("🔄 DogFormView: Saving new dog '\(newDog.name)' - addToDatabaseOnly: \(addToDatabaseOnly)")
+            
+            if addToDatabaseOnly {
+                print("📝 DogFormView: Adding dog to database only (will not appear on main page)")
+                await dataManager.addDogToDatabase(newDog)
+            } else {
+                print("📝 DogFormView: Adding dog to main page and database")
+                await dataManager.addDog(newDog)
+            }
         }
         
         isLoading = false

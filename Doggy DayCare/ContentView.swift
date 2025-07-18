@@ -378,7 +378,7 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingAddDog) {
                 NavigationStack {
-                    DogFormView()
+                    DogFormView(dog: nil, addToDatabaseOnly: false)
                 }
             }
             .sheet(isPresented: $showingHistoryView) {

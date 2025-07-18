@@ -121,7 +121,7 @@ struct DatabaseView: View {
             .sheet(isPresented: $showingEditDog) {
                 if let dog = dogToEdit {
                     NavigationStack {
-                        DogFormView(dog: dog)
+                        DogFormView(dog: dog, addToDatabaseOnly: true)
                     }
                 }
             }
@@ -185,7 +185,7 @@ struct DatabaseView: View {
             }
             .sheet(isPresented: $showingAddDogSheet) {
                 NavigationStack {
-                    DogFormView(dog: nil)
+                    DogFormView(dog: nil, addToDatabaseOnly: true)
                 }
             }
             .alert("Error", isPresented: .constant(errorMessage != nil)) {

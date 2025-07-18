@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct HistoryView: View {
-    @StateObject private var cloudKitHistoryService = CloudKitHistoryService.shared
+    @ObservedObject private var cloudKitHistoryService = CloudKitHistoryService.shared
     @EnvironmentObject var dataManager: DataManager
     @State private var selectedDate = Date()
     @State private var searchText = ""
@@ -20,7 +20,7 @@ struct HistoryView: View {
     }
     
     private func loadHistoryData() async {
-        isLoading = true
+        // isLoading is already set to true when task starts
         
         availableDates = await cloudKitHistoryService.getAvailableDates()
         let records = await cloudKitHistoryService.getHistoryForDate(selectedDate)
@@ -126,13 +126,17 @@ struct HistoryView: View {
                 .padding(.vertical, 8)
                 
                 // Records list
-                if isLoading {
+                if isLoading || cloudKitHistoryService.isLoading {
                     VStack(spacing: 16) {
                         ProgressView("Loading history data...")
                             .scaleEffect(1.2)
                         
                         if cloudKitHistoryService.isLoading {
                             Text("Syncing with CloudKit...")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if isLoading {
+                            Text("Processing data...")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -241,10 +245,13 @@ struct HistoryView: View {
             .navigationTitle("History")
             .navigationBarTitleDisplayMode(.inline)
             .task {
-                // Debug current history data
-                await cloudKitHistoryService.debugHistoryData()
+                // Set loading state immediately
+                isLoading = true
                 
-                // Always record a snapshot for today using current visible dogs
+                // Simple approach: Load from cache first, then update if needed
+                await loadHistoryData()
+                
+                // Record snapshot for today if needed
                 if Calendar.current.isDateInToday(selectedDate) {
                     let visibleDogs = dataManager.dogs.filter { dog in
                         let isCurrentlyPresent = dog.isCurrentlyPresent
@@ -253,10 +260,9 @@ struct HistoryView: View {
                         let isDepartedToday = dog.departureDate != nil && Calendar.current.isDateInToday(dog.departureDate!)
                         return isDaycare || isBoarding || isDepartedToday
                     }
-                    print("[HistoryView] Visible dogs for snapshot: \(visibleDogs.count) - \(visibleDogs.map { $0.name })")
+                    print("[HistoryView] Recording snapshot for \(visibleDogs.count) dogs")
                     await cloudKitHistoryService.recordDailySnapshot(dogs: visibleDogs)
                 }
-                await loadHistoryData()
             }
             .onChange(of: selectedDate) {
                 Task {
@@ -595,7 +601,7 @@ struct HistoryDogDetailView: View {
 
 struct ExportHistoryView: View {
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var cloudKitHistoryService = CloudKitHistoryService.shared
+    @ObservedObject private var cloudKitHistoryService = CloudKitHistoryService.shared
     @State private var csvData: String = ""
     
     var body: some View {
