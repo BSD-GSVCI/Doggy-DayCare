@@ -10,8 +10,6 @@ struct MedicationsListView: View {
     @State private var selectedFilter: MedicationFilter = .all
     @State private var selectedSort: MedicationSort = .alphabetical
     @State private var showingDeleteAlert = false
-    @State private var showingDeleteMedicationAlert = false
-    @State private var medicationRecordToDelete: MedicationRecord?
     @State private var showingMedicationPopup = false
     @State private var medicationNotes = ""
     @State private var editingMedicationRecord: MedicationRecord?
@@ -159,8 +157,6 @@ struct DogMedicationRow: View {
     @StateObject private var authService = AuthenticationService.shared
     let dog: Dog
     @State private var showingDeleteAlert = false
-    @State private var showingDeleteMedicationAlert = false
-    @State private var medicationRecordToDelete: MedicationRecord?
     @State private var showingMedicationPopup = false
     @State private var medicationNotes = ""
     @State private var editingMedicationRecord: MedicationRecord?
@@ -231,7 +227,7 @@ struct DogMedicationRow: View {
                             MedicationInstanceView(
                                 record: record,
                                 onUpdateNote: { newNotes in updateMedicationRecordNotes(record, newNote: newNotes) },
-                                onDelete: { medicationRecordToDelete = record; showingDeleteMedicationAlert = true }
+                                onDelete: { deleteMedicationRecord(record) }
                             )
                         }
                     }
@@ -242,19 +238,6 @@ struct DogMedicationRow: View {
         .contentShape(Rectangle())
         .onTapGesture {
             showingMedicationPopup = true
-        }
-        .contextMenu {
-            // Only allow deletion via long-press
-            if !dog.medicationRecords.isEmpty {
-                let todaysMedicationRecords = dog.medicationRecords.filter { record in
-                    Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
-                }
-                ForEach(todaysMedicationRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
-                    Button("Delete medication at \(record.timestamp.formatted(date: .omitted, time: .shortened))", role: .destructive) {
-                        deleteMedicationRecord(record)
-                    }
-                }
-            }
         }
         .alert("Record Medication", isPresented: $showingMedicationPopup) {
             TextField("Notes (optional)", text: $medicationNotes)
@@ -277,16 +260,7 @@ struct DogMedicationRow: View {
         } message: {
             Text("Are you sure you want to delete the last medication for \(dog.name)?")
         }
-        .alert("Delete Medication Record", isPresented: $showingDeleteMedicationAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                if let record = medicationRecordToDelete {
-                    deleteMedicationRecord(record)
-                }
-            }
-        } message: {
-            Text("Are you sure you want to delete this medication record?")
-        }
+
     }
     
     private func addMedicationRecord(notes: String) async {
@@ -325,6 +299,7 @@ struct MedicationInstanceView: View {
     @State private var editedTimestamp = Date()
     @State private var showingEditSheet = false
     @State private var editMode: EditMode = .note
+    @State private var showingDeleteAlert = false
     
     enum EditMode {
         case note
@@ -332,37 +307,48 @@ struct MedicationInstanceView: View {
     }
     
     var body: some View {
-        Button(action: {
-            showingNoteAlert = true
-        }) {
-            HStack(spacing: 2) {
-                Image(systemName: "pills.fill")
-                    .foregroundStyle(.purple)
-                    .font(.caption)
-                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+        HStack(spacing: 2) {
+            Image(systemName: "pills.fill")
+                .foregroundStyle(.purple)
+                .font(.caption)
+            Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(1.0)
+            if let notes = record.notes, !notes.isEmpty {
+                Text("📝")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(1.0)
-                if let notes = record.notes, !notes.isEmpty {
-                    Text("📝")
-                        .font(.caption2)
-                        .padding(1)
-                        .background(Color.blue.opacity(0.1))
-                        .clipShape(Circle())
-                }
+                    .padding(1)
+                    .background(Color.blue.opacity(0.1))
+                    .clipShape(Circle())
             }
-            .padding(.horizontal, 1)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity)
-            .background(Color.gray.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
         }
-        .buttonStyle(PlainButtonStyle())
-        .onLongPressGesture {
-            onDelete()
+        .padding(.horizontal, 1)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background(Color.gray.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .contentShape(Rectangle())
+        .zIndex(1)
+        .onTapGesture {
+            showingNoteAlert = true
         }
-        .alert("Medication Record Options", isPresented: $showingNoteAlert) {
+        .contextMenu {
+            Button("Delete", role: .destructive) {
+                print("Long press detected on medication record")
+                showingDeleteAlert = true
+            }
+        }
+        .alert("Delete Medication Record", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                onDelete()
+            }
+        } message: {
+            Text("Are you sure you want to delete this medication record at \(record.timestamp.formatted(date: .omitted, time: .shortened))?")
+        }
+        .alert("Notes:", isPresented: $showingNoteAlert) {
             if let notes = record.notes, !notes.isEmpty {
                 Button("Edit Note") {
                     editMode = .note

@@ -171,8 +171,6 @@ struct DogWalkingRow: View {
     @StateObject private var authService = AuthenticationService.shared
     let dog: Dog
     @State private var showingDeleteAlert = false
-    @State private var showingDeletePottyAlert = false
-    @State private var pottyRecordToDelete: PottyRecord?
     @State private var showingPottyPopup = false
     
     var body: some View {
@@ -234,8 +232,7 @@ struct DogWalkingRow: View {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 4) {
                         ForEach(todaysPottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
                             PottyInstanceView(record: record) {
-                                pottyRecordToDelete = record
-                                showingDeletePottyAlert = true
+                                deletePottyRecord(record)
                             }
                         }
                     }
@@ -253,31 +250,8 @@ struct DogWalkingRow: View {
         .onTapGesture {
             showingPottyPopup = true
         }
-        .contextMenu {
-            if !dog.pottyRecords.isEmpty {
-                let todaysPottyRecords = dog.pottyRecords.filter { record in
-                    Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
-                }
-                
-                ForEach(todaysPottyRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
-                    Button("Delete \(record.type.rawValue) at \(record.timestamp.formatted(date: .omitted, time: .shortened))", role: .destructive) {
-                        deletePottyRecord(record)
-                    }
-                }
-            }
-        }
         .sheet(isPresented: $showingPottyPopup) {
             PottyPopupView(dog: dog)
-        }
-        .alert("Delete Potty Record", isPresented: $showingDeletePottyAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                if let record = pottyRecordToDelete {
-                    deletePottyRecord(record)
-                }
-            }
-        } message: {
-            Text("Are you sure you want to delete this potty record?")
         }
     }
     
@@ -313,6 +287,7 @@ struct PottyInstanceView: View {
     @State private var editedTimestamp = Date()
     @State private var showingEditSheet = false
     @State private var editMode: EditMode = .note
+    @State private var showingDeleteAlert = false
     
     enum EditMode {
         case note
@@ -320,47 +295,61 @@ struct PottyInstanceView: View {
     }
     
     var body: some View {
-        Button(action: {
-            showingNoteAlert = true
-        }) {
-            HStack(spacing: 2) {
-                if record.type == .both {
-                    HStack(spacing: 1) {
-                        Image(systemName: iconForPottyType(record.type))
-                            .foregroundStyle(colorForPottyType(record.type))
-                            .font(.caption2)
-                        Text("💩")
-                            .font(.caption2)
-                    }
-                } else {
-                    Image(systemName: iconForPottyType(record.type))
-                        .foregroundStyle(colorForPottyType(record.type))
-                        .font(.caption)
-                }
-                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(1.0)
-                if let notes = record.notes, !notes.isEmpty {
-                    Text("📝")
+        HStack(spacing: 2) {
+            if record.type == .both {
+                HStack(spacing: 1) {
+                    Image(systemName: "drop.fill")
+                        .foregroundStyle(.yellow)
                         .font(.caption2)
-                        .padding(1)
-                        .background(Color.blue.opacity(0.1))
-                        .clipShape(Circle())
+                    Text("💩")
+                        .font(.caption2)
                 }
+            } else if record.type == .poop {
+                Text("💩")
+                    .font(.caption)
+            } else {
+                Image(systemName: iconForPottyType(record.type))
+                    .foregroundStyle(colorForPottyType(record.type))
+                    .font(.caption)
             }
-            .padding(.horizontal, 1)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity)
-            .background(Color.gray.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 4))
+            Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(1.0)
+            if let notes = record.notes, !notes.isEmpty {
+                Text("📝")
+                    .font(.caption2)
+                    .padding(1)
+                    .background(Color.blue.opacity(0.1))
+                    .clipShape(Circle())
+            }
         }
-        .buttonStyle(PlainButtonStyle())
-        .onLongPressGesture {
-            onDelete()
+        .padding(.horizontal, 1)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background(Color.gray.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .contentShape(Rectangle())
+        .zIndex(1)
+        .onTapGesture {
+            showingNoteAlert = true
         }
-        .alert("Potty Record Options", isPresented: $showingNoteAlert) {
+        .contextMenu {
+            Button("Delete", role: .destructive) {
+                print("Long press detected on potty record: \(record.type.rawValue)")
+                showingDeleteAlert = true
+            }
+        }
+        .alert("Delete Potty Record", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                onDelete()
+            }
+        } message: {
+            Text("Are you sure you want to delete this \(record.type.rawValue) record at \(record.timestamp.formatted(date: .omitted, time: .shortened))?")
+        }
+        .alert("Notes:", isPresented: $showingNoteAlert) {
             if let notes = record.notes, !notes.isEmpty {
                 Button("Edit Note") {
                     editMode = .note

@@ -275,8 +275,6 @@ struct FeedingListView: View {
         @StateObject private var authService = AuthenticationService.shared
         let dog: Dog
         @State private var showingDeleteAlert = false
-        @State private var showingDeleteFeedingAlert = false
-        @State private var feedingRecordToDelete: FeedingRecord?
         @State private var showingFeedingPopup = false
         
         var body: some View {
@@ -359,8 +357,7 @@ struct FeedingListView: View {
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 4) {
                             ForEach(todaysFeedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
                                 FeedingInstanceView(record: record) {
-                                    feedingRecordToDelete = record
-                                    showingDeleteFeedingAlert = true
+                                    deleteFeedingRecord(record)
                                 }
                             }
                         }
@@ -372,31 +369,8 @@ struct FeedingListView: View {
             .onTapGesture {
                 showingFeedingPopup = true
             }
-            .contextMenu {
-                if !dog.feedingRecords.isEmpty {
-                    let todaysFeedingRecords = dog.feedingRecords.filter { record in
-                        Calendar.current.isDate(record.timestamp, inSameDayAs: Date())
-                    }
-                    
-                    ForEach(todaysFeedingRecords.sorted(by: { $0.timestamp > $1.timestamp }), id: \.id) { record in
-                        Button("Delete \(record.type.rawValue) at \(record.timestamp.formatted(date: .omitted, time: .shortened))", role: .destructive) {
-                            deleteFeedingRecord(record)
-                        }
-                    }
-                }
-            }
             .sheet(isPresented: $showingFeedingPopup) {
                 FeedingPopupView(dog: dog)
-            }
-            .alert("Delete Feeding Record", isPresented: $showingDeleteFeedingAlert) {
-                Button("Cancel", role: .cancel) { }
-                Button("Delete", role: .destructive) {
-                    if let record = feedingRecordToDelete {
-                        deleteFeedingRecord(record)
-                    }
-                }
-            } message: {
-                Text("Are you sure you want to delete this feeding record?")
             }
         }
         
@@ -418,6 +392,7 @@ struct FeedingListView: View {
         @State private var editedTimestamp = Date()
         @State private var showingEditSheet = false
         @State private var editMode: EditMode = .note
+        @State private var showingDeleteAlert = false
         
         enum EditMode {
             case note
@@ -425,42 +400,53 @@ struct FeedingListView: View {
         }
         
         var body: some View {
-            Button(action: {
-                showingNoteAlert = true
-            }) {
-                HStack(spacing: 2) {
-                    // Feeding type icon
-                    Image(systemName: iconForFeedingType(record.type))
-                        .foregroundStyle(colorForFeedingType(record.type))
-                        .font(.caption)
-                    
-                    // Time
-                    Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+            HStack(spacing: 2) {
+                // Feeding type icon
+                Image(systemName: iconForFeedingType(record.type))
+                    .foregroundStyle(colorForFeedingType(record.type))
+                    .font(.caption)
+                
+                // Time
+                Text(record.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(1.0)
+                
+                // Note icon if record has notes
+                if let notes = record.notes, !notes.isEmpty {
+                    Text("📝")
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(1.0)
-                    
-                    // Note icon if record has notes
-                    if let notes = record.notes, !notes.isEmpty {
-                        Text("📝")
-                            .font(.caption2)
-                            .padding(1)
-                            .background(Color.blue.opacity(0.1))
-                            .clipShape(Circle())
-                    }
+                        .padding(1)
+                        .background(Color.blue.opacity(0.1))
+                        .clipShape(Circle())
                 }
-                .padding(.horizontal, 1)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity)
-                .background(Color.gray.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 4))
             }
-            .buttonStyle(PlainButtonStyle())
-            .onLongPressGesture {
-                onDelete()
+            .padding(.horizontal, 1)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity)
+            .background(Color.gray.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .contentShape(Rectangle())
+            .zIndex(1)
+            .onTapGesture {
+                showingNoteAlert = true
             }
-            .alert("Feeding Record Options", isPresented: $showingNoteAlert) {
+            .contextMenu {
+                Button("Delete", role: .destructive) {
+                    print("Long press detected on feeding record: \(record.type.rawValue)")
+                    showingDeleteAlert = true
+                }
+            }
+            .alert("Delete Feeding Record", isPresented: $showingDeleteAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete", role: .destructive) {
+                    onDelete()
+                }
+            } message: {
+                Text("Are you sure you want to delete this \(record.type.rawValue) record at \(record.timestamp.formatted(date: .omitted, time: .shortened))?")
+            }
+            .alert("Notes:", isPresented: $showingNoteAlert) {
                 if let notes = record.notes, !notes.isEmpty {
                     Button("Edit Note") {
                         editMode = .note
