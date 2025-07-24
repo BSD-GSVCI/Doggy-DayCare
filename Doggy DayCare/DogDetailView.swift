@@ -156,17 +156,25 @@ struct DogDetailView: View {
                 if let gender = dog.gender {
                     InfoRow(title: "Gender", value: gender.displayName)
                 }
-                if let vaccinationEndDate = dog.vaccinationEndDate {
-                    InfoRow(title: "Vaccination End Date", value: dateFormatter.string(from: vaccinationEndDate))
-                }
                 if let isNeuteredOrSpayed = dog.isNeuteredOrSpayed {
                     InfoRow(title: "Neutered/Spayed", value: isNeuteredOrSpayed ? "Yes" : "No")
                 }
-                if let ownerName = dog.ownerName, !ownerName.isEmpty {
-                    InfoRow(title: "Owner Name", value: ownerName)
-                }
                 if let ownerPhoneNumber = dog.ownerPhoneNumber, !ownerPhoneNumber.isEmpty {
                     InfoRow(title: "Owner's Phone Number", value: ownerPhoneNumber)
+                }
+            }
+            Section("Vaccinations") {
+                let vaxNames = ["Bordetella", "DHPP", "Rabies", "CIV", "Leptospirosis"]
+                ForEach(vaxNames, id: \.self) { vaxName in
+                    if let vax = dog.vaccinations.first(where: { $0.name == vaxName }) {
+                        if let endDate = vax.endDate {
+                            InfoRow(title: "\(vaxName) End Date", value: dateFormatter.string(from: endDate))
+                        } else {
+                            InfoRow(title: "\(vaxName) End Date", value: "Not set")
+                        }
+                    } else {
+                        InfoRow(title: "\(vaxName) End Date", value: "Not set")
+                    }
                 }
             }
             

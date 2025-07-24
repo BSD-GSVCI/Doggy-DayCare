@@ -63,9 +63,19 @@ struct DogFormView: View {
             }
             _age = State(initialValue: dog.age)
             _gender = State(initialValue: dog.gender ?? .unknown)
-            if !dog.vaccinations.isEmpty {
-                _vaccinations = State(initialValue: dog.vaccinations)
+            // Always preserve existing vaccination end dates and add missing ones if needed
+            let defaultVaccinationNames = [
+                "Bordetella", "DHPP", "Rabies", "CIV", "Leptospirosis"
+            ]
+            var mergedVaccinations: [VaccinationItem] = []
+            for name in defaultVaccinationNames {
+                if let existing = dog.vaccinations.first(where: { $0.name == name }) {
+                    mergedVaccinations.append(existing)
+                } else {
+                    mergedVaccinations.append(VaccinationItem(name: name, endDate: nil))
+                }
             }
+            _vaccinations = State(initialValue: mergedVaccinations)
             _isNeuteredOrSpayed = State(initialValue: dog.isNeuteredOrSpayed ?? false)
             _ownerPhoneNumber = State(initialValue: dog.ownerPhoneNumber ?? "")
         } else {
@@ -438,6 +448,11 @@ struct ImportSingleDogView: View {
                         Text("No previously saved dog entries found in the database.")
                     }
                 } else {
+                    Text("Total Dogs: \(importedDogs.count)")
+                        .font(.headline)
+                        .foregroundColor(.accentColor)
+                        .padding(.top, 4)
+                        .padding(.bottom, 4)
                     List {
                         ForEach(filteredDogs) { dog in
                             ImportedDogRow(dog: dog, onZoom: {
@@ -670,23 +685,72 @@ struct ImportedDogRow: View {
 
 struct VaccinationListEditor: View {
     @Binding var vaccinations: [VaccinationItem]
+    @State private var editingIndex: Int? = nil
+    @State private var tempDate: Date = Date()
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach($vaccinations.prefix(5)) { $item in
+            ForEach(Array($vaccinations.prefix(5).enumerated()), id: \ .element.id) { index, $item in
                 HStack {
                     Text(item.name)
                         .frame(maxWidth: 120, alignment: .leading)
+                    if let endDate = item.endDate {
+                        Button(action: {
+                            tempDate = endDate
+                            editingIndex = index
+                        }) {
+                            Text(endDate, style: .date)
+                                .foregroundColor(.primary)
+                        }
+                        .buttonStyle(.plain)
+                        Button(action: {
+                            item.endDate = nil
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.red)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Button(action: {
+                            tempDate = Date()
+                            editingIndex = index
+                        }) {
+                            Text("Set Date")
+                                .foregroundColor(.blue)
+                                .opacity(0.7)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: Binding<Bool>(
+            get: { editingIndex != nil },
+            set: { newValue in if !newValue { editingIndex = nil } }
+        )) {
+            if let idx = editingIndex {
+                VStack {
                     DatePicker(
-                        "End Date",
+                        "Select End Date",
                         selection: Binding(
-                            get: { item.endDate ?? Date() },
-                            set: { item.endDate = $0 }
+                            get: { tempDate },
+                            set: { tempDate = $0 }
                         ),
                         displayedComponents: .date
                     )
+                    .datePickerStyle(.graphical)
                     .labelsHidden()
+                    .padding()
+                    Button("Save") {
+                        vaccinations[idx].endDate = tempDate
+                        editingIndex = nil
+                    }
+                    .padding(.bottom)
+                    Button("Cancel", role: .cancel) {
+                        editingIndex = nil
+                    }
                 }
+                .presentationDetents([.medium, .large])
             }
         }
     }
