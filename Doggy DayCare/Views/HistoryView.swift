@@ -56,6 +56,35 @@ struct HistoryView: View {
         isLoading = false
     }
     
+    private func loadHistoryDataFromCloud() async {
+        // Always force a full sync from CloudKit
+        let records = await cloudKitHistoryService.updateCacheForDate(selectedDate)
+        print("[HistoryView] Forced CloudKit sync: loaded \(records.count) records for \(selectedDate)")
+        // Apply the same filtering logic as loadHistoryData
+        let filtered = records.filter { record in
+            if searchText.isEmpty {
+                return true
+            }
+            let dogNameMatch = record.dogName.localizedCaseInsensitiveContains(searchText)
+            let ownerNameMatch = record.ownerName?.localizedCaseInsensitiveContains(searchText) ?? false
+            return dogNameMatch || ownerNameMatch
+        }
+        switch selectedFilter {
+        case .all:
+            filteredRecords = filtered
+        case .daycare:
+            filteredRecords = filtered.filter { !$0.isBoarding }
+        case .boarding:
+            filteredRecords = filtered.filter { $0.isBoarding }
+        case .departed:
+            filteredRecords = filtered.filter { record in
+                guard let departureDate = record.departureDate else { return false }
+                let isSameDay = Calendar.current.isDate(departureDate, inSameDayAs: selectedDate)
+                return isSameDay
+            }
+        }
+    }
+    
     private var presentRecords: [DogHistoryRecord] {
         filteredRecords.filter { $0.isCurrentlyPresent }
     }
@@ -80,25 +109,50 @@ struct HistoryView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Date selector
-                HStack {
-                    Button {
-                        showingDatePicker = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "calendar")
-                            let dateText = selectedDate.formatted(date: .abbreviated, time: .omitted)
-                            Text(dateText)
-                                .fontWeight(.medium)
+                VStack(spacing: 4) {
+                    HStack {
+                        Button {
+                            showingDatePicker = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "calendar")
+                                let dateText = selectedDate.formatted(date: .abbreviated, time: .omitted)
+                                Text(dateText)
+                                    .fontWeight(.medium)
+                            }
+                            .foregroundStyle(.blue)
                         }
-                        .foregroundStyle(.blue)
+                        
+                        Spacer()
+                        
+                        Button {
+                            DispatchQueue.main.async {
+                                isLoading = true
+                            }
+                            Task {
+                                await loadHistoryDataFromCloud()
+                                isLoading = false
+                            }
+                        } label: {
+                            if isLoading {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.clockwise")
+                                    Text("Refresh")
+                                }
+                                .foregroundStyle(.blue)
+                            }
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    
-                    Spacer()
                     
                     if !availableDates.isEmpty {
                         Text("\(availableDates.count) days recorded")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .padding(.horizontal)
@@ -207,76 +261,36 @@ struct HistoryView: View {
                             }
                         }
                     }
-                    .refreshable {
-                        // Force refresh the current date's data
-                        let records = await cloudKitHistoryService.forceRefreshHistoryForDate(selectedDate)
-                        print("[HistoryView] Force refreshed \(records.count) records for \(selectedDate)")
-                        
-                        // Update the filtered records
-                        let filtered = records.filter { record in
-                            if searchText.isEmpty {
-                                return true
-                            }
-                            
-                            let dogNameMatch = record.dogName.localizedCaseInsensitiveContains(searchText)
-                            let ownerNameMatch = record.ownerName?.localizedCaseInsensitiveContains(searchText) ?? false
-                            
-                            return dogNameMatch || ownerNameMatch
-                        }
-                        
-                        switch selectedFilter {
-                        case .all:
-                            filteredRecords = filtered
-                        case .daycare:
-                            filteredRecords = filtered.filter { !$0.isBoarding }
-                        case .boarding:
-                            filteredRecords = filtered.filter { $0.isBoarding }
-                        case .departed:
-                            filteredRecords = filtered.filter { record in
-                                guard let departureDate = record.departureDate else { return false }
-                                let isSameDay = Calendar.current.isDate(departureDate, inSameDayAs: selectedDate)
-                                return isSameDay
-                            }
-                        }
-                    }
                 }
             }
             .searchable(text: $searchText, prompt: "Search dogs by name or owner")
             .navigationTitle("History")
             .navigationBarTitleDisplayMode(.inline)
-            .task {
-                // Set loading state immediately
-                isLoading = true
-                
-                // Simple approach: Load from cache first, then update if needed
-                await loadHistoryData()
-                
-                // Record snapshot for today if needed
-                if Calendar.current.isDateInToday(selectedDate) {
-                    let visibleDogs = dataManager.dogs.filter { dog in
-                        let isCurrentlyPresent = dog.isCurrentlyPresent
-                        let isDaycare = isCurrentlyPresent && dog.shouldBeTreatedAsDaycare
-                        let isBoarding = isCurrentlyPresent && !dog.shouldBeTreatedAsDaycare
-                        let isDepartedToday = dog.departureDate != nil && Calendar.current.isDateInToday(dog.departureDate!)
-                        return isDaycare || isBoarding || isDepartedToday
-                    }
-                    print("[HistoryView] Recording snapshot for \(visibleDogs.count) dogs")
-                    await cloudKitHistoryService.recordDailySnapshot(dogs: visibleDogs)
+            .onAppear {
+                // Load from cache only, no spinner, no forced sync
+                Task {
+                    await loadHistoryData()
                 }
             }
             .onChange(of: selectedDate) {
                 Task {
+                    isLoading = true
                     await loadHistoryData()
+                    isLoading = false
                 }
             }
             .onChange(of: searchText) {
                 Task {
+                    isLoading = true
                     await loadHistoryData()
+                    isLoading = false
                 }
             }
             .onChange(of: selectedFilter) {
                 Task {
+                    isLoading = true
                     await loadHistoryData()
+                    isLoading = false
                 }
             }
             .toolbar {

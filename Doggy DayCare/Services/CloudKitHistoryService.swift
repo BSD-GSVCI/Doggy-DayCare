@@ -22,21 +22,33 @@ class CloudKitHistoryService: ObservableObject {
         let today = Calendar.current.startOfDay(for: Date())
         print("[CloudKitHistoryService] Recording snapshot for \(dogs.count) dogs: \(dogs.map { $0.name }) on \(today)")
         
-        // Remove any existing records for today
+        // 1. Delete all existing records for today
         await removeHistoryForDate(today)
         
-        // Create new records for all dogs
+        // 2. Create new records for all dogs (force date = today)
         let newRecords = dogs.map { dog in
             DogHistoryRecord(from: dog, date: today)
         }
+        print("[CloudKitHistoryService] Will write records:")
+        for rec in newRecords {
+            print("  - id: \(rec.id), dogId: \(rec.dogId), date: \(rec.date)")
+        }
         
-        // Batch save to CloudKit for better performance
+        // 3. Batch save all new records
         await batchSaveHistoryRecords(newRecords)
         
-        // Update local cache
-        await loadHistoryRecords()
+        // 4. Clear cache for today
+        historyCache.removeValue(forKey: today)
         
-        // Update last sync time for today
+        // 5. Update local cache
+        await loadHistoryRecords()
+        print("[CloudKitHistoryService] After load, records for today:")
+        let loaded = historyRecords.filter { $0.date == today }
+        for rec in loaded {
+            print("  - id: \(rec.id), dogId: \(rec.dogId), date: \(rec.date)")
+        }
+        
+        // 6. Update last sync time for today
         lastSyncTimes[today] = Date()
         print("[CloudKitHistoryService] Finished recording snapshot for \(newRecords.count) dogs on \(today)")
     }
@@ -72,13 +84,14 @@ class CloudKitHistoryService: ObservableObject {
                 historyRecord["notes"] = record.notes
                 historyRecord["age"] = record.age
                 historyRecord["gender"] = record.gender?.rawValue
-                historyRecord["vaccinationEndDate"] = record.vaccinationEndDate
+                historyRecord["vaccinationEndDate"] = record.vaccinations.compactMap { $0.endDate }.min()
                 historyRecord["isNeuteredOrSpayed"] = record.isNeuteredOrSpayed
                 historyRecord["ownerPhoneNumber"] = record.ownerPhoneNumber
                 historyRecord["isArrivalTimeSet"] = record.isArrivalTimeSet
                 historyRecord["visitCount"] = record.visitCount
                 historyRecord["createdAt"] = record.createdAt
                 historyRecord["updatedAt"] = record.updatedAt
+                historyRecord["isDeleted"] = record.isDeleted ? 1 : 0
                 return historyRecord
             }
             do {
@@ -97,6 +110,109 @@ class CloudKitHistoryService: ObservableObject {
                 print("✅ Batch \(batchIndex + 1)/\(batches.count): Saved \(successCount) records, \(failureCount) failed")
             } catch {
                 print("❌ Failed to save batch \(batchIndex + 1): \(error)")
+            }
+        }
+    }
+    
+    private func batchUpdateHistoryRecords(_ records: [DogHistoryRecord]) async {
+        let batchSize = 50 // CloudKit batch limit
+        let batches = stride(from: 0, to: records.count, by: batchSize).map {
+            Array(records[$0..<min($0 + batchSize, records.count)])
+        }
+        
+        for (batchIndex, batch) in batches.enumerated() {
+            // For updates, we need to fetch existing records first, then modify them
+            let recordIDs = batch.map { CKRecord.ID(recordName: $0.id.uuidString) }
+            
+            do {
+                // Fetch existing records
+                let fetchResult = try await publicDatabase.records(for: recordIDs)
+                var recordsToUpdate: [CKRecord] = []
+                
+                for (index, record) in batch.enumerated() {
+                    if let result = fetchResult[recordIDs[index]],
+                       let existingRecord = try? result.get() {
+                        // Update the existing record with new data
+                        existingRecord["date"] = record.date
+                        existingRecord["dogId"] = record.dogId.uuidString
+                        existingRecord["dogName"] = record.dogName
+                        existingRecord["ownerName"] = record.ownerName
+                        existingRecord["profilePictureData"] = record.profilePictureData
+                        existingRecord["arrivalDate"] = record.arrivalDate
+                        existingRecord["departureDate"] = record.departureDate
+                        existingRecord["isBoarding"] = record.isBoarding
+                        existingRecord["boardingEndDate"] = record.boardingEndDate
+                        existingRecord["isCurrentlyPresent"] = record.isCurrentlyPresent
+                        existingRecord["shouldBeTreatedAsDaycare"] = record.shouldBeTreatedAsDaycare
+                        existingRecord["medications"] = record.medications
+                        existingRecord["specialInstructions"] = record.specialInstructions
+                        existingRecord["allergiesAndFeedingInstructions"] = record.allergiesAndFeedingInstructions
+                        existingRecord["needsWalking"] = record.needsWalking
+                        existingRecord["walkingNotes"] = record.walkingNotes
+                        existingRecord["isDaycareFed"] = record.isDaycareFed
+                        existingRecord["notes"] = record.notes
+                        existingRecord["age"] = record.age
+                        existingRecord["gender"] = record.gender?.rawValue
+                        existingRecord["vaccinationEndDate"] = record.vaccinations.compactMap { $0.endDate }.min()
+                        existingRecord["isNeuteredOrSpayed"] = record.isNeuteredOrSpayed
+                        existingRecord["ownerPhoneNumber"] = record.ownerPhoneNumber
+                        existingRecord["isArrivalTimeSet"] = record.isArrivalTimeSet
+                        existingRecord["visitCount"] = record.visitCount
+                        existingRecord["createdAt"] = record.createdAt
+                        existingRecord["updatedAt"] = record.updatedAt
+                        existingRecord["isDeleted"] = record.isDeleted ? 1 : 0
+                        recordsToUpdate.append(existingRecord)
+                    }
+                }
+                
+                if !recordsToUpdate.isEmpty {
+                    let result = try await publicDatabase.modifyRecords(saving: recordsToUpdate, deleting: [])
+                    var successCount = 0
+                    var failureCount = 0
+                    for (_, saveResult) in result.saveResults {
+                        switch saveResult {
+                        case .success(_):
+                            successCount += 1
+                        case .failure(let error):
+                            failureCount += 1
+                            print("❌ Error updating record in batch: \(error)")
+                        }
+                    }
+                    print("✅ Batch \(batchIndex + 1)/\(batches.count): Updated \(successCount) records, \(failureCount) failed")
+                } else {
+                    print("⚠️ No records to update in batch \(batchIndex + 1)")
+                }
+            } catch {
+                print("❌ Failed to update batch \(batchIndex + 1): \(error)")
+            }
+        }
+    }
+    
+    private func batchDeleteHistoryRecords(_ records: [DogHistoryRecord]) async {
+        let batchSize = 50 // CloudKit batch limit
+        let batches = stride(from: 0, to: records.count, by: batchSize).map {
+            Array(records[$0..<min($0 + batchSize, records.count)])
+        }
+        
+        for (batchIndex, batch) in batches.enumerated() {
+            let recordIDs = batch.map { CKRecord.ID(recordName: $0.id.uuidString) }
+            
+            do {
+                let result = try await publicDatabase.modifyRecords(saving: [], deleting: recordIDs)
+                var successCount = 0
+                var failureCount = 0
+                for (_, deleteResult) in result.deleteResults {
+                    switch deleteResult {
+                    case .success(_):
+                        successCount += 1
+                    case .failure(let error):
+                        failureCount += 1
+                        print("❌ Error deleting record in batch: \(error)")
+                    }
+                }
+                print("✅ Batch \(batchIndex + 1)/\(batches.count): Deleted \(successCount) records, \(failureCount) failed")
+            } catch {
+                print("❌ Failed to delete batch \(batchIndex + 1): \(error)")
             }
         }
     }
@@ -121,7 +237,7 @@ class CloudKitHistoryService: ObservableObject {
         return await updateCacheForDate(startOfDay)
     }
     
-    private func updateCacheForDate(_ date: Date) async -> [DogHistoryRecord] {
+    func updateCacheForDate(_ date: Date) async -> [DogHistoryRecord] {
         let startOfDay = Calendar.current.startOfDay(for: date)
         
         print("[CloudKitHistoryService] updateCacheForDate called for \(startOfDay)")
@@ -147,7 +263,7 @@ class CloudKitHistoryService: ObservableObject {
         print("[CloudKitHistoryService] Incremental update for \(startOfDay), last sync: \(lastSync)")
         
         // Query only records modified since last sync
-        let predicate = NSPredicate(format: "date >= %@ AND date < %@ AND modifiedAt > %@", 
+        let predicate = NSPredicate(format: "date >= %@ AND date < %@ AND updatedAt > %@", 
                                    startOfDay as NSDate, 
                                    Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)! as NSDate,
                                    lastSync as NSDate)
@@ -637,12 +753,13 @@ extension DogHistoryRecord {
         self.notes = record["notes"] as? String
         self.age = record["age"] as? Int
         self.gender = DogGender(rawValue: record["gender"] as? String ?? "unknown")
-        self.vaccinationEndDate = record["vaccinationEndDate"] as? Date
+        self.vaccinations = record["vaccinations"] as? [VaccinationItem] ?? []
         self.isNeuteredOrSpayed = record["isNeuteredOrSpayed"] as? Bool
         self.ownerPhoneNumber = record["ownerPhoneNumber"] as? String
         self.isArrivalTimeSet = isArrivalTimeSet
         self.visitCount = visitCount
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.isDeleted = (record["isDeleted"] as? Int64 ?? 0) == 1
     }
 } 
