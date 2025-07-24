@@ -170,7 +170,13 @@ struct FutureBookingFormView: View {
     @State private var showingCamera = false
     @State private var age: Int? = nil
     @State private var gender: DogGender = .unknown
-    @State private var vaccinationEndDate: Date? = nil
+    @State private var vaccinations: [VaccinationItem] = [
+        .init(name: "Bordetella", endDate: nil),
+        .init(name: "DHPP", endDate: nil),
+        .init(name: "Rabies", endDate: nil),
+        .init(name: "CIV", endDate: nil),
+        .init(name: "Leptospirosis", endDate: nil)
+    ]
     @State private var isNeuteredOrSpayed: Bool = false
     @State private var ownerPhoneNumber: String = ""
     
@@ -261,17 +267,8 @@ struct FutureBookingFormView: View {
                             Text(gender.displayName).tag(gender)
                         }
                     }
-                    if let vaccinationEndDate = vaccinationEndDate {
-                        DatePicker("Vaccination End Date", selection: Binding(get: { vaccinationEndDate }, set: { self.vaccinationEndDate = $0 }), displayedComponents: .date)
-                            .datePickerStyle(.compact)
-                            .labelsHidden()
-                        Button("Clear Vaccination Date") {
-                            self.vaccinationEndDate = nil
-                        }
-                    } else {
-                        Button("Set Vaccination End Date") {
-                            self.vaccinationEndDate = Date()
-                        }
+                    Section("Vaccinations") {
+                        VaccinationListEditor(vaccinations: $vaccinations)
                     }
                     Toggle("Neutered/Spayed", isOn: $isNeuteredOrSpayed)
                     TextField("Owner's Phone Number", text: $ownerPhoneNumber)
@@ -358,6 +355,23 @@ struct FutureBookingFormView: View {
         isDaycareFed = importedDog.isDaycareFed
         notes = importedDog.notes ?? ""
         profileImage = importedDog.profilePictureData.flatMap { UIImage(data: $0) }
+        // Ensure vaccinations array has all 5 required vaccinations
+        let defaultVaccinations = [
+            VaccinationItem(name: "Bordetella", endDate: nil),
+            VaccinationItem(name: "DHPP", endDate: nil),
+            VaccinationItem(name: "Rabies", endDate: nil),
+            VaccinationItem(name: "CIV", endDate: nil),
+            VaccinationItem(name: "Leptospirosis", endDate: nil)
+        ]
+        
+        // Merge imported vaccinations with defaults, preserving dates from imported data
+        vaccinations = defaultVaccinations.map { defaultVax in
+            if let importedVax = importedDog.vaccinations.first(where: { $0.name == defaultVax.name }) {
+                return VaccinationItem(name: defaultVax.name, endDate: importedVax.endDate)
+            } else {
+                return defaultVax
+            }
+        }
         
         // Keep current arrival date and boarding status
         // arrivalDate stays as current date
@@ -382,7 +396,8 @@ struct FutureBookingFormView: View {
             isDaycareFed: isDaycareFed,
             notes: notes.isEmpty ? nil : notes,
             profilePictureData: profilePictureData,
-            isArrivalTimeSet: false
+            isArrivalTimeSet: false,
+            vaccinations: vaccinations.map { VaccinationItem(name: $0.name, endDate: $0.endDate) }
         )
         
         // Set boarding end date for boarding dogs
@@ -420,7 +435,13 @@ struct FutureBookingEditView: View {
     @State private var showingCamera = false
     @State private var age: Int? = nil
     @State private var gender: DogGender = .unknown
-    @State private var vaccinationEndDate: Date? = nil
+    @State private var vaccinations: [VaccinationItem] = [
+        .init(name: "Bordetella", endDate: nil),
+        .init(name: "DHPP", endDate: nil),
+        .init(name: "Rabies", endDate: nil),
+        .init(name: "CIV", endDate: nil),
+        .init(name: "Leptospirosis", endDate: nil)
+    ]
     @State private var isNeuteredOrSpayed: Bool = false
     @State private var ownerPhoneNumber: String = ""
     
@@ -450,7 +471,7 @@ struct FutureBookingEditView: View {
         self._profileImage = State(initialValue: dog.profilePictureData.flatMap { UIImage(data: $0) })
         self._age = State(initialValue: dog.age)
         self._gender = State(initialValue: dog.gender ?? .unknown)
-        self._vaccinationEndDate = State(initialValue: dog.vaccinationEndDate)
+        self._vaccinations = State(initialValue: dog.vaccinations.map { VaccinationItem(name: $0.name, endDate: $0.endDate) })
         self._isNeuteredOrSpayed = State(initialValue: dog.isNeuteredOrSpayed ?? false)
         self._ownerPhoneNumber = State(initialValue: dog.ownerPhoneNumber ?? "")
     }
@@ -524,17 +545,8 @@ struct FutureBookingEditView: View {
                             Text(gender.displayName).tag(gender)
                         }
                     }
-                    if let vaccinationEndDate = vaccinationEndDate {
-                        DatePicker("Vaccination End Date", selection: Binding(get: { vaccinationEndDate }, set: { self.vaccinationEndDate = $0 }), displayedComponents: .date)
-                            .datePickerStyle(.compact)
-                            .labelsHidden()
-                        Button("Clear Vaccination Date") {
-                            self.vaccinationEndDate = nil
-                        }
-                    } else {
-                        Button("Set Vaccination End Date") {
-                            self.vaccinationEndDate = Date()
-                        }
+                    Section("Vaccinations") {
+                        VaccinationListEditor(vaccinations: $vaccinations)
                     }
                     Toggle("Neutered/Spayed", isOn: $isNeuteredOrSpayed)
                     TextField("Owner's Phone Number", text: $ownerPhoneNumber)
@@ -602,7 +614,7 @@ struct FutureBookingEditView: View {
         updatedDog.updatedAt = Date()
         updatedDog.age = age
         updatedDog.gender = gender
-        updatedDog.vaccinationEndDate = vaccinationEndDate
+        updatedDog.vaccinations = vaccinations.map { VaccinationItem(name: $0.name, endDate: $0.endDate) }
         updatedDog.isNeuteredOrSpayed = isNeuteredOrSpayed
         updatedDog.ownerPhoneNumber = ownerPhoneNumber.isEmpty ? nil : ownerPhoneNumber
         

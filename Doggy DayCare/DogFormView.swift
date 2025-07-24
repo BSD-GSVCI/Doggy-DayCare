@@ -28,7 +28,13 @@ struct DogFormView: View {
     @State private var showingCamera = false
     @State private var age: Int? = nil
     @State private var gender: DogGender = .unknown
-    @State private var vaccinationEndDate: Date? = nil
+    @State private var vaccinations: [VaccinationItem] = [
+        .init(name: "Bordetella", endDate: nil),
+        .init(name: "DHPP", endDate: nil),
+        .init(name: "Rabies", endDate: nil),
+        .init(name: "CIV", endDate: nil),
+        .init(name: "Leptospirosis", endDate: nil)
+    ]
     @State private var isNeuteredOrSpayed: Bool = false
     @State private var ownerPhoneNumber: String = ""
     
@@ -36,6 +42,7 @@ struct DogFormView: View {
     let addToDatabaseOnly: Bool
     
     init(dog: Dog? = nil, addToDatabaseOnly: Bool = false) {
+        print("DogFormView init called")
         self.dog = dog
         self.addToDatabaseOnly = addToDatabaseOnly
         if let dog = dog {
@@ -56,7 +63,9 @@ struct DogFormView: View {
             }
             _age = State(initialValue: dog.age)
             _gender = State(initialValue: dog.gender ?? .unknown)
-            _vaccinationEndDate = State(initialValue: dog.vaccinationEndDate)
+            if !dog.vaccinations.isEmpty {
+                _vaccinations = State(initialValue: dog.vaccinations)
+            }
             _isNeuteredOrSpayed = State(initialValue: dog.isNeuteredOrSpayed ?? false)
             _ownerPhoneNumber = State(initialValue: dog.ownerPhoneNumber ?? "")
         } else {
@@ -75,13 +84,17 @@ struct DogFormView: View {
             _profileImage = State(initialValue: nil)
             _age = State(initialValue: nil)
             _gender = State(initialValue: .unknown)
-            _vaccinationEndDate = State(initialValue: nil)
+            _vaccinations = State(initialValue: [
+                .init(name: "Bordetella", endDate: nil),
+                .init(name: "DHPP", endDate: nil),
+                .init(name: "Rabies", endDate: nil),
+                .init(name: "CIV", endDate: nil),
+                .init(name: "Leptospirosis", endDate: nil)
+            ])
             _isNeuteredOrSpayed = State(initialValue: false)
             _ownerPhoneNumber = State(initialValue: "")
         }
     }
-    
-
     
     var body: some View {
         NavigationStack {
@@ -199,26 +212,16 @@ struct DogFormView: View {
                             Text(gender.displayName).tag(gender)
                         }
                     }
-                    if let vaccinationEndDate = vaccinationEndDate {
-                        let vaccinationEndDateBinding = Binding(
-                            get: { vaccinationEndDate },
-                            set: { self.vaccinationEndDate = $0 }
-                        )
-                        DatePicker("Vaccination End Date", selection: vaccinationEndDateBinding, displayedComponents: .date)
-                            .datePickerStyle(.compact)
-                            .labelsHidden()
-                        Button("Clear Vaccination Date") {
-                            self.vaccinationEndDate = nil
-                        }
-                    } else {
-                        Button("Set Vaccination End Date") {
-                            self.vaccinationEndDate = Date()
-                        }
-                    }
                     Toggle("Neutered/Spayed", isOn: $isNeuteredOrSpayed)
                     TextField("Owner's Phone Number", text: $ownerPhoneNumber)
                         .keyboardType(.phonePad)
                 }
+                Section("Vaccinations") {
+                    VaccinationListEditor(vaccinations: $vaccinations)
+                }
+            }
+            .onChange(of: vaccinations) {
+                print("Vaccinations changed: \(vaccinations.map { $0.name })")
             }
             .navigationTitle(dog == nil ? "Add Dog" : "Edit Dog")
             .navigationBarTitleDisplayMode(.inline)
@@ -316,7 +319,23 @@ struct DogFormView: View {
         profileImage = importedDog.profilePictureData.flatMap { UIImage(data: $0) }
         age = importedDog.age
         gender = importedDog.gender ?? .unknown
-        vaccinationEndDate = importedDog.vaccinationEndDate
+        // Ensure vaccinations array has all 5 required vaccinations
+        let defaultVaccinations = [
+            VaccinationItem(name: "Bordetella", endDate: nil),
+            VaccinationItem(name: "DHPP", endDate: nil),
+            VaccinationItem(name: "Rabies", endDate: nil),
+            VaccinationItem(name: "CIV", endDate: nil),
+            VaccinationItem(name: "Leptospirosis", endDate: nil)
+        ]
+        
+        // Merge imported vaccinations with defaults, preserving dates from imported data
+        vaccinations = defaultVaccinations.map { defaultVax in
+            if let importedVax = importedDog.vaccinations.first(where: { $0.name == defaultVax.name }) {
+                return VaccinationItem(name: defaultVax.name, endDate: importedVax.endDate)
+            } else {
+                return defaultVax
+            }
+        }
         isNeuteredOrSpayed = importedDog.isNeuteredOrSpayed ?? false
         ownerPhoneNumber = importedDog.ownerPhoneNumber ?? ""
         
@@ -349,7 +368,7 @@ struct DogFormView: View {
             updatedDog.profilePictureData = profilePictureData
             updatedDog.age = age ?? existingDog.age
             updatedDog.gender = (gender == .unknown ? existingDog.gender : gender)
-            updatedDog.vaccinationEndDate = vaccinationEndDate ?? existingDog.vaccinationEndDate
+            updatedDog.vaccinations = vaccinations
             updatedDog.isNeuteredOrSpayed = isNeuteredOrSpayed ? true : (existingDog.isNeuteredOrSpayed ?? false)
             updatedDog.ownerPhoneNumber = ownerPhoneNumber.isEmpty ? (existingDog.ownerPhoneNumber ?? "") : ownerPhoneNumber
             updatedDog.updatedAt = Date()
@@ -373,7 +392,7 @@ struct DogFormView: View {
                 profilePictureData: profilePictureData,
                 age: age,
                 gender: gender,
-                vaccinationEndDate: vaccinationEndDate,
+                vaccinations: vaccinations,
                 isNeuteredOrSpayed: isNeuteredOrSpayed,
                 ownerPhoneNumber: ownerPhoneNumber
             )
@@ -644,6 +663,30 @@ struct ImportedDogRow: View {
             await MainActor.run {
                 onImport()
                 isImporting = false
+            }
+        }
+    }
+} 
+
+struct VaccinationListEditor: View {
+    @Binding var vaccinations: [VaccinationItem]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach($vaccinations.prefix(5)) { $item in
+                HStack {
+                    Text(item.name)
+                        .frame(maxWidth: 120, alignment: .leading)
+                    DatePicker(
+                        "End Date",
+                        selection: Binding(
+                            get: { item.endDate ?? Date() },
+                            set: { item.endDate = $0 }
+                        ),
+                        displayedComponents: .date
+                    )
+                    .labelsHidden()
+                }
             }
         }
     }
