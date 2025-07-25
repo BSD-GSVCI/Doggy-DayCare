@@ -132,7 +132,14 @@ struct DogRow: View {
             .padding(.vertical, 4)
         }
         .background(
-            (dog.vaccinationEndDate != nil && Calendar.current.startOfDay(for: dog.vaccinationEndDate!) <= Calendar.current.startOfDay(for: Date())) ? Color.yellow.opacity(0.3) : Color.clear
+            { () -> Color in
+                let soonestVaxDate = dog.vaccinations.compactMap { $0.endDate }.min()
+                if let soonest = soonestVaxDate, Calendar.current.startOfDay(for: soonest) <= Calendar.current.startOfDay(for: Date()) {
+                    return Color.yellow.opacity(0.3)
+                } else {
+                    return Color.clear
+                }
+            }()
         )
         .alert("Undo Departure", isPresented: $showingUndoAlert) {
             Button("Cancel", role: .cancel) { }

@@ -59,7 +59,7 @@ struct LoginView: View {
                     Image("GreenHouse_With_Dog")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 160, height: 160)
+                        .frame(width: 320, height: 320)
                         .padding(.bottom, 20)
                     
                     Text("Green House Doggy DayCare")

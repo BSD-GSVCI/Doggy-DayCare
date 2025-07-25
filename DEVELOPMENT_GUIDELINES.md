@@ -65,3 +65,9 @@ This requirement is mandatory for all contributors and applies to all code, docu
 - Users depend on it working correctly
 - Accuracy is more important than speed
 - When in doubt, ask for clarification 
+
+## Deprecated: WalkingRecord
+
+- **WalkingRecord is now deprecated and should never be used.**
+- There is no need to track walking separately; all walking in a daycare business is for potty breaks and should be tracked with `PottyRecord` only.
+- Do **not** use `WalkingRecord` for any new features or future development. 

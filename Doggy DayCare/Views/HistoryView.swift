@@ -130,7 +130,10 @@ struct HistoryView: View {
                                 isLoading = true
                             }
                             Task {
-                                await loadHistoryDataFromCloud()
+                                // Take a new snapshot for the selected date using the current main page dogs
+                                await cloudKitHistoryService.recordSnapshot(for: selectedDate, dogs: dataManager.dogs)
+                                // Reload history data for the selected date
+                                await loadHistoryData()
                                 isLoading = false
                             }
                         } label: {
@@ -140,7 +143,7 @@ struct HistoryView: View {
                             } else {
                                 HStack(spacing: 4) {
                                     Image(systemName: "arrow.clockwise")
-                                    Text("Refresh")
+                                    Text("Full Refresh")
                                 }
                                 .foregroundStyle(.blue)
                             }

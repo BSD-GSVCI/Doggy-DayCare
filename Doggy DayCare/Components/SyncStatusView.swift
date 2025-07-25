@@ -24,8 +24,6 @@ private func getUserFriendlyOperationName(_ operation: String) -> String {
         return "Add Medication Record"
     case "addPottyRecord":
         return "Add Potty Record"
-    case "addWalkingRecord":
-        return "Add Walking Record"
     default:
         return operation.capitalized
     }

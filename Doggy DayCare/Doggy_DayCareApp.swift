@@ -157,7 +157,7 @@ struct Doggy_DayCareApp: App {
                         Image("GreenHouse_With_Dog")
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(width: 120, height: 120)
+                            .frame(width: 420, height: 420)
                         
                         VStack(spacing: 15) {
                             Text("Green House Doggy DayCare")

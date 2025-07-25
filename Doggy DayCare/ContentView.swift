@@ -90,6 +90,8 @@ struct ContentView: View {
     @State private var showingLogoutConfirmation = false
     @State private var showingHistoryView = false
     @State private var showingStaffManagement = false
+    @State private var showingActivityLog = false
+    @State private var showingDeleteLog = false
     @State private var searchText = ""
     @State private var selectedFilter: DogFilter = .all
     
@@ -291,7 +293,31 @@ struct ContentView: View {
                         }
                         
                         Menu {
+                            Button {
+                                showingHistoryView = true
+                            } label: {
+                                Label("History", systemImage: "scroll")
+                            }
+                            
                             if authService.currentUser?.isOwner == true {
+                                Button {
+                                    showingStaffManagement = true
+                                } label: {
+                                    Label("Staff Management", systemImage: "person.2")
+                                }
+                                
+                                Button {
+                                    showingActivityLog = true
+                                } label: {
+                                    Label("View Activity Logs", systemImage: "tray.full")
+                                }
+                                
+                                Button {
+                                    showingDeleteLog = true
+                                } label: {
+                                    Label("View Delete Logs", systemImage: "archivebox")
+                                }
+                                
                                 Button {
                                     showingFolderPicker = true
                                 } label: {
@@ -305,24 +331,6 @@ struct ContentView: View {
                                     } label: {
                                         Label("Clear Backup Folder", systemImage: "folder.badge.minus")
                                     }
-                                    
-                                    Divider()
-                                }
-                                
-
-                            }
-                            
-                            Button {
-                                showingHistoryView = true
-                            } label: {
-                                Label("History", systemImage: "scroll")
-                            }
-                            
-                            if authService.currentUser?.isOwner == true {
-                                Button {
-                                    showingStaffManagement = true
-                                } label: {
-                                    Label("Staff Management", systemImage: "person.2")
                                 }
                                 
                                 Divider()
@@ -402,6 +410,16 @@ struct ContentView: View {
             .sheet(isPresented: $showingStaffManagement) {
                 NavigationStack {
                     StaffManagementView()
+                }
+            }
+            .sheet(isPresented: $showingActivityLog) {
+                NavigationStack {
+                    ActivityLogView()
+                }
+            }
+            .sheet(isPresented: $showingDeleteLog) {
+                NavigationStack {
+                    DeleteLogView()
                 }
             }
 

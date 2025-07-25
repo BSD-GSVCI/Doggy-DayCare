@@ -30,6 +30,15 @@ struct ImportDatabaseView: View {
                 }
                 .padding(.top)
                 
+                // Total dogs count
+                if !previewDogs.isEmpty {
+                    Text("Total Dogs in Database: \(previewDogs.count)")
+                        .font(.headline)
+                        .foregroundColor(.accentColor)
+                        .padding(.top, 4)
+                        .padding(.bottom, 4)
+                }
+                
                 // Import data input
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {

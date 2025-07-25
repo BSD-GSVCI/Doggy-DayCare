@@ -16,6 +16,7 @@ class DataManager: ObservableObject {
     
     // Incremental sync tracking
     private var lastSyncTime: Date = Date.distantPast
+    private var lastAllDogsSyncTime: Date = Date.distantPast
     
     private init() {
         print("📱 DataManager initialized")
@@ -139,6 +140,10 @@ class DataManager: ObservableObject {
     func addDog(_ dog: Dog) async {
         isLoading = true
         errorMessage = nil
+        
+        // Log the add action
+        await logDogActivity(action: "ADD_DOG", dog: dog, extra: "Adding new dog to main list")
+        
         do {
             let cloudKitDog = dog.toCloudKitDog()
             let addedCloudKitDog = try await cloudKitService.createDog(cloudKitDog)
@@ -161,6 +166,10 @@ class DataManager: ObservableObject {
     func addDogToDatabase(_ dog: Dog) async {
         isLoading = true
         errorMessage = nil
+        
+        // Log the add action
+        await logDogActivity(action: "ADD_DOG_TO_DATABASE", dog: dog, extra: "Adding dog to database only")
+        
         do {
             let cloudKitDog = dog.toCloudKitDog()
             let addedCloudKitDog = try await cloudKitService.createDog(cloudKitDog)
@@ -181,6 +190,9 @@ class DataManager: ObservableObject {
     func updateDog(_ dog: Dog) async {
         print("🔄 DataManager.updateDog called for: \(dog.name)")
         print("📅 Departure date being set: \(dog.departureDate?.description ?? "nil")")
+        
+        // Log the update action
+        await logDogActivity(action: "UPDATE_DOG", dog: dog, extra: "Updating dog information")
         
         isLoading = true
         errorMessage = nil
@@ -204,7 +216,7 @@ class DataManager: ObservableObject {
                 isDeleted: dog.isDeleted,
                 age: dog.age,
                 gender: dog.gender,
-                vaccinationEndDate: dog.vaccinationEndDate,
+                vaccinations: dog.vaccinations,
                 isNeuteredOrSpayed: dog.isNeuteredOrSpayed,
                 ownerPhoneNumber: dog.ownerPhoneNumber
             )
@@ -212,7 +224,6 @@ class DataManager: ObservableObject {
             updatedDog.feedingRecords = dog.feedingRecords
             updatedDog.medicationRecords = dog.medicationRecords
             updatedDog.pottyRecords = dog.pottyRecords
-            updatedDog.walkingRecords = dog.walkingRecords
             // Copy additional properties
             updatedDog.departureDate = dog.departureDate
             updatedDog.updatedAt = Date()
@@ -254,6 +265,12 @@ class DataManager: ObservableObject {
         
         print("🔄 Starting delete dog: \(dog.name)")
         
+        // Log deletion to persistent file for debugging
+        await logDeletion(dog: dog, callStack: Thread.callStackSymbols.prefix(5).map { $0.components(separatedBy: " ").last ?? "" }.joined(separator: " -> "))
+        
+        // Log the delete action to activity log
+        await logDogActivity(action: "DELETE_DOG", dog: dog, extra: "Marking dog as deleted")
+        
         // Remove from local cache immediately for responsive UI
         await MainActor.run {
             self.dogs.removeAll { $0.id == dog.id }
@@ -285,6 +302,9 @@ class DataManager: ObservableObject {
         errorMessage = nil
         
         print("🔄 Starting permanent delete dog from database: \(dog.name)")
+        
+        // Log the permanent delete action
+        await logDogActivity(action: "PERMANENTLY_DELETE_DOG", dog: dog, extra: "Permanently deleting dog from database")
         
         // Only remove from allDogs array (database view), NOT from main dogs list
         await MainActor.run {
@@ -318,6 +338,7 @@ class DataManager: ObservableObject {
             ownerName: dog.ownerName,
             arrivalDate: dog.arrivalDate,
             isBoarding: dog.isBoarding,
+            boardingEndDate: newEndDate,
             medications: dog.medications,
             specialInstructions: dog.specialInstructions,
             allergiesAndFeedingInstructions: dog.allergiesAndFeedingInstructions,
@@ -328,7 +349,6 @@ class DataManager: ObservableObject {
             profilePictureData: dog.profilePictureData,
             isArrivalTimeSet: dog.isArrivalTimeSet
         )
-        updatedDog.boardingEndDate = newEndDate
         updatedDog.departureDate = dog.departureDate
         updatedDog.updatedAt = Date()
         // Note: updateDog is async but doesn't return a value, so we don't need to capture the result
@@ -540,35 +560,6 @@ class DataManager: ObservableObject {
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                     self.dogs[index].pottyRecords.append(record)
-                }
-            }
-        }
-        
-        isLoading = false
-    }
-    
-    func deleteWalkingRecord(_ record: WalkingRecord, from dog: Dog) async {
-        isLoading = true
-        errorMessage = nil
-        
-        // Update local cache immediately for responsive UI
-        await MainActor.run {
-            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].walkingRecords.removeAll { $0.id == record.id }
-                self.dogs[index].updatedAt = Date()
-            }
-        }
-        
-        // Update CloudKit with only the deletion
-        do {
-            try await cloudKitService.deleteWalkingRecord(record, for: dog.id.uuidString)
-            print("✅ Walking record deleted from CloudKit for \(dog.name)")
-        } catch {
-            print("❌ Failed to delete walking record from CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].walkingRecords.append(record)
                 }
             }
         }
@@ -855,44 +846,6 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func addWalkingRecord(to dog: Dog, notes: String?, recordedBy: String?) async {
-        isLoading = true
-        errorMessage = nil
-        
-        // Create the new record
-        let newRecord = WalkingRecord(
-            timestamp: Date(),
-            notes: notes,
-            recordedBy: recordedBy
-        )
-        
-        // Update local cache immediately for responsive UI
-        await MainActor.run {
-            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].walkingRecords.append(newRecord)
-                self.dogs[index].updatedAt = Date()
-            }
-        }
-        
-        // Update CloudKit with only the new record
-        do {
-            try await cloudKitService.addWalkingRecord(newRecord, for: dog.id.uuidString)
-            print("✅ Walking record added to CloudKit for \(dog.name)")
-            // Update sync time for new record
-            lastSyncTime = Date()
-        } catch {
-            print("❌ Failed to add walking record to CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].walkingRecords.removeLast()
-                }
-            }
-        }
-        
-        isLoading = false
-    }
-    
     // MARK: - Search and Filtering
     
     func searchDogs(query: String) async -> [Dog] {
@@ -1020,6 +973,9 @@ class DataManager: ObservableObject {
         
         print("🔄 Starting optimized checkout for dog: \(dog.name)")
         
+        // Log the checkout action
+        await logDogActivity(action: "CHECKOUT_DOG", dog: dog, extra: "Checking out dog - setting departure date to current time")
+        
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
@@ -1126,6 +1082,10 @@ class DataManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         print("🔄 Starting optimized undo departure for dog: \(dog.name)")
+        
+        // Log the undo departure action
+        await logDogActivity(action: "UNDO_DEPARTURE", dog: dog, extra: "Undoing departure - setting departure date to nil")
+        
         // Update local cache immediately
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
@@ -1156,6 +1116,10 @@ class DataManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         print("🔄 Starting optimized edit departure for dog: \(dog.name)")
+        
+        // Log the edit departure action
+        await logDogActivity(action: "EDIT_DEPARTURE", dog: dog, extra: "Editing departure date to: \(newDate.formatted())")
+        
         // Update local cache immediately
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
@@ -1250,6 +1214,39 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
+    // True incremental sync for all dogs (including deleted)
+    func fetchAllDogsIncremental() async {
+        isLoading = true
+        errorMessage = nil
+        print("🔍 DataManager: Starting fetchAllDogsIncremental (since \(lastAllDogsSyncTime))...")
+        do {
+            let changedCloudKitDogs = try await cloudKitService.fetchAllDogsIncremental(since: lastAllDogsSyncTime)
+            print("🔍 DataManager: Got \(changedCloudKitDogs.count) changed CloudKit dogs (including deleted)")
+            let changedLocalDogs = changedCloudKitDogs.map { $0.toDog() }
+            // Merge changes into allDogs
+            var updatedAllDogs = allDogs
+            for changedDog in changedLocalDogs {
+                if let idx = updatedAllDogs.firstIndex(where: { $0.id == changedDog.id }) {
+                    updatedAllDogs[idx] = changedDog
+                } else {
+                    updatedAllDogs.append(changedDog)
+                }
+            }
+            await MainActor.run {
+                self.allDogs = updatedAllDogs.sorted { $0.updatedAt > $1.updatedAt }
+                self.lastAllDogsSyncTime = Date()
+                self.isLoading = false
+                print("✅ DataManager: Updated allDogs with incremental changes (\(self.allDogs.count) total)")
+            }
+        } catch {
+            print("❌ Failed to fetch incremental all dogs: \(error)")
+            await MainActor.run {
+                self.errorMessage = "Failed to fetch all dogs: \(error.localizedDescription)"
+                self.isLoading = false
+            }
+        }
+    }
+
     // MARK: - Optimized Import Methods
     
     func fetchDogsForImport() async -> [Dog] {
@@ -1313,6 +1310,164 @@ class DataManager: ObservableObject {
         
         return (memoryCount, diskSize)
     }
+    
+    // MARK: - Debug Logging
+    
+    func logDogActivity(action: String, dog: Dog, extra: String = "") async {
+        print("🔍 Starting logDogActivity for action: \(action), dog: \(dog.name)")
+        
+        let timestamp = Date().formatted(date: .complete, time: .complete)
+        
+        // Get current user information
+        let currentUser = AuthenticationService.shared.currentUser
+        let userName = currentUser?.name ?? "Unknown User"
+        let userID = currentUser?.id ?? "Unknown ID"
+        let userRole = currentUser?.isOwner == true ? "Owner" : "Staff"
+        
+        print("🔍 User info - Name: \(userName), ID: \(userID), Role: \(userRole)")
+        
+        let logEntry = """
+
+🐾 DOG ACTIVITY LOGGED
+=======================
+Timestamp: \(timestamp)
+Action: \(action)
+User: \(userName) (\(userRole))
+User ID: \(userID)
+Dog Name: \(dog.name)
+Dog ID: \(dog.id.uuidString)
+Owner: \(dog.ownerName ?? "None")
+Is Currently Present: \(dog.isCurrentlyPresent)
+Is Boarding: \(dog.isBoarding)
+Is Deleted: \(dog.isDeleted)
+Arrival Date: \(dog.arrivalDate.formatted())
+Departure Date: \(dog.departureDate?.formatted() ?? "None")
+Boarding End Date: \(dog.boardingEndDate?.formatted() ?? "None")
+Extra: \(extra)
+=======================
+
+"""
+        do {
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let logFileURL = documentsPath.appendingPathComponent("dog_activity.log")
+            print("🔍 Writing to log file: \(logFileURL.path)")
+            
+            if let existingData = try? Data(contentsOf: logFileURL) {
+                let existingLog = String(data: existingData, encoding: .utf8) ?? ""
+                let fullLog = existingLog + logEntry
+                try fullLog.write(to: logFileURL, atomically: true, encoding: .utf8)
+                print("📝 Activity logged to existing file: \(logFileURL.path)")
+            } else {
+                try logEntry.write(to: logFileURL, atomically: true, encoding: .utf8)
+                print("📝 Activity logged to new file: \(logFileURL.path)")
+            }
+        } catch {
+            print("❌ Failed to log dog activity: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
+        }
+        
+        let log = ActivityLogRecord(
+            userId: AuthenticationService.shared.currentUser?.id ?? "unknown",
+            userName: AuthenticationService.shared.currentUser?.name ?? "unknown",
+            action: action,
+            timestamp: Date(),
+            dogId: dog.id.uuidString,
+            dogName: dog.name,
+            details: extra
+        )
+        Task {
+            try? await cloudKitService.saveActivityLog(log)
+        }
+    }
+
+    func getDogActivityLog() -> String {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let logFileURL = documentsPath.appendingPathComponent("dog_activity.log")
+        if let logData = try? Data(contentsOf: logFileURL) {
+            return String(data: logData, encoding: .utf8) ?? "No activity log found"
+        } else {
+            return "No activity log file found"
+        }
+    }
+
+    func clearDogActivityLog() {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let logFileURL = documentsPath.appendingPathComponent("dog_activity.log")
+        if FileManager.default.fileExists(atPath: logFileURL.path) {
+            do {
+                try FileManager.default.removeItem(at: logFileURL)
+                print("🗑️ Activity log cleared")
+            } catch {
+                print("❌ Failed to clear activity log: \(error)")
+            }
+        }
+    }
+
+    private func logDeletion(dog: Dog, callStack: String) async {
+        let timestamp = Date().formatted(date: .complete, time: .complete)
+        let logEntry = """
+
+🗑️ DOG DELETION LOGGED
+=======================
+Timestamp: \(timestamp)
+Dog Name: \(dog.name)
+Dog ID: \(dog.id.uuidString)
+Owner: \(dog.ownerName ?? "None")
+Is Currently Present: \(dog.isCurrentlyPresent)
+Is Boarding: \(dog.isBoarding)
+Arrival Date: \(dog.arrivalDate.formatted())
+Departure Date: \(dog.departureDate?.formatted() ?? "None")
+Boarding End Date: \(dog.boardingEndDate?.formatted() ?? "None")
+Call Stack: \(callStack)
+=======================
+
+"""
+        
+        // Write to documents directory
+        do {
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let logFileURL = documentsPath.appendingPathComponent("dog_deletions.log")
+            
+            // Append to existing log file
+            if let existingData = try? Data(contentsOf: logFileURL) {
+                let existingLog = String(data: existingData, encoding: .utf8) ?? ""
+                let fullLog = existingLog + logEntry
+                try fullLog.write(to: logFileURL, atomically: true, encoding: .utf8)
+            } else {
+                // Create new log file
+                try logEntry.write(to: logFileURL, atomically: true, encoding: .utf8)
+            }
+            
+            print("📝 Deletion logged to: \(logFileURL.path)")
+        } catch {
+            print("❌ Failed to log deletion: \(error)")
+        }
+    }
+    
+    func getDeletionLog() -> String {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let logFileURL = documentsPath.appendingPathComponent("dog_deletions.log")
+        
+        if let logData = try? Data(contentsOf: logFileURL) {
+            return String(data: logData, encoding: .utf8) ?? "No deletion log found"
+        } else {
+            return "No deletion log file found"
+        }
+    }
+    
+    func clearDeletionLog() {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let logFileURL = documentsPath.appendingPathComponent("dog_deletions.log")
+        
+        if FileManager.default.fileExists(atPath: logFileURL.path) {
+            do {
+                try FileManager.default.removeItem(at: logFileURL)
+                print("🗑️ Deletion log cleared")
+            } catch {
+                print("❌ Failed to clear deletion log: \(error)")
+            }
+        }
+    }
 }
 
 // MARK: - Conversion Extensions
@@ -1336,25 +1491,27 @@ extension CloudKitDog {
             isArrivalTimeSet: isArrivalTimeSet,
             isDeleted: isDeleted
         )
-        
         // Copy additional properties
         dog.departureDate = departureDate
         dog.boardingEndDate = boardingEndDate
         dog.createdAt = createdAt
         dog.updatedAt = updatedAt
-        
         // Copy all records
         dog.feedingRecords = feedingRecords
         dog.medicationRecords = medicationRecords
         dog.pottyRecords = pottyRecords
-        dog.walkingRecords = walkingRecords
-        
         dog.age = Int(age)
         dog.gender = DogGender(rawValue: gender)
-        dog.vaccinationEndDate = vaccinationEndDate
         dog.isNeuteredOrSpayed = isNeuteredOrSpayed
         dog.ownerPhoneNumber = ownerPhoneNumber
-        
+        // Build vaccinations array from explicit fields
+        dog.vaccinations = [
+            VaccinationItem(name: "Bordetella", endDate: bordetellaEndDate),
+            VaccinationItem(name: "DHPP", endDate: dhppEndDate),
+            VaccinationItem(name: "Rabies", endDate: rabiesEndDate),
+            VaccinationItem(name: "CIV", endDate: civEndDate),
+            VaccinationItem(name: "Leptospirosis", endDate: leptospirosisEndDate)
+        ]
         return dog
     }
 }
@@ -1382,6 +1539,10 @@ extension CloudKitUser {
 
 extension Dog {
     func toCloudKitDog() -> CloudKitDog {
+        // Extract end dates from vaccinations array
+        func endDate(for name: String) -> Date? {
+            vaccinations.first(where: { $0.name == name })?.endDate
+        }
         return CloudKitDog(
             id: id.uuidString,
             name: name,
@@ -1400,12 +1561,15 @@ extension Dog {
             feedingRecords: feedingRecords,
             medicationRecords: medicationRecords,
             pottyRecords: pottyRecords,
-            walkingRecords: walkingRecords,
             isArrivalTimeSet: isArrivalTimeSet,
             isDeleted: isDeleted,
             age: age != nil ? String(age!) : "",
             gender: gender?.rawValue ?? "unknown",
-            vaccinationEndDate: vaccinationEndDate,
+            bordetellaEndDate: endDate(for: "Bordetella"),
+            dhppEndDate: endDate(for: "DHPP"),
+            rabiesEndDate: endDate(for: "Rabies"),
+            civEndDate: endDate(for: "CIV"),
+            leptospirosisEndDate: endDate(for: "Leptospirosis"),
             isNeuteredOrSpayed: isNeuteredOrSpayed ?? false,
             ownerPhoneNumber: ownerPhoneNumber
         )

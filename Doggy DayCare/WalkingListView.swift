@@ -239,11 +239,7 @@ struct DogWalkingRow: View {
                 }
             }
             
-            if !dog.walkingRecords.isEmpty {
-                Text("Last walked: \(dog.walkingRecords.last?.timestamp.formatted(date: .abbreviated, time: .shortened) ?? "Never")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            // Last walked time removed
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
@@ -255,19 +251,7 @@ struct DogWalkingRow: View {
         }
     }
     
-    private func addWalkingRecord() {
-        Task {
-            await dataManager.addWalkingRecord(to: dog, notes: nil, recordedBy: authService.currentUser?.name)
-        }
-    }
-    
-    private func deleteLastWalk() {
-        if let lastWalk = dog.walkingRecords.last {
-            Task {
-                await dataManager.deleteWalkingRecord(lastWalk, from: dog)
-            }
-        }
-    }
+    // Remove all walking record related logic and UI
     
     private func deletePottyRecord(_ record: PottyRecord) {
         Task {
@@ -508,14 +492,7 @@ struct AddWalkingView: View {
                         dismiss()
                     }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Record") {
-                        Task {
-                            await recordWalk()
-                        }
-                    }
-                    .disabled(isLoading)
-                }
+                // Removed confirmation button for walk recording
             }
             .overlay {
                 if isLoading {
@@ -532,14 +509,7 @@ struct AddWalkingView: View {
         }
     }
     
-    private func recordWalk() async {
-        isLoading = true
-        
-        await dataManager.addWalkingRecord(to: dog, notes: notes.isEmpty ? nil : notes, recordedBy: AuthenticationService.shared.currentUser?.name)
-        
-        isLoading = false
-        dismiss()
-    }
+
 }
 
 struct PottyPopupView: View {

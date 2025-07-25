@@ -1,17 +1,5 @@
+// DEPRECATION NOTICE: WalkingRecord is now deprecated and should never be used anywhere in the codebase. There is no need to track walking separately, as all walking in a daycare business is for potty breaks and should be tracked with PottyRecords only. -- 2024
 import Foundation
-
-struct WalkingRecord: Codable, Identifiable {
-    var id = UUID()
-    var timestamp: Date
-    var notes: String?
-    var recordedBy: String?  // Store user name instead of User reference
-    
-    init(timestamp: Date, notes: String? = nil, recordedBy: String? = nil) {
-        self.timestamp = timestamp
-        self.notes = notes
-        self.recordedBy = recordedBy
-    }
-}
 
 struct PottyRecord: Codable, Identifiable {
     var id = UUID()
@@ -104,6 +92,12 @@ enum DogGender: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+struct VaccinationItem: Codable, Hashable, Identifiable {
+    var id = UUID()
+    var name: String
+    var endDate: Date?
+}
+
 struct Dog: Codable, Identifiable {
     var id: UUID
     var name: String
@@ -129,7 +123,7 @@ struct Dog: Codable, Identifiable {
     var isDeleted: Bool = false  // Track if dog is marked as deleted
     var age: Int?
     var gender: DogGender?
-    var vaccinationEndDate: Date?
+    var vaccinations: [VaccinationItem] = []
     var isNeuteredOrSpayed: Bool?
     var ownerPhoneNumber: String?
     
@@ -137,7 +131,6 @@ struct Dog: Codable, Identifiable {
     var feedingRecords: [FeedingRecord] = []
     var medicationRecords: [MedicationRecord] = []
     var pottyRecords: [PottyRecord] = []
-    var walkingRecords: [WalkingRecord] = []
     
     init(
         id: UUID = UUID(),
@@ -158,7 +151,7 @@ struct Dog: Codable, Identifiable {
         isDeleted: Bool = false,
         age: Int? = nil,
         gender: DogGender? = nil,
-        vaccinationEndDate: Date? = nil,
+        vaccinations: [VaccinationItem] = [],
         isNeuteredOrSpayed: Bool? = nil,
         ownerPhoneNumber: String? = nil
     ) {
@@ -184,7 +177,7 @@ struct Dog: Codable, Identifiable {
         self.isDeleted = isDeleted
         self.age = age
         self.gender = gender
-        self.vaccinationEndDate = vaccinationEndDate
+        self.vaccinations = vaccinations
         self.isNeuteredOrSpayed = isNeuteredOrSpayed
         self.ownerPhoneNumber = ownerPhoneNumber
     }
@@ -274,34 +267,6 @@ struct Dog: Codable, Identifiable {
     mutating func updateMedicationRecord(at timestamp: Date, notes: String?, modifiedBy: User? = nil) {
         if let index = medicationRecords.firstIndex(where: { $0.timestamp == timestamp }) {
             medicationRecords[index].notes = notes
-            updatedAt = Date()
-            lastModifiedBy = modifiedBy
-        }
-    }
-    
-    mutating func addWalkingRecord(notes: String?, recordedBy: User? = nil) {
-        let record = WalkingRecord(
-            timestamp: Date(),
-            notes: notes,
-            recordedBy: recordedBy?.name
-        )
-        walkingRecords.append(record)
-        updatedAt = Date()
-        lastModifiedBy = recordedBy
-        print("Added walking record for \(name), total records: \(walkingRecords.count)")
-    }
-    
-    mutating func removeWalkingRecord(at timestamp: Date, modifiedBy: User? = nil) {
-        if walkingRecords.contains(where: { $0.timestamp == timestamp }) {
-            walkingRecords.removeAll { $0.timestamp == timestamp }
-            updatedAt = Date()
-            lastModifiedBy = modifiedBy
-        }
-    }
-    
-    mutating func updateWalkingRecord(at timestamp: Date, notes: String?, modifiedBy: User? = nil) {
-        if let index = walkingRecords.firstIndex(where: { $0.timestamp == timestamp }) {
-            walkingRecords[index].notes = notes
             updatedAt = Date()
             lastModifiedBy = modifiedBy
         }

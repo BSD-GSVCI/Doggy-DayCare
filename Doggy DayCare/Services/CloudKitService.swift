@@ -18,7 +18,7 @@ class CloudKitService: ObservableObject {
         static let feedingRecord = "FeedingRecord"
         static let medicationRecord = "MedicationRecord"
         static let pottyRecord = "PottyRecord"
-        static let walkingRecord = "WalkingRecord"
+    
     }
     
     // Field names for User
@@ -73,7 +73,11 @@ class CloudKitService: ObservableObject {
         static let isDeleted = "isDeleted"  // Added field for deleted status
         static let age = "age"
         static let gender = "gender"
-        static let vaccinationEndDate = "vaccinationEndDate"
+        static let bordetellaEndDate = "bordetellaEndDate"
+        static let dhppEndDate = "dhppEndDate"
+        static let rabiesEndDate = "rabiesEndDate"
+        static let civEndDate = "civEndDate"
+        static let leptospirosisEndDate = "leptospirosisEndDate"
         static let isNeuteredOrSpayed = "isNeuteredOrSpayed"
         static let ownerPhoneNumber = "ownerPhoneNumber"
         
@@ -353,7 +357,11 @@ class CloudKitService: ObservableObject {
         record[DogFields.isArrivalTimeSet] = dog.isArrivalTimeSet ? 1 : 0
         record[DogFields.age] = dog.age
         record[DogFields.gender] = dog.gender
-        record[DogFields.vaccinationEndDate] = dog.vaccinationEndDate
+        record[DogFields.bordetellaEndDate] = dog.bordetellaEndDate
+        record[DogFields.dhppEndDate] = dog.dhppEndDate
+        record[DogFields.rabiesEndDate] = dog.rabiesEndDate
+        record[DogFields.civEndDate] = dog.civEndDate
+        record[DogFields.leptospirosisEndDate] = dog.leptospirosisEndDate
         record[DogFields.isNeuteredOrSpayed] = dog.isNeuteredOrSpayed ? 1 : 0
         record[DogFields.ownerPhoneNumber] = dog.ownerPhoneNumber
         
@@ -411,7 +419,6 @@ class CloudKitService: ObservableObject {
         try await deleteFeedingRecords(for: dog.id)
         try await deleteMedicationRecords(for: dog.id)
         try await deletePottyRecords(for: dog.id)
-        try await deleteWalkingRecords(for: dog.id)
         
         // Create audit trail entry
         try await createDogChange(
@@ -442,7 +449,6 @@ class CloudKitService: ObservableObject {
         try await deleteFeedingRecords(for: dog.id)
         try await deleteMedicationRecords(for: dog.id)
         try await deletePottyRecords(for: dog.id)
-        try await deleteWalkingRecords(for: dog.id)
         
         // Delete the dog record permanently
         try await publicDatabase.deleteRecord(withID: record.recordID)
@@ -518,12 +524,11 @@ class CloudKitService: ObservableObject {
                         
                         // Load records for this dog
                         do {
-                            let (feeding, medication, potty, walking) = try await self.loadRecords(for: dog.id)
+                            let (feeding, medication, potty) = try await self.loadRecords(for: dog.id)
                             dog.feedingRecords = feeding
                             dog.medicationRecords = medication
                             dog.pottyRecords = potty
-                            dog.walkingRecords = walking
-                            print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty, \(walking.count) walking records for \(dog.name)")
+                            print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty records for \(dog.name)")
                         } catch {
                             print("⚠️ Failed to load records for dog \(dog.name): \(error)")
                         }
@@ -609,12 +614,11 @@ class CloudKitService: ObservableObject {
                         
                         // Load records for this dog
                         do {
-                            let (feeding, medication, potty, walking) = try await self.loadRecords(for: dog.id)
+                            let (feeding, medication, potty) = try await self.loadRecords(for: dog.id)
                             dog.feedingRecords = feeding
                             dog.medicationRecords = medication
                             dog.pottyRecords = potty
-                            dog.walkingRecords = walking
-                            print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty, \(walking.count) walking records for backup: \(dog.name)")
+                            print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty records for backup: \(dog.name)")
                         } catch {
                             print("⚠️ Failed to load records for backup dog \(dog.name): \(error)")
                         }
@@ -686,12 +690,11 @@ class CloudKitService: ObservableObject {
                         
                         // Load records for this dog
                         do {
-                            let (feeding, medication, potty, walking) = try await self.loadRecords(for: dog.id)
+                            let (feeding, medication, potty) = try await self.loadRecords(for: dog.id)
                             dog.feedingRecords = feeding
                             dog.medicationRecords = medication
                             dog.pottyRecords = potty
-                            dog.walkingRecords = walking
-                            print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty, \(walking.count) walking records for \(dog.name)")
+                            print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty records for \(dog.name)")
                         } catch {
                             print("⚠️ Failed to load records for dog \(dog.name): \(error)")
                         }
@@ -754,11 +757,13 @@ class CloudKitService: ObservableObject {
         record[DogFields.isArrivalTimeSet] = dog.isArrivalTimeSet ? 1 : 0
         record[DogFields.age] = dog.age
         record[DogFields.gender] = dog.gender
-        record[DogFields.vaccinationEndDate] = dog.vaccinationEndDate
+        record[DogFields.bordetellaEndDate] = dog.bordetellaEndDate
+        record[DogFields.dhppEndDate] = dog.dhppEndDate
+        record[DogFields.rabiesEndDate] = dog.rabiesEndDate
+        record[DogFields.civEndDate] = dog.civEndDate
+        record[DogFields.leptospirosisEndDate] = dog.leptospirosisEndDate
         record[DogFields.isNeuteredOrSpayed] = dog.isNeuteredOrSpayed ? 1 : 0
         record[DogFields.ownerPhoneNumber] = dog.ownerPhoneNumber
-        
-        print("📅 Updated record departure date: \(record[DogFields.departureDate]?.description ?? "nil")")
         
         // Update audit fields - get current user from AuthenticationService
         guard let currentUser = AuthenticationService.shared.currentUser else {
@@ -780,7 +785,6 @@ class CloudKitService: ObservableObject {
         try await saveFeedingRecords(dog.feedingRecords, for: dog.id)
         try await saveMedicationRecords(dog.medicationRecords, for: dog.id)
         try await savePottyRecords(dog.pottyRecords, for: dog.id)
-        try await saveWalkingRecords(dog.walkingRecords, for: dog.id)
         
         // Create audit trail entry
         try await createDogChange(
@@ -883,34 +887,6 @@ class CloudKitService: ObservableObject {
         }
     }
     
-    private func saveWalkingRecords(_ records: [WalkingRecord], for dogID: String) async throws {
-        do {
-            // First, delete existing records for this dog
-            try await deleteWalkingRecords(for: dogID)
-            
-            // Then save new records
-            for record in records {
-                let ckRecord = CKRecord(recordType: RecordTypes.walkingRecord)
-                ckRecord[RecordFields.id] = record.id.uuidString
-                ckRecord[RecordFields.timestamp] = record.timestamp
-                ckRecord[RecordFields.notes] = record.notes
-                ckRecord[RecordFields.recordedBy] = record.recordedBy
-                ckRecord[RecordFields.dogID] = dogID
-                ckRecord[RecordFields.createdAt] = Date()
-                ckRecord[RecordFields.updatedAt] = Date()
-                
-                try await publicDatabase.save(ckRecord)
-            }
-            print("✅ Saved \(records.count) walking records for dog: \(dogID)")
-        } catch let error as CKError {
-            if error.code == .unknownItem {
-                print("⚠️ WalkingRecord type doesn't exist yet for dog \(dogID) - records will be saved when schema is created")
-            } else {
-                throw error
-            }
-        }
-    }
-    
     private func deleteFeedingRecords(for dogID: String) async throws {
         let predicate = NSPredicate(format: "\(RecordFields.dogID) == %@", dogID)
         let query = CKQuery(recordType: RecordTypes.feedingRecord, predicate: predicate)
@@ -944,29 +920,17 @@ class CloudKitService: ObservableObject {
         }
     }
     
-    private func deleteWalkingRecords(for dogID: String) async throws {
-        let predicate = NSPredicate(format: "\(RecordFields.dogID) == %@", dogID)
-        let query = CKQuery(recordType: RecordTypes.walkingRecord, predicate: predicate)
-        let result = try await publicDatabase.records(matching: query)
-        let records = result.matchResults.compactMap { try? $0.1.get() }
-        
-        for record in records {
-            try await publicDatabase.deleteRecord(withID: record.recordID)
-        }
-    }
-    
-    func loadRecords(for dogID: String) async throws -> (feeding: [FeedingRecord], medication: [MedicationRecord], potty: [PottyRecord], walking: [WalkingRecord]) {
+    func loadRecords(for dogID: String) async throws -> (feeding: [FeedingRecord], medication: [MedicationRecord], potty: [PottyRecord]) {
         async let feedingRecords = loadFeedingRecords(for: dogID)
         async let medicationRecords = loadMedicationRecords(for: dogID)
         async let pottyRecords = loadPottyRecords(for: dogID)
-        async let walkingRecords = loadWalkingRecords(for: dogID)
         
         do {
-            return try await (feedingRecords, medicationRecords, pottyRecords, walkingRecords)
+            return try await (feedingRecords, medicationRecords, pottyRecords)
         } catch let error as CKError {
             if error.code == .unknownItem {
                 print("⚠️ Some record types don't exist yet for dog \(dogID), returning empty arrays")
-                return ([], [], [], [])
+                return ([], [], [])
             } else {
                 throw error
             }
@@ -1096,45 +1060,6 @@ class CloudKitService: ObservableObject {
         }
     }
     
-    private func loadWalkingRecords(for dogID: String) async throws -> [WalkingRecord] {
-        do {
-            let predicate = NSPredicate(format: "\(RecordFields.dogID) == %@", dogID)
-            let query = CKQuery(recordType: RecordTypes.walkingRecord, predicate: predicate)
-            
-            let result = try await publicDatabase.records(matching: query)
-            let records = result.matchResults.compactMap { try? $0.1.get() }
-            
-            var walkingRecords: [WalkingRecord] = []
-            for record in records {
-                guard let timestamp = record[RecordFields.timestamp] as? Date,
-                      let idString = record[RecordFields.id] as? String,
-                      let id = UUID(uuidString: idString) else {
-                    continue
-                }
-                
-                var walkingRecord = WalkingRecord(
-                    timestamp: timestamp,
-                    notes: record[RecordFields.notes] as? String,
-                    recordedBy: record[RecordFields.recordedBy] as? String
-                )
-                walkingRecord.id = id  // Preserve the original ID from CloudKit
-                walkingRecords.append(walkingRecord)
-            }
-            
-            // Sort records by timestamp locally
-            walkingRecords.sort { $0.timestamp > $1.timestamp }
-            
-            return walkingRecords
-        } catch let error as CKError {
-            if error.code == .unknownItem {
-                print("⚠️ WalkingRecord type doesn't exist yet for dog \(dogID)")
-                return []
-            } else {
-                throw error
-            }
-        }
-    }
-    
     // MARK: - Audit Trail
     
     func createDogChange(
@@ -1194,8 +1119,7 @@ class CloudKitService: ObservableObject {
             RecordTypes.dogChange,
             RecordTypes.feedingRecord,
             RecordTypes.medicationRecord,
-            RecordTypes.pottyRecord,
-            RecordTypes.walkingRecord
+            RecordTypes.pottyRecord
         ]
         
         for recordType in recordTypes {
@@ -1237,7 +1161,7 @@ class CloudKitService: ObservableObject {
                     testRecord[RecordFields.timestamp] = Date()
                     testRecord[RecordFields.type] = "pee"
                     testRecord[RecordFields.dogID] = "test-dog-id"
-                case RecordTypes.walkingRecord:
+        
                     testRecord[RecordFields.id] = "test-id-\(UUID().uuidString)"
                     testRecord[RecordFields.timestamp] = Date()
                     testRecord[RecordFields.dogID] = "test-dog-id"
@@ -1327,14 +1251,7 @@ class CloudKitService: ObservableObject {
             print("❌ PottyRecord record type error: \(error)")
         }
         
-        // Test WalkingRecord record type
-        do {
-            let walkingQuery = CKQuery(recordType: RecordTypes.walkingRecord, predicate: NSPredicate(format: "\(RecordFields.dogID) != %@", ""))
-            _ = try await publicDatabase.records(matching: walkingQuery)
-            print("✅ WalkingRecord record type is accessible")
-        } catch {
-            print("❌ WalkingRecord record type error: \(error)")
-        }
+
         
         // Test creating a simple record
         do {
@@ -1514,21 +1431,6 @@ class CloudKitService: ObservableObject {
         print("✅ Potty record notes updated in CloudKit: \(savedRecord.recordID.recordName)")
     }
     
-    func addWalkingRecord(_ record: WalkingRecord, for dogID: String) async throws {
-        let ckRecord = CKRecord(recordType: RecordTypes.walkingRecord)
-        
-        ckRecord[RecordFields.id] = record.id.uuidString
-        ckRecord[RecordFields.timestamp] = record.timestamp
-        ckRecord[RecordFields.notes] = record.notes
-        ckRecord[RecordFields.recordedBy] = record.recordedBy
-        ckRecord[RecordFields.dogID] = dogID
-        ckRecord[RecordFields.createdAt] = Date()
-        ckRecord[RecordFields.updatedAt] = Date()
-        
-        let savedRecord = try await publicDatabase.save(ckRecord)
-        print("✅ Walking record saved to CloudKit: \(savedRecord.recordID.recordName)")
-    }
-    
     func deleteFeedingRecord(_ record: FeedingRecord, for dogID: String) async throws {
         print("🔍 CloudKit: Searching for feeding record with ID: \(record.id) for dog: \(dogID)")
         
@@ -1578,21 +1480,6 @@ class CloudKitService: ObservableObject {
         
         try await publicDatabase.deleteRecord(withID: recordToDelete.recordID)
         print("✅ Potty record deleted from CloudKit: \(record.id)")
-    }
-    
-    func deleteWalkingRecord(_ record: WalkingRecord, for dogID: String) async throws {
-        let predicate = NSPredicate(format: "\(RecordFields.id) == %@ AND \(RecordFields.dogID) == %@", record.id.uuidString, dogID)
-        let query = CKQuery(recordType: RecordTypes.walkingRecord, predicate: predicate)
-        
-        let result = try await publicDatabase.records(matching: query)
-        let records = result.matchResults.compactMap { try? $0.1.get() }
-        
-        guard let recordToDelete = records.first else {
-            throw CloudKitError.recordNotFound
-        }
-        
-        try await publicDatabase.deleteRecord(withID: recordToDelete.recordID)
-        print("✅ Walking record deleted from CloudKit: \(record.id)")
     }
     
     // MARK: - Targeted Dog Operations
@@ -1931,7 +1818,11 @@ class CloudKitService: ObservableObject {
                 isBoarding: false,
                 age: "",
                 gender: "unknown",
-                vaccinationEndDate: nil,
+                bordetellaEndDate: nil,
+                dhppEndDate: nil,
+                rabiesEndDate: nil,
+                civEndDate: nil,
+                leptospirosisEndDate: nil,
                 isNeuteredOrSpayed: false,
                 ownerPhoneNumber: nil
             )
@@ -2122,20 +2013,7 @@ class CloudKitService: ObservableObject {
         
         for record in records {
             print("🔍 Processing dog record: \(record[DogFields.name] as? String ?? "Unknown")")
-            var dog = CloudKitDog(from: record)
-            
-            // Load records for this dog
-            do {
-                let (feeding, medication, potty, walking) = try await loadRecords(for: dog.id)
-                dog.feedingRecords = feeding
-                dog.medicationRecords = medication
-                dog.pottyRecords = potty
-                dog.walkingRecords = walking
-                print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty, \(walking.count) walking records for \(dog.name)")
-            } catch {
-                print("⚠️ Failed to load records for dog \(dog.name): \(error)")
-            }
-            
+            let dog = CloudKitDog(from: record)
             dogs.append(dog)
         }
         
@@ -2209,12 +2087,11 @@ class CloudKitService: ObservableObject {
         
         // Load records for this specific dog
         do {
-            let (feeding, medication, potty, walking) = try await loadRecords(for: dog.id)
+            let (feeding, medication, potty) = try await loadRecords(for: dog.id)
             dog.feedingRecords = feeding
             dog.medicationRecords = medication
             dog.pottyRecords = potty
-            dog.walkingRecords = walking
-            print("✅ Loaded records for \(dog.name): \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty, \(walking.count) walking")
+            print("✅ Loaded records for \(dog.name): \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty")
         } catch {
             print("⚠️ Failed to load records for dog \(dog.name): \(error)")
         }
@@ -2332,6 +2209,93 @@ class CloudKitService: ObservableObject {
      4. Queryable = Can be used in WHERE clauses (NSPredicate)
      5. Sortable = Can be used in ORDER BY clauses (NSSortDescriptor)
      */
+    
+    func saveActivityLog(_ log: ActivityLogRecord) async throws {
+        let record = log.toCKRecord()
+        _ = try await publicDatabase.save(record)
+    }
+    
+    func fetchActivityLogs() async throws -> [ActivityLogRecord] {
+        let query = CKQuery(recordType: "ActivityLogRecord", predicate: NSPredicate(value: true))
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        return records.compactMap { ActivityLogRecord(from: $0) }
+    }
+
+    private var activityLogCache: [UUID: ActivityLogRecord] = [:]
+    private var activityLogCacheTimestamp: Date = Date.distantPast
+    private let activityLogCacheExpirationInterval: TimeInterval = 3600 // 1 hour
+    private var lastActivityLogSyncTime: Date = Date.distantPast
+
+    func getCachedActivityLogs() -> [ActivityLogRecord] {
+        let now = Date()
+        if now.timeIntervalSince(activityLogCacheTimestamp) > activityLogCacheExpirationInterval {
+            print("🔄 Activity log cache expired, clearing...")
+            activityLogCache.removeAll()
+            return []
+        }
+        return Array(activityLogCache.values)
+    }
+
+    func updateActivityLogCache(_ logs: [ActivityLogRecord]) {
+        for log in logs {
+            activityLogCache[log.id] = log
+        }
+        activityLogCacheTimestamp = Date()
+        print("✅ Updated activity log cache with \(logs.count) logs")
+        // Persist to disk
+        AdvancedCache.shared.set(Array(activityLogCache.values), for: "activityLogCache", expirationInterval: activityLogCacheExpirationInterval)
+    }
+
+    func fetchActivityLogsIncremental(since lastSync: Date) async throws -> [ActivityLogRecord] {
+        print("🔍 Starting incremental fetchActivityLogs since \(lastSync)...")
+        let predicate = NSPredicate(format: "timestamp > %@", lastSync as NSDate)
+        let query = CKQuery(recordType: "ActivityLogRecord", predicate: predicate)
+        query.sortDescriptors = [NSSortDescriptor(key: "timestamp", ascending: false)]
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        let logs = records.compactMap { ActivityLogRecord(from: $0) }
+        print("🔍 Found \(logs.count) changed activity logs in CloudKit")
+        if !logs.isEmpty {
+            updateActivityLogCache(logs)
+            lastActivityLogSyncTime = Date()
+        }
+        return logs
+    }
+
+    func clearActivityLogCache() {
+        activityLogCache.removeAll()
+        activityLogCacheTimestamp = Date.distantPast
+        AdvancedCache.shared.remove("activityLogCache")
+        print("🧹 Activity log cache cleared")
+    }
+
+    func loadActivityLogCacheFromDisk() async {
+        if let cached: [ActivityLogRecord] = await AdvancedCache.shared.get("activityLogCache") {
+            for log in cached {
+                activityLogCache[log.id] = log
+            }
+            activityLogCacheTimestamp = Date()
+            print("✅ Loaded activity log cache from disk: \(cached.count) logs")
+        }
+    }
+
+    // Incremental fetch for all dogs (including deleted)
+    func fetchAllDogsIncremental(since lastSync: Date) async throws -> [CloudKitDog] {
+        print("🔍 Starting fetchAllDogsIncremental since \(lastSync)")
+        let predicate = NSPredicate(format: "updatedAt > %@", lastSync as NSDate)
+        let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
+        query.sortDescriptors = [NSSortDescriptor(key: DogFields.updatedAt, ascending: false)]
+        let result = try await publicDatabase.records(matching: query)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        print("🔍 Found \(records.count) changed dog records in CloudKit")
+        var dogs: [CloudKitDog] = []
+        for record in records {
+            let dog = CloudKitDog(from: record)
+            dogs.append(dog)
+        }
+        return dogs
+    }
 }
 
 // MARK: - Error Types
@@ -2532,29 +2496,23 @@ struct CloudKitDog {
     var isDeleted: Bool
     var age: String
     var gender: String
-    var vaccinationEndDate: Date?
+    var bordetellaEndDate: Date?
+    var dhppEndDate: Date?
+    var rabiesEndDate: Date?
+    var civEndDate: Date?
+    var leptospirosisEndDate: Date?
     var isNeuteredOrSpayed: Bool
     var ownerPhoneNumber: String?
-    
     // Records
     var feedingRecords: [FeedingRecord] = []
     var medicationRecords: [MedicationRecord] = []
     var pottyRecords: [PottyRecord] = []
-    var walkingRecords: [WalkingRecord] = []
-    
     var isCurrentlyPresent: Bool {
-        // A dog is currently present if they have arrived (arrivalDate is in the past or today)
-        // and haven't departed yet (departureDate is nil)
         let now = Date()
         let calendar = Calendar.current
-        
-        // Check if arrival date is today or in the past
         let hasArrived = calendar.isDate(arrivalDate, inSameDayAs: now) || arrivalDate < now
-        
-        // Dog is present if they've arrived and haven't departed
         return hasArrived && departureDate == nil
     }
-    
     init(
         id: String = UUID().uuidString,
         name: String,
@@ -2573,12 +2531,15 @@ struct CloudKitDog {
         feedingRecords: [FeedingRecord] = [],
         medicationRecords: [MedicationRecord] = [],
         pottyRecords: [PottyRecord] = [],
-        walkingRecords: [WalkingRecord] = [],
         isArrivalTimeSet: Bool = true,
         isDeleted: Bool = false,
         age: String,
         gender: String,
-        vaccinationEndDate: Date? = nil,
+        bordetellaEndDate: Date? = nil,
+        dhppEndDate: Date? = nil,
+        rabiesEndDate: Date? = nil,
+        civEndDate: Date? = nil,
+        leptospirosisEndDate: Date? = nil,
         isNeuteredOrSpayed: Bool = false,
         ownerPhoneNumber: String? = nil
     ) {
@@ -2599,14 +2560,17 @@ struct CloudKitDog {
         self.feedingRecords = feedingRecords
         self.medicationRecords = medicationRecords
         self.pottyRecords = pottyRecords
-        self.walkingRecords = walkingRecords
         self.createdAt = Date()
         self.updatedAt = Date()
         self.isArrivalTimeSet = isArrivalTimeSet
         self.isDeleted = isDeleted
         self.age = age
         self.gender = gender
-        self.vaccinationEndDate = vaccinationEndDate
+        self.bordetellaEndDate = bordetellaEndDate
+        self.dhppEndDate = dhppEndDate
+        self.rabiesEndDate = rabiesEndDate
+        self.civEndDate = civEndDate
+        self.leptospirosisEndDate = leptospirosisEndDate
         self.isNeuteredOrSpayed = isNeuteredOrSpayed
         self.ownerPhoneNumber = ownerPhoneNumber
     }
@@ -2632,7 +2596,11 @@ struct CloudKitDog {
         self.isDeleted = (record[CloudKitService.DogFields.isDeleted] as? Int64 ?? 0) == 1
         self.age = record[CloudKitService.DogFields.age] as? String ?? ""
         self.gender = record[CloudKitService.DogFields.gender] as? String ?? ""
-        self.vaccinationEndDate = record[CloudKitService.DogFields.vaccinationEndDate] as? Date
+        self.bordetellaEndDate = record[CloudKitService.DogFields.bordetellaEndDate] as? Date
+        self.dhppEndDate = record[CloudKitService.DogFields.dhppEndDate] as? Date
+        self.rabiesEndDate = record[CloudKitService.DogFields.rabiesEndDate] as? Date
+        self.civEndDate = record[CloudKitService.DogFields.civEndDate] as? Date
+        self.leptospirosisEndDate = record[CloudKitService.DogFields.leptospirosisEndDate] as? Date
         self.isNeuteredOrSpayed = (record[CloudKitService.DogFields.isNeuteredOrSpayed] as? Int64 ?? 0) == 1
         self.ownerPhoneNumber = record[CloudKitService.DogFields.ownerPhoneNumber] as? String
         
@@ -2640,7 +2608,6 @@ struct CloudKitDog {
         self.feedingRecords = []
         self.medicationRecords = []
         self.pottyRecords = []
-        self.walkingRecords = []
     }
 }
 

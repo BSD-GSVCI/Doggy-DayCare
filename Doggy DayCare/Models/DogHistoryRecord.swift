@@ -22,16 +22,25 @@ struct DogHistoryRecord: Codable, Identifiable {
     let notes: String?
     let age: Int?
     let gender: DogGender?
-    let vaccinationEndDate: Date?
+    let vaccinations: [VaccinationItem]
     let isNeuteredOrSpayed: Bool?
     let ownerPhoneNumber: String?
     let isArrivalTimeSet: Bool
     let visitCount: Int
     let createdAt: Date
     let updatedAt: Date
+    let isDeleted: Bool
+    
+    // Deterministic UUID for (dogId, date)
+    static func deterministicId(dogId: UUID, date: Date) -> UUID {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        let dateString = formatter.string(from: date)
+        let baseString = "\(dogId.uuidString)_\(dateString)"
+        return UUID(uuidString: baseString.md5ToUUID()) ?? UUID()
+    }
     
     init(from dog: Dog, date: Date) {
-        self.id = UUID()
         self.date = date
         self.dogId = dog.id
         self.dogName = dog.name
@@ -52,13 +61,47 @@ struct DogHistoryRecord: Codable, Identifiable {
         self.notes = dog.notes
         self.age = dog.age
         self.gender = dog.gender
-        self.vaccinationEndDate = dog.vaccinationEndDate
+        self.vaccinations = dog.vaccinations
         self.isNeuteredOrSpayed = dog.isNeuteredOrSpayed
         self.ownerPhoneNumber = dog.ownerPhoneNumber
         self.isArrivalTimeSet = dog.isArrivalTimeSet
         self.visitCount = dog.visitCount
         self.createdAt = dog.createdAt
         self.updatedAt = dog.updatedAt
+        self.isDeleted = dog.isDeleted
+        self.id = DogHistoryRecord.deterministicId(dogId: dog.id, date: date)
+    }
+    
+    init(id: UUID, from record: DogHistoryRecord, date: Date) {
+        self.id = id
+        self.date = date
+        self.dogId = record.dogId
+        self.dogName = record.dogName
+        self.ownerName = record.ownerName
+        self.profilePictureData = record.profilePictureData
+        self.arrivalDate = record.arrivalDate
+        self.departureDate = record.departureDate
+        self.isBoarding = record.isBoarding
+        self.boardingEndDate = record.boardingEndDate
+        self.isCurrentlyPresent = record.isCurrentlyPresent
+        self.shouldBeTreatedAsDaycare = record.shouldBeTreatedAsDaycare
+        self.medications = record.medications
+        self.specialInstructions = record.specialInstructions
+        self.allergiesAndFeedingInstructions = record.allergiesAndFeedingInstructions
+        self.needsWalking = record.needsWalking
+        self.walkingNotes = record.walkingNotes
+        self.isDaycareFed = record.isDaycareFed
+        self.notes = record.notes
+        self.age = record.age
+        self.gender = record.gender
+        self.vaccinations = record.vaccinations
+        self.isNeuteredOrSpayed = record.isNeuteredOrSpayed
+        self.ownerPhoneNumber = record.ownerPhoneNumber
+        self.isArrivalTimeSet = record.isArrivalTimeSet
+        self.visitCount = record.visitCount
+        self.createdAt = record.createdAt
+        self.updatedAt = record.updatedAt
+        self.isDeleted = record.isDeleted
     }
     
     var formattedDate: String {
@@ -97,4 +140,21 @@ struct DogHistoryRecord: Codable, Identifiable {
             return "Scheduled"
         }
     }
-} 
+}
+
+// MARK: - String MD5 to UUID Helper
+extension String {
+    func md5ToUUID() -> String {
+        let md5 = Insecure.MD5.hash(data: self.data(using: .utf8) ?? Data())
+        let bytes = Array(md5.prefix(16))
+        let uuidString = String(format: "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5],
+            bytes[6], bytes[7],
+            bytes[8], bytes[9],
+            bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+        )
+        return uuidString
+    }
+}
+import CryptoKit 

@@ -20,37 +20,39 @@ class CloudKitHistoryService: ObservableObject {
     
     func recordDailySnapshot(dogs: [Dog]) async {
         let today = Calendar.current.startOfDay(for: Date())
-        print("[CloudKitHistoryService] Recording snapshot for \(dogs.count) dogs: \(dogs.map { $0.name }) on \(today)")
-        
-        // 1. Delete all existing records for today
-        await removeHistoryForDate(today)
-        
-        // 2. Create new records for all dogs (force date = today)
+        await recordSnapshot(for: today, dogs: dogs)
+    }
+    
+    // Record a snapshot for an arbitrary date using the provided dogs
+    func recordSnapshot(for date: Date, dogs: [Dog]) async {
+        let snapshotDate = Calendar.current.startOfDay(for: date)
+        print("[CloudKitHistoryService] Recording snapshot for \(dogs.count) dogs: \(dogs.map { $0.name }) on \(snapshotDate)")
+        // 1. Delete all existing records for the date
+        await removeHistoryForDate(snapshotDate)
+        // 2. Create new records for all dogs (force date = snapshotDate)
         let newRecords = dogs.map { dog in
-            DogHistoryRecord(from: dog, date: today)
+            DogHistoryRecord(from: dog, date: snapshotDate)
         }
         print("[CloudKitHistoryService] Will write records:")
         for rec in newRecords {
             print("  - id: \(rec.id), dogId: \(rec.dogId), date: \(rec.date)")
         }
-        
         // 3. Batch save all new records
         await batchSaveHistoryRecords(newRecords)
-        
-        // 4. Clear cache for today
-        historyCache.removeValue(forKey: today)
-        
-        // 5. Update local cache
+        // 4. Update cache and UI for the date to match the new snapshot
+        historyCache[snapshotDate] = newRecords
+        let allOtherRecords = historyRecords.filter { Calendar.current.startOfDay(for: $0.date) != snapshotDate }
+        self.historyRecords = (allOtherRecords + newRecords).sorted { $0.date > $1.date }
+        // 5. Optionally, reload all history from CloudKit if you want to guarantee full sync
         await loadHistoryRecords()
-        print("[CloudKitHistoryService] After load, records for today:")
-        let loaded = historyRecords.filter { $0.date == today }
+        print("[CloudKitHistoryService] After load, records for \(snapshotDate):")
+        let loaded = historyRecords.filter { $0.date == snapshotDate }
         for rec in loaded {
             print("  - id: \(rec.id), dogId: \(rec.dogId), date: \(rec.date)")
         }
-        
-        // 6. Update last sync time for today
-        lastSyncTimes[today] = Date()
-        print("[CloudKitHistoryService] Finished recording snapshot for \(newRecords.count) dogs on \(today)")
+        // 6. Update last sync time for the date
+        lastSyncTimes[snapshotDate] = Date()
+        print("[CloudKitHistoryService] Finished recording snapshot for \(newRecords.count) dogs on \(snapshotDate)")
     }
     
     private func batchSaveHistoryRecords(_ records: [DogHistoryRecord]) async {
@@ -84,7 +86,12 @@ class CloudKitHistoryService: ObservableObject {
                 historyRecord["notes"] = record.notes
                 historyRecord["age"] = record.age
                 historyRecord["gender"] = record.gender?.rawValue
-                historyRecord["vaccinationEndDate"] = record.vaccinations.compactMap { $0.endDate }.min()
+                // Store each vaccine end date as an explicit field
+                historyRecord["bordetellaEndDate"] = record.vaccinations.first(where: { $0.name == "Bordetella" })?.endDate
+                historyRecord["dhppEndDate"] = record.vaccinations.first(where: { $0.name == "DHPP" })?.endDate
+                historyRecord["rabiesEndDate"] = record.vaccinations.first(where: { $0.name == "Rabies" })?.endDate
+                historyRecord["civEndDate"] = record.vaccinations.first(where: { $0.name == "CIV" })?.endDate
+                historyRecord["leptospirosisEndDate"] = record.vaccinations.first(where: { $0.name == "Leptospirosis" })?.endDate
                 historyRecord["isNeuteredOrSpayed"] = record.isNeuteredOrSpayed
                 historyRecord["ownerPhoneNumber"] = record.ownerPhoneNumber
                 historyRecord["isArrivalTimeSet"] = record.isArrivalTimeSet
@@ -153,7 +160,12 @@ class CloudKitHistoryService: ObservableObject {
                         existingRecord["notes"] = record.notes
                         existingRecord["age"] = record.age
                         existingRecord["gender"] = record.gender?.rawValue
-                        existingRecord["vaccinationEndDate"] = record.vaccinations.compactMap { $0.endDate }.min()
+                        // Store each vaccine end date as an explicit field
+                        existingRecord["bordetellaEndDate"] = record.vaccinations.first(where: { $0.name == "Bordetella" })?.endDate
+                        existingRecord["dhppEndDate"] = record.vaccinations.first(where: { $0.name == "DHPP" })?.endDate
+                        existingRecord["rabiesEndDate"] = record.vaccinations.first(where: { $0.name == "Rabies" })?.endDate
+                        existingRecord["civEndDate"] = record.vaccinations.first(where: { $0.name == "CIV" })?.endDate
+                        existingRecord["leptospirosisEndDate"] = record.vaccinations.first(where: { $0.name == "Leptospirosis" })?.endDate
                         existingRecord["isNeuteredOrSpayed"] = record.isNeuteredOrSpayed
                         existingRecord["ownerPhoneNumber"] = record.ownerPhoneNumber
                         existingRecord["isArrivalTimeSet"] = record.isArrivalTimeSet
@@ -280,6 +292,11 @@ class CloudKitHistoryService: ObservableObject {
                 // Update cache with only changed records
                 await updateCacheWithChanges(for: startOfDay, changedRecords: changedRecords)
                 
+                // Also update historyRecords for the affected date
+                let allOtherRecords = historyRecords.filter { Calendar.current.startOfDay(for: $0.date) != startOfDay }
+                let updatedRecords = allOtherRecords + (historyCache[startOfDay] ?? [])
+                self.historyRecords = updatedRecords.sorted { $0.date > $1.date }
+                
                 // Update last sync time
                 lastSyncTimes[startOfDay] = Date()
             } else {
@@ -315,6 +332,11 @@ class CloudKitHistoryService: ObservableObject {
         // Sort and update cache
         currentRecords.sort { $0.dogName.localizedCaseInsensitiveCompare($1.dogName) == .orderedAscending }
         historyCache[startOfDay] = currentRecords
+        
+        // After updating historyCache[startOfDay], update historyRecords for the affected date
+        let allOtherRecords = historyRecords.filter { Calendar.current.startOfDay(for: $0.date) != startOfDay }
+        let updatedRecords = allOtherRecords + currentRecords
+        self.historyRecords = updatedRecords.sorted { $0.date > $1.date }
         
         print("[CloudKitHistoryService] Cache updated for \(startOfDay): \(currentRecords.count) records")
     }
@@ -753,7 +775,14 @@ extension DogHistoryRecord {
         self.notes = record["notes"] as? String
         self.age = record["age"] as? Int
         self.gender = DogGender(rawValue: record["gender"] as? String ?? "unknown")
-        self.vaccinations = record["vaccinations"] as? [VaccinationItem] ?? []
+        // Build vaccinations array from explicit fields
+        self.vaccinations = [
+            VaccinationItem(name: "Bordetella", endDate: record["bordetellaEndDate"] as? Date),
+            VaccinationItem(name: "DHPP", endDate: record["dhppEndDate"] as? Date),
+            VaccinationItem(name: "Rabies", endDate: record["rabiesEndDate"] as? Date),
+            VaccinationItem(name: "CIV", endDate: record["civEndDate"] as? Date),
+            VaccinationItem(name: "Leptospirosis", endDate: record["leptospirosisEndDate"] as? Date)
+        ]
         self.isNeuteredOrSpayed = record["isNeuteredOrSpayed"] as? Bool
         self.ownerPhoneNumber = record["ownerPhoneNumber"] as? String
         self.isArrivalTimeSet = isArrivalTimeSet

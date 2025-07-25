@@ -198,9 +198,6 @@ struct DogDetailView: View {
                                 Image(systemName: "pills")
                                     .foregroundStyle(.purple)
                                 VStack(alignment: .leading) {
-                                    Text("Medication")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
                                     if let notes = record.notes {
                                         Text(notes)
                                             .font(.caption)
@@ -300,50 +297,37 @@ struct DogDetailView: View {
                 }
             }
             
-            // Walking Section
-            if dog.needsWalking || !dog.walkingRecords.isEmpty {
-                Section("Walking Information") {
-                    if !dog.walkingRecords.isEmpty {
-                        let sortedWalkingRecords = dog.walkingRecords.sorted(by: { $0.timestamp > $1.timestamp })
-                        ForEach(sortedWalkingRecords, id: \.id) { record in
-                            HStack {
-                                Image(systemName: "figure.walk")
-                                    .foregroundStyle(.blue)
-                                VStack(alignment: .leading) {
-                                    Text("Walk")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                    if let notes = record.notes {
-                                        Text(notes)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    
-                    // Individual potty instances
-                    if !dog.pottyRecords.isEmpty {
+            // Potty Records Section
+            if dog.needsWalking || !dog.pottyRecords.isEmpty {
+                if !dog.pottyRecords.isEmpty {
+                    Section("Potty Records") {
                         let sortedPottyRecords = dog.pottyRecords.sorted(by: { $0.timestamp > $1.timestamp })
                         ForEach(sortedPottyRecords, id: \.id) { record in
                             HStack {
                                 if record.type == .pee {
+                                    Text("Pee")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                     Image(systemName: "drop.fill")
                                         .foregroundStyle(.yellow)
                                 } else if record.type == .poop {
+                                    Text("Poop")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                     Text("💩")
                                 } else if record.type == .both {
+                                    Text("Both")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                     HStack(spacing: 2) {
                                         Image(systemName: "drop.fill")
                                             .foregroundStyle(.yellow)
                                         Text("💩")
                                     }
                                 } else if record.type == .nothing {
+                                    Text("Nothing")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                     Image(systemName: "xmark.circle.fill")
                                         .foregroundStyle(.red)
                                 }
@@ -360,36 +344,36 @@ struct DogDetailView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                    }
-                    
-                    // Potty counts - Total for entire stay
-                    HStack(spacing: 16) {
-                        let totalPeeCount = dog.pottyRecords.filter { $0.type == .pee || $0.type == .both }.count
-                        let totalPoopCount = dog.pottyRecords.filter { $0.type == .poop || $0.type == .both }.count
                         
-                        // Debug: Print the counts
-                        let _ = print("🐕 Total potty counts for \(dog.name): pee=\(totalPeeCount), poop=\(totalPoopCount), total records=\(dog.pottyRecords.count)")
-                        
-                        HStack {
-                            Image(systemName: "drop.fill")
-                                .foregroundStyle(.yellow)
-                                .font(.system(size: 15))
-                            Text("\(totalPeeCount)")
-                                .font(.headline)
-                                .foregroundStyle(.blue)
+                        // Potty counts - Total for entire stay
+                        HStack(spacing: 16) {
+                            let totalPeeCount = dog.pottyRecords.filter { $0.type == .pee || $0.type == .both }.count
+                            let totalPoopCount = dog.pottyRecords.filter { $0.type == .poop || $0.type == .both }.count
+                            
+                            // Debug: Print the counts
+                            let _ = print("🐕 Total potty counts for \(dog.name): pee=\(totalPeeCount), poop=\(totalPoopCount), total records=\(dog.pottyRecords.count)")
+                            
+                            HStack {
+                                Image(systemName: "drop.fill")
+                                    .foregroundStyle(.yellow)
+                                    .font(.system(size: 15))
+                                Text("\(totalPeeCount)")
+                                    .font(.headline)
+                                    .foregroundStyle(.blue)
+                            }
+                            
+                            HStack {
+                                Text("💩")
+                                    .font(.system(size: 15))
+                                Text("\(totalPoopCount)")
+                                    .font(.headline)
+                                    .foregroundStyle(.blue)
+                            }
+                            
+                            Spacer()
                         }
-                        
-                        HStack {
-                            Text("💩")
-                                .font(.system(size: 15))
-                            Text("\(totalPoopCount)")
-                                .font(.headline)
-                                .foregroundStyle(.blue)
-                        }
-                        
-                        Spacer()
+                        .font(.caption)
                     }
-                    .font(.caption)
                 }
             }
             

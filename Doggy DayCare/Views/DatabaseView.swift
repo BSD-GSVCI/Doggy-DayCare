@@ -39,8 +39,15 @@ struct DatabaseView: View {
                     ProgressView("Loading database...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    List {
-                        ForEach(filteredDogs) { dog in
+                    VStack(spacing: 0) {
+                        Text("Total Dogs: \(allDogs.count)")
+                            .font(.headline)
+                            .foregroundColor(.accentColor)
+                            .padding(.top, 4)
+                            .padding(.bottom, 4)
+                        
+                        List {
+                            ForEach(filteredDogs) { dog in
                             DatabaseDogRow(dog: dog, visitCount: dogVisitCounts[dog.id.uuidString] ?? 1, selectedDogForOverlay: $selectedDogForOverlay)
                                 .contextMenu {
                                     Button {
@@ -69,8 +76,9 @@ struct DatabaseView: View {
                         await loadAllDogs()
                     }
                 }
+                }
             }
-            .navigationTitle("") // Remove default title
+            .navigationTitle("Database")
             .navigationBarTitleDisplayMode(.inline)
             
             .searchable(text: $searchText, prompt: "Search dogs by name or owner")
@@ -78,20 +86,6 @@ struct DatabaseView: View {
                 await loadAllDogs()
             }
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HStack(spacing: 12) {
-                        Text("Database")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                        Text("Total Dogs: \(allDogs.count)")
-                            .font(.headline)
-                            .foregroundColor(.accentColor)
-                            .padding(.vertical, 4)
-                            .padding(.horizontal, 10)
-                            .background(.regularMaterial)
-                            .clipShape(Capsule())
-                    }
-                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Menu {
                         Button {

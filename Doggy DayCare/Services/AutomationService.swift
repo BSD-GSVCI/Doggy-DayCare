@@ -241,6 +241,8 @@ class AutomationService: ObservableObject {
                 }
                 
                 if needsUpdate {
+                    // Log automated updates
+                    await DataManager.shared.logDogActivity(action: "AUTOMATED_UPDATE", dog: updatedDog, extra: "Automated midnight transition update")
                     _ = try await cloudKitService.updateDog(updatedDog.toCloudKitDog())
                 }
             }
@@ -429,12 +431,14 @@ class AutomationService: ObservableObject {
             let cloudKitService = CloudKitService.shared
             let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
             let allDogs = allCloudKitDogs.map { $0.toDog() }
-            let today = Calendar.current.startOfDay(for: Date())
-            let expiredDogs = allDogs.filter {
-                if let endDate = $0.vaccinationEndDate {
-                    return Calendar.current.startOfDay(for: endDate) <= today
+            let expiredDogs = allDogs.filter { dog in
+                let today = Calendar.current.startOfDay(for: Date())
+                return dog.vaccinations.contains { vax in
+                    if let endDate = vax.endDate {
+                        return Calendar.current.startOfDay(for: endDate) <= today
+                    }
+                    return false
                 }
-                return false
             }
             for dog in expiredDogs {
                 let content = UNMutableNotificationContent()

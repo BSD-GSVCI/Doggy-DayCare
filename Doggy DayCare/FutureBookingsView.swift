@@ -267,12 +267,12 @@ struct FutureBookingFormView: View {
                             Text(gender.displayName).tag(gender)
                         }
                     }
-                    Section("Vaccinations") {
-                        VaccinationListEditor(vaccinations: $vaccinations)
-                    }
                     Toggle("Neutered/Spayed", isOn: $isNeuteredOrSpayed)
                     TextField("Owner's Phone Number", text: $ownerPhoneNumber)
                         .keyboardType(.phonePad)
+                }
+                Section("Vaccinations") {
+                    VaccinationListEditor(vaccinations: $vaccinations)
                 }
             }
             .navigationTitle("Add Future Booking")
@@ -545,12 +545,12 @@ struct FutureBookingEditView: View {
                             Text(gender.displayName).tag(gender)
                         }
                     }
-                    Section("Vaccinations") {
-                        VaccinationListEditor(vaccinations: $vaccinations)
-                    }
                     Toggle("Neutered/Spayed", isOn: $isNeuteredOrSpayed)
                     TextField("Owner's Phone Number", text: $ownerPhoneNumber)
                         .keyboardType(.phonePad)
+                }
+                Section("Vaccinations") {
+                    VaccinationListEditor(vaccinations: $vaccinations)
                 }
             }
             .navigationTitle("Edit Future Booking")
