@@ -432,11 +432,11 @@ struct FeedingListView: View {
             .onTapGesture {
                 showingNoteAlert = true
             }
-            .contextMenu {
-                Button("Delete", role: .destructive) {
-                    print("Long press detected on feeding record: \(record.type.rawValue)")
-                    showingDeleteAlert = true
-                }
+            .onLongPressGesture {
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
+                print("Long press detected on feeding record: \(record.type.rawValue) at \(record.timestamp.formatted(date: .omitted, time: .shortened))")
+                showingDeleteAlert = true
             }
             .alert("Delete Feeding Record", isPresented: $showingDeleteAlert) {
                 Button("Cancel", role: .cancel) { }

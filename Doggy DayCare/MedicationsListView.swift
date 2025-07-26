@@ -334,12 +334,12 @@ struct MedicationInstanceView: View {
         .onTapGesture {
             showingNoteAlert = true
         }
-        .contextMenu {
-            Button("Delete", role: .destructive) {
-                print("Long press detected on medication record")
+                    .onLongPressGesture {
+                let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+                impactFeedback.impactOccurred()
+                print("Long press detected on medication record at \(record.timestamp.formatted(date: .omitted, time: .shortened))")
                 showingDeleteAlert = true
             }
-        }
         .alert("Delete Medication Record", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
