@@ -159,6 +159,9 @@ struct DogDetailView: View {
                 if let isNeuteredOrSpayed = dog.isNeuteredOrSpayed {
                     InfoRow(title: "Neutered/Spayed", value: isNeuteredOrSpayed ? "Yes" : "No")
                 }
+                if let ownerName = dog.ownerName, !ownerName.isEmpty {
+                    InfoRow(title: "Owner Name", value: ownerName)
+                }
                 if let ownerPhoneNumber = dog.ownerPhoneNumber, !ownerPhoneNumber.isEmpty {
                     InfoRow(title: "Owner's Phone Number", value: ownerPhoneNumber)
                 }
@@ -229,8 +232,8 @@ struct DogDetailView: View {
                                     .foregroundStyle(colorForFeedingType(record.type))
                                 VStack(alignment: .leading) {
                                     Text(record.type.rawValue.capitalized)
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                     if let notes = record.notes, !notes.isEmpty {
                                         Text(notes)
                                             .font(.caption)
@@ -305,31 +308,31 @@ struct DogDetailView: View {
                         ForEach(sortedPottyRecords, id: \.id) { record in
                             HStack {
                                 if record.type == .pee {
+                                    Image(systemName: "drop.fill")
+                                        .foregroundStyle(.yellow)
                                     Text("Pee")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
-                                    Image(systemName: "drop.fill")
-                                        .foregroundStyle(.yellow)
                                 } else if record.type == .poop {
+                                    Text("💩")
                                     Text("Poop")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
-                                    Text("💩")
                                 } else if record.type == .both {
-                                    Text("Both")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
                                     HStack(spacing: 2) {
                                         Image(systemName: "drop.fill")
                                             .foregroundStyle(.yellow)
                                         Text("💩")
                                     }
+                                    Text("Both")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 } else if record.type == .nothing {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.red)
                                     Text("Nothing")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.red)
                                 }
                                 VStack(alignment: .leading) {
                                     if let notes = record.notes, !notes.isEmpty {
