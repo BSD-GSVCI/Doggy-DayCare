@@ -72,6 +72,23 @@ struct DogRow: View {
                             }
                         }
                         
+                        // Expired vaccinations warning
+                        let expiredVaccinations = dog.vaccinations.filter { vaccination in
+                            if let endDate = vaccination.endDate {
+                                return Calendar.current.startOfDay(for: endDate) <= Calendar.current.startOfDay(for: Date())
+                            }
+                            return false
+                        }
+                        
+                        if !expiredVaccinations.isEmpty {
+                            ForEach(expiredVaccinations, id: \.name) { vaccination in
+                                Text("- \(vaccination.name) vaccination expired")
+                                    .font(.caption)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.red)
+                            }
+                        }
+                        
                         // Boarding departure date pill
                         if dog.isBoarding, let boardingEndDate = dog.boardingEndDate {
                             HStack(spacing: 4) {

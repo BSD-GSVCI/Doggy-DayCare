@@ -107,6 +107,7 @@ struct ContentView: View {
     @State private var isExportReady = false
     @State private var backupFolderURL: URL?
     @State private var showingFolderPicker = false
+    @State private var showingBackupFolderAlert = false // New state for the alert
     
     enum DogFilter {
         case all
@@ -293,13 +294,12 @@ struct ContentView: View {
                         }
                         
                         Menu {
-                            Button {
-                                showingHistoryView = true
-                            } label: {
-                                Label("History", systemImage: "scroll")
-                            }
-                            
                             if authService.currentUser?.isOwner == true {
+                                Button {
+                                    showingHistoryView = true
+                                } label: {
+                                    Label("History", systemImage: "scroll")
+                                }
                                 Button {
                                     showingStaffManagement = true
                                 } label: {
@@ -319,21 +319,21 @@ struct ContentView: View {
                                 }
                                 
                                 Button {
-                                    showingFolderPicker = true
-                                } label: {
-                                    Label("Choose Backup Folder", systemImage: "folder")
-                                }
-                                
-                                if backupFolderURL != nil {
-                                    Button {
-                                        backupFolderURL = nil
+                                    if backupFolderURL != nil {
+                                        // First remove from UserDefaults
                                         UserDefaults.standard.removeObject(forKey: "backup_folder_bookmark")
-                                    } label: {
-                                        Label("Clear Backup Folder", systemImage: "folder.badge.minus")
+                                        // Then clear the state variable
+                                        backupFolderURL = nil
+                                    } else {
+                                        showingFolderPicker = true
+                                    }
+                                } label: {
+                                    if backupFolderURL != nil {
+                                        Label("Remove Backup Folder", systemImage: "folder.badge.minus")
+                                    } else {
+                                        Label("Choose Backup Folder", systemImage: "folder")
                                     }
                                 }
-                                
-                                Divider()
                             }
                             
                             Button {
@@ -455,6 +455,13 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingFolderPicker) {
                 FolderPicker(selectedURL: $backupFolderURL)
+            }
+            .alert("Backup Folder Already Selected", isPresented: $showingBackupFolderAlert) {
+                Button("OK", role: .cancel) {
+                    showingBackupFolderAlert = false
+                }
+            } message: {
+                Text("A backup folder has already been selected. You can remove it by selecting 'Remove Backup Folder'.")
             }
         }
     }
