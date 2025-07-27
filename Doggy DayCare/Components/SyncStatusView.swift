@@ -44,11 +44,11 @@ struct SyncStatusView: View {
                     
                     VStack(alignment: .leading, spacing: 2) {
                         Text(getUserFriendlyOperationName(performanceMonitor.currentOperation))
-                            .font(.caption)
+                            .font(.subheadline)
                             .fontWeight(.medium)
                         
                         Text("\(Int(performanceMonitor.syncProgress * 100))% complete")
-                            .font(.caption2)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     
@@ -58,7 +58,7 @@ struct SyncStatusView: View {
                         showingPerformanceReport = true
                     } label: {
                         Image(systemName: "speedometer")
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundStyle(.blue)
                     }
                 }
@@ -71,10 +71,10 @@ struct SyncStatusView: View {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
-                        .font(.caption)
+                        .font(.subheadline)
                     
                     Text("Last sync: \(lastSync.formatted(date: .omitted, time: .shortened))")
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                     
                     Spacer()
@@ -83,7 +83,7 @@ struct SyncStatusView: View {
                         showingPerformanceReport = true
                     } label: {
                         Image(systemName: "speedometer")
-                            .font(.caption)
+                            .font(.subheadline)
                             .foregroundStyle(.blue)
                     }
                 }
@@ -118,7 +118,12 @@ struct PerformanceReportView: View {
                         }
                     }
                     
-                    ForEach(Array(performanceMonitor.syncTimes.keys.sorted()), id: \.self) { operation in
+                    // Show recent sync operations (excluding the ones that will appear in Performance Analysis)
+                    let recentOperations = performanceMonitor.syncTimes.filter { operation, _ in
+                        !["fetchDogs", "fetchUsers", "fetchDogsForBackup", "fetchDogsForImport"].contains(operation)
+                    }
+                    
+                    ForEach(Array(recentOperations.keys.sorted()), id: \.self) { operation in
                         if let time = performanceMonitor.syncTimes[operation] {
                             HStack {
                                 Text(getUserFriendlyOperationName(operation))
@@ -127,6 +132,11 @@ struct PerformanceReportView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                    }
+                    
+                    if recentOperations.isEmpty {
+                        Text("No recent sync operations")
+                            .foregroundStyle(.secondary)
                     }
                 }
                 
@@ -149,16 +159,41 @@ struct PerformanceReportView: View {
                 Section("Performance Analysis") {
                     let slowest = performanceMonitor.getSlowestOperations()
                     if !slowest.isEmpty {
-                                            ForEach(slowest, id: \.0) { operation, time in
-                        HStack {
-                            Text(getUserFriendlyOperationName(operation))
-                            Spacer()
-                            Text(String(format: "%.2fs avg", time))
-                                .foregroundStyle(.secondary)
+                        ForEach(slowest, id: \.0) { operation, time in
+                            PerformanceAnalysisRow(operation: operation, time: time)
                         }
-                    }
                     } else {
                         Text("No performance data available")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                Section("System Information") {
+                    HStack {
+                        Text("App Version")
+                        Spacer()
+                        Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown")
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("Build Number")
+                        Spacer()
+                        Text(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown")
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("Device")
+                        Spacer()
+                        Text(UIDevice.current.model)
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("iOS Version")
+                        Spacer()
+                        Text(UIDevice.current.systemVersion)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -191,6 +226,29 @@ struct PerformanceReportView: View {
         
         await MainActor.run {
             cacheStats = stats
+        }
+    }
+}
+
+struct PerformanceAnalysisRow: View {
+    let operation: String
+    let time: TimeInterval
+    @StateObject private var performanceMonitor = PerformanceMonitor.shared
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(getUserFriendlyOperationName(operation))
+                
+                if let metrics = performanceMonitor.getPerformanceMetrics(for: operation) {
+                    Text("\(metrics.count) runs, avg: \(String(format: "%.2fs", metrics.averageTime))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Text(String(format: "%.2fs avg", time))
+                .foregroundStyle(.secondary)
         }
     }
 }

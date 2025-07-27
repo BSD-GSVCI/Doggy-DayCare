@@ -78,6 +78,12 @@ class PerformanceMonitor: ObservableObject {
         return averages.sorted { $0.1 > $1.1 }.prefix(limit).map { $0 }
     }
     
+    func getPerformanceMetrics(for operation: String) -> (count: Int, averageTime: TimeInterval)? {
+        guard let times = performanceMetrics[operation], !times.isEmpty else { return nil }
+        let averageTime = times.reduce(0, +) / Double(times.count)
+        return (times.count, averageTime)
+    }
+    
     func getPerformanceReport() -> String {
         var report = "📊 Performance Report\n"
         report += "Last sync: \(lastSyncTime?.formatted() ?? "Never")\n\n"
