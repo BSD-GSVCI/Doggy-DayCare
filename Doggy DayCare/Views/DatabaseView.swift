@@ -213,7 +213,7 @@ struct DatabaseView: View {
         isLoading = true
         errorMessage = nil
         
-        let dogs = await dataManager.getAllDogs()
+        let dogs = await dataManager.getAllDogsForDatabase()
         await MainActor.run {
             // Group dogs by name and owner (like the import functionality does)
             var dogGroups: [String: [Dog]] = [:]
@@ -292,7 +292,7 @@ struct DatabaseView: View {
         
         do {
             // Get all dogs from the database
-            let allDogs = await dataManager.getAllDogs()
+            let allDogs = await dataManager.getAllDogsForDatabase()
             
             // Create export data
             let exportData = try JSONEncoder().encode(allDogs)

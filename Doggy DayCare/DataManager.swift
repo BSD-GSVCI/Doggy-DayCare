@@ -57,7 +57,27 @@ class DataManager: ObservableObject {
             }
             
             await MainActor.run {
+                let previousCount = self.dogs.count
+                let previousDogIds = Set(self.dogs.map { $0.id })
+                
                 self.dogs = localDogs
+                
+                // Validation checks
+                if previousCount > 0 {
+                    let newDogIds = Set(localDogs.map { $0.id })
+                    let missingDogs = previousDogIds.subtracting(newDogIds)
+                    
+                    if missingDogs.count > 0 {
+                        print("⚠️ WARNING: \(missingDogs.count) dogs disappeared after fetch")
+                        // Could implement recovery logic here
+                    }
+                    
+                    if localDogs.count < Int(Double(previousCount) * 0.5) {
+                        print("⚠️ CRITICAL: Dog count dropped from \(previousCount) to \(localDogs.count)")
+                        // Consider keeping previous data or alerting user
+                    }
+                }
+                
                 if shouldShowLoading {
                     self.isLoading = false
                 }
@@ -134,6 +154,22 @@ class DataManager: ObservableObject {
         } catch {
             print("❌ Failed to fetch all dogs: \(error)")
             return []
+        }
+    }
+    
+    // MARK: - Database-specific fetch (more robust)
+    
+    func getAllDogsForDatabase() async -> [Dog] {
+        do {
+            // Bypass cache completely for database view
+            let cloudKitDogs = try await cloudKitService.fetchAllDogsIncludingDeleted()
+            let convertedDogs = cloudKitDogs.map { $0.toDog() }
+            print("✅ Fetched \(convertedDogs.count) total dogs from CloudKit for database")
+            return convertedDogs
+        } catch {
+            print("❌ Failed to fetch all dogs: \(error)")
+            // Return cached data as fallback
+            return self.allDogs // Return last known good data
         }
     }
     
@@ -1037,9 +1073,6 @@ class DataManager: ObservableObject {
                 // Clear daily instances but keep totals
                 // The totals are calculated from all records, so they'll still be accurate
                 // We're just clearing the display lists for the current day
-                
-                // For walking records, we could optionally archive them
-                // For now, we'll keep all records but the UI will filter by date
                 
                 updatedDog.updatedAt = Date()
                 updatedDog.lastModifiedBy = AuthenticationService.shared.currentUser

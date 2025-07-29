@@ -517,7 +517,7 @@ class CloudKitService: ObservableObject {
         PerformanceMonitor.shared.updateProgress(0.1)
         
         // Fetch all dogs and filter out deleted ones locally
-        let predicate = NSPredicate(format: "\(DogFields.name) != %@", "")
+        let predicate = NSPredicate(format: "isDeleted == %@ OR isDeleted == nil", NSNumber(value: false))
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
         
         // Add sorting to get most recent first (requires CloudKit index on createdAt)
@@ -525,7 +525,25 @@ class CloudKitService: ObservableObject {
         
         print("🔍 Executing CloudKit query: \(query)")
         let result = try await publicDatabase.records(matching: query)
-        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        // Replace silent error handling with proper error logging
+        var records: [CKRecord] = []
+        var failedRecords: [(CKRecord.ID?, Error)] = []
+        
+        for matchResult in result.matchResults {
+            do {
+                let record = try matchResult.1.get()
+                records.append(record)
+            } catch {
+                failedRecords.append((matchResult.0, error))
+                print("❌ Failed to fetch record \(matchResult.0?.recordName ?? "unknown"): \(error)")
+            }
+        }
+        
+        if !failedRecords.isEmpty {
+            print("⚠️ Failed to fetch \(failedRecords.count) records")
+            // Could also implement retry logic here
+        }
         
         print("🔍 Found \(records.count) total dog records in CloudKit")
         
@@ -612,7 +630,7 @@ class CloudKitService: ObservableObject {
         }
         
         // Fetch all dogs and filter out deleted ones locally
-        let predicate = NSPredicate(format: "\(DogFields.name) != %@", "")
+        let predicate = NSPredicate(format: "isDeleted == %@ OR isDeleted == nil", NSNumber(value: false))
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
         
         // Add sorting to get most recent first (requires CloudKit index on createdAt)
@@ -620,7 +638,25 @@ class CloudKitService: ObservableObject {
         
         print("🔍 Executing CloudKit query for backup: \(query)")
         let result = try await publicDatabase.records(matching: query)
-        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        // Replace silent error handling with proper error logging
+        var records: [CKRecord] = []
+        var failedRecords: [(CKRecord.ID?, Error)] = []
+        
+        for matchResult in result.matchResults {
+            do {
+                let record = try matchResult.1.get()
+                records.append(record)
+            } catch {
+                failedRecords.append((matchResult.0, error))
+                print("❌ Failed to fetch record \(matchResult.0?.recordName ?? "unknown"): \(error)")
+            }
+        }
+        
+        if !failedRecords.isEmpty {
+            print("⚠️ Failed to fetch \(failedRecords.count) records")
+            // Could also implement retry logic here
+        }
         
         print("🔍 Found \(records.count) total dog records in CloudKit for backup")
         
@@ -696,7 +732,25 @@ class CloudKitService: ObservableObject {
         
         print("🔍 Executing incremental CloudKit query: \(query)")
         let result = try await publicDatabase.records(matching: query)
-        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        // Replace silent error handling with proper error logging
+        var records: [CKRecord] = []
+        var failedRecords: [(CKRecord.ID?, Error)] = []
+        
+        for matchResult in result.matchResults {
+            do {
+                let record = try matchResult.1.get()
+                records.append(record)
+            } catch {
+                failedRecords.append((matchResult.0, error))
+                print("❌ Failed to fetch record \(matchResult.0?.recordName ?? "unknown"): \(error)")
+            }
+        }
+        
+        if !failedRecords.isEmpty {
+            print("⚠️ Failed to fetch \(failedRecords.count) records")
+            // Could also implement retry logic here
+        }
         
         print("🔍 Found \(records.count) changed dog records in CloudKit")
         
@@ -2060,12 +2114,30 @@ class CloudKitService: ObservableObject {
     func fetchAllDogsIncludingDeleted() async throws -> [CloudKitDog] {
         print("🔍 Starting fetchAllDogsIncludingDeleted...")
         // Fetch all dogs including deleted ones
-        let predicate = NSPredicate(format: "\(DogFields.name) != %@", "")
+        let predicate = NSPredicate(format: "isDeleted == %@ OR isDeleted == nil", NSNumber(value: false))
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
         
         print("🔍 Executing CloudKit query: \(query)")
         let result = try await publicDatabase.records(matching: query)
-        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        // Replace silent error handling with proper error logging
+        var records: [CKRecord] = []
+        var failedRecords: [(CKRecord.ID?, Error)] = []
+        
+        for matchResult in result.matchResults {
+            do {
+                let record = try matchResult.1.get()
+                records.append(record)
+            } catch {
+                failedRecords.append((matchResult.0, error))
+                print("❌ Failed to fetch record \(matchResult.0?.recordName ?? "unknown"): \(error)")
+            }
+        }
+        
+        if !failedRecords.isEmpty {
+            print("⚠️ Failed to fetch \(failedRecords.count) records")
+            // Could also implement retry logic here
+        }
         
         print("🔍 Found \(records.count) total dog records in CloudKit")
         
@@ -2091,7 +2163,7 @@ class CloudKitService: ObservableObject {
         print("🚀 Starting optimized fetchDogsForImport...")
         
         // Only fetch essential dog data without records
-        let predicate = NSPredicate(format: "\(DogFields.name) != %@", "")
+        let predicate = NSPredicate(format: "isDeleted == %@ OR isDeleted == nil", NSNumber(value: false))
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
         
         // Add sorting to get most recent first
@@ -2099,7 +2171,25 @@ class CloudKitService: ObservableObject {
         
         print("🔍 Executing optimized CloudKit query: \(query)")
         let result = try await publicDatabase.records(matching: query)
-        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        // Replace silent error handling with proper error logging
+        var records: [CKRecord] = []
+        var failedRecords: [(CKRecord.ID?, Error)] = []
+        
+        for matchResult in result.matchResults {
+            do {
+                let record = try matchResult.1.get()
+                records.append(record)
+            } catch {
+                failedRecords.append((matchResult.0, error))
+                print("❌ Failed to fetch record \(matchResult.0?.recordName ?? "unknown"): \(error)")
+            }
+        }
+        
+        if !failedRecords.isEmpty {
+            print("⚠️ Failed to fetch \(failedRecords.count) records")
+            // Could also implement retry logic here
+        }
         
         print("🔍 Found \(records.count) total dog records in CloudKit")
         
@@ -2163,25 +2253,24 @@ class CloudKitService: ObservableObject {
     
     private var dogCache: [String: CloudKitDog] = [:]
     private var cacheTimestamp: Date = Date()
-    private let cacheExpirationInterval: TimeInterval = 28800 // 8 hours (3 shifts per day: morning, midday, overnight)
+    private let cacheExpirationInterval: TimeInterval = 86400 // 24 hours (instead of 8 hours)
     
     func getCachedDogs() -> [CloudKitDog] {
         let now = Date()
         if now.timeIntervalSince(cacheTimestamp) > cacheExpirationInterval {
-            print("🔄 Dog cache expired, clearing...")
-            dogCache.removeAll()
-            return []
+            print("🔄 Dog cache expired but keeping as fallback")
+            // Don't clear - just mark as stale but keep for fallback
         }
         return Array(dogCache.values)
     }
     
     func updateDogCache(_ dogs: [CloudKitDog]) {
-        dogCache.removeAll()
+        // Don't clear entire cache - merge new dogs instead
         for dog in dogs {
             dogCache[dog.id] = dog
         }
         cacheTimestamp = Date()
-        print("✅ Updated dog cache with \(dogs.count) dogs")
+        print("✅ Updated cache with \(dogs.count) dogs, total cached: \(dogCache.count)")
     }
     
     func updateDogCacheIncremental(_ changedDogs: [CloudKitDog]) {
