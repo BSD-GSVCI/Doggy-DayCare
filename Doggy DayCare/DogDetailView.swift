@@ -190,65 +190,112 @@ struct DogDetailView: View {
             }
             if !dog.medications.isEmpty || !dog.medicationRecords.isEmpty {
                 Section("Medications") {
-                    // Show daily medications
-                    ForEach(dog.medications.filter { $0.type == .daily }) { medication in
-                        HStack {
-                            Image(systemName: "pills.fill")
-                                .foregroundStyle(.purple)
-                            Text(medication.name)
-                                .font(.subheadline)
-                            if let notes = medication.notes, !notes.isEmpty {
-                                Text("📝")
-                                    .font(.caption)
+                    // Daily Medications
+                    if !dog.dailyMedications.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Daily Medications")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            
+                            ForEach(dog.dailyMedications) { medication in
+                                HStack {
+                                    Image(systemName: "pills.fill")
+                                        .foregroundStyle(.purple)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(medication.name)
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                        
+                                        if let notes = medication.notes, !notes.isEmpty {
+                                            Text(notes)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
                             }
-                            Spacer()
-                            Text("Daily")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
                         }
                     }
                     
-                    // Show scheduled medications that have been actually scheduled
-                    ForEach(dog.scheduledMedications) { scheduledMedication in
-                        if let medication = dog.medications.first(where: { $0.id == scheduledMedication.medicationId }) {
-                            HStack {
-                                Image(systemName: "clock.fill")
-                                    .foregroundStyle(.orange)
-                                VStack(alignment: .leading) {
-                                    Text(medication.name)
-                                        .font(.subheadline)
-                                    Text("Scheduled for \(scheduledMedication.scheduledDate.formatted(date: .abbreviated, time: .shortened))")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                    // Scheduled Medications
+                    if !dog.scheduledMedications.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Scheduled Medications")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            
+                            ForEach(dog.scheduledMedications) { scheduledMedication in
+                                let medication = dog.medications.first(where: { $0.id == scheduledMedication.medicationId })
+                                HStack {
+                                        Image(systemName: "clock.fill")
+                                            .foregroundStyle(.orange)
+                                        
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(medication?.name ?? "Unknown Medication")
+                                                .font(.subheadline)
+                                                .fontWeight(.medium)
+                                            
+                                            Text(scheduledMedication.scheduledDate.formatted(date: .abbreviated, time: .shortened))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                            
+                                            if let notes = scheduledMedication.notes, !notes.isEmpty {
+                                                Text(notes)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        Text(scheduledMedication.status.displayName)
+                                            .font(.caption)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color(scheduledMedication.status.color).opacity(0.2))
+                                            .foregroundStyle(Color(scheduledMedication.status.color))
+                                            .clipShape(Capsule())
                                 }
-                                if let notes = scheduledMedication.notes, !notes.isEmpty {
-                                    Text("📝")
-                                        .font(.caption)
-                                }
-                                Spacer()
-                                Text(scheduledMedication.status.displayName)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
                             }
                         }
                     }
+                    
+                    // Medication Records (administration history)
                     if !dog.medicationRecords.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Administration History")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            
                         let sortedMedicationRecords = dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp })
-                        ForEach(sortedMedicationRecords, id: \ .id) { record in
+                            ForEach(sortedMedicationRecords, id: \.id) { record in
                             HStack {
                                 Image(systemName: "pills")
                                     .foregroundStyle(.purple)
-                                VStack(alignment: .leading) {
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
                                     if let notes = record.notes {
                                         Text(notes)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
                                 }
+                                    
                                 Spacer()
+                                    
                                 Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
                             }
                         }
                     }

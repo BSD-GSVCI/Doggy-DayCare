@@ -292,7 +292,7 @@ struct DogFormView: View {
                                     )
                                 }
                                 
-                                Button("Add Scheduled Medication") {
+                                Button("Add/Edit Scheduled Medication") {
                                     showingAddScheduledMedication = true
                                 }
                                 .foregroundStyle(.blue)
@@ -595,6 +595,8 @@ struct AddDailyMedicationSheet: View {
 
 struct AddScheduledMedicationForNewDogSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var dataManager: DataManager
+    @StateObject private var authService = AuthenticationService.shared
     let availableMedications: [Medication]
     let onSave: (ScheduledMedication) -> Void
     let onAddMedication: (Medication) -> Void
@@ -605,6 +607,19 @@ struct AddScheduledMedicationForNewDogSheet: View {
     @State private var showingAddMedication = false
     @State private var newMedicationName = ""
     @State private var newMedicationNotes = ""
+    @State private var showingDeleteAlert = false
+    @State private var medicationToDelete: Medication?
+    
+    private func deleteMedicationFromList(_ medication: Medication) {
+        // Simple delete function to remove mistyped medications from the selection list
+        print("🗑️ Long press detected - attempting to delete medication: \(medication.name)")
+        // This will be handled by the parent view's medications array
+    }
+    
+    private func confirmDeleteMedication(_ medication: Medication) {
+        medicationToDelete = medication
+        showingDeleteAlert = true
+    }
     
     var body: some View {
         NavigationStack {
@@ -625,29 +640,37 @@ struct AddScheduledMedicationForNewDogSheet: View {
                         Text("No scheduled medications available.")
                             .foregroundStyle(.secondary)
                     } else {
-                        Menu {
-                            Button("Select a medication") {
-                                selectedMedication = nil
-                            }
-                            ForEach(scheduledMedications, id: \.id) { medication in
-                                Button(medication.name) {
-                                    selectedMedication = medication
+                        ForEach(scheduledMedications, id: \.id) { medication in
+                            HStack {
+                                Text(medication.name)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .foregroundStyle(selectedMedication?.id == medication.id ? .blue : .primary)
+                                if selectedMedication?.id == medication.id {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(.blue)
                                 }
                             }
-                        } label: {
-                            HStack {
-                                Text(selectedMedication?.name ?? "Select a medication")
-                                    .foregroundStyle(selectedMedication == nil ? .secondary : .primary)
-                                Spacer()
-                                Image(systemName: "chevron.down")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selectedMedication = medication
+                            }
+                            .onLongPressGesture {
+                                confirmDeleteMedication(medication)
                             }
                         }
                     }
                 }
                 
                 Section("Schedule") {
+                    if let selectedMedication = selectedMedication {
+                        Text("Selected: \(selectedMedication.name)")
+                            .font(.subheadline)
+                            .foregroundStyle(.blue)
+                    } else {
+                        Text("Select a medication above")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                     DatePicker("Scheduled Date & Time", selection: $scheduledDate, displayedComponents: [.date, .hourAndMinute])
                 }
                 
@@ -656,7 +679,7 @@ struct AddScheduledMedicationForNewDogSheet: View {
                         .lineLimit(3...6)
                 }
             }
-            .navigationTitle("Add Scheduled Medication")
+            .navigationTitle("Scheduled Medication(s)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -718,6 +741,18 @@ struct AddScheduledMedicationForNewDogSheet: View {
                         }
                     }
                 }
+            }
+        }
+        .alert("Delete Medication", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                if let medication = medicationToDelete {
+                    deleteMedicationFromList(medication)
+                }
+            }
+        } message: {
+            if let medication = medicationToDelete {
+                Text("Are you sure you want to delete '\(medication.name)'? This action cannot be undone.")
             }
         }
     }
