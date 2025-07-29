@@ -1604,14 +1604,17 @@ extension CloudKitDog {
         // Reconstruct medications from CloudKit arrays
         var reconstructedMedications: [Medication] = []
         for i in 0..<medicationNames.count {
-            if i < medicationTypes.count && i < medicationNotes.count {
+            if i < medicationTypes.count && i < medicationNotes.count && i < medicationIds.count {
                 let type = Medication.MedicationType(rawValue: medicationTypes[i]) ?? .daily
                 let medication = Medication(
                     name: medicationNames[i],
                     type: type,
                     notes: medicationNotes[i].isEmpty ? nil : medicationNotes[i]
                 )
-                reconstructedMedications.append(medication)
+                // Manually set the ID to preserve the original ID from CloudKit
+                var medicationWithId = medication
+                medicationWithId.id = UUID(uuidString: medicationIds[i]) ?? UUID()
+                reconstructedMedications.append(medicationWithId)
             }
         }
         dog.medications = reconstructedMedications
@@ -1619,10 +1622,12 @@ extension CloudKitDog {
         // Reconstruct scheduled medications from CloudKit arrays
         var reconstructedScheduledMedications: [ScheduledMedication] = []
         for i in 0..<scheduledMedicationDates.count {
-            if i < scheduledMedicationStatuses.count && i < scheduledMedicationNotes.count {
+            if i < scheduledMedicationStatuses.count && i < scheduledMedicationNotes.count && i < scheduledMedicationIds.count {
                 let status = ScheduledMedication.ScheduledMedicationStatus(rawValue: scheduledMedicationStatuses[i]) ?? .pending
+                let medicationId = UUID(uuidString: scheduledMedicationIds[i]) ?? UUID()
+                
                 let scheduledMedication = ScheduledMedication(
-                    medicationId: UUID(), // We'll need to match this to the actual medication
+                    medicationId: medicationId, // Use the preserved medication ID
                     scheduledDate: scheduledMedicationDates[i],
                     notificationTime: scheduledMedicationDates[i], // Use scheduled date as notification time for now
                     status: status,
@@ -1669,11 +1674,13 @@ extension Dog {
         let medicationNames = medications.map { $0.name }
         let medicationTypes = medications.map { $0.type.rawValue }
         let medicationNotes = medications.map { $0.notes ?? "" }
+        let medicationIds = medications.map { $0.id.uuidString }
         
         // Convert scheduled medications to CloudKit arrays
         let scheduledMedicationDates = scheduledMedications.map { $0.scheduledDate }
         let scheduledMedicationStatuses = scheduledMedications.map { $0.status.rawValue }
         let scheduledMedicationNotes = scheduledMedications.map { $0.notes ?? "" }
+        let scheduledMedicationIds = scheduledMedications.map { $0.medicationId.uuidString }
         
         return CloudKitDog(
             id: id.uuidString,
@@ -1706,9 +1713,11 @@ extension Dog {
             medicationNames: medicationNames,
             medicationTypes: medicationTypes,
             medicationNotes: medicationNotes,
+            medicationIds: medicationIds,
             scheduledMedicationDates: scheduledMedicationDates,
             scheduledMedicationStatuses: scheduledMedicationStatuses,
-            scheduledMedicationNotes: scheduledMedicationNotes
+            scheduledMedicationNotes: scheduledMedicationNotes,
+            scheduledMedicationIds: scheduledMedicationIds
         )
     }
 }
