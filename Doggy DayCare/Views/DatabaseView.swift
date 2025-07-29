@@ -73,6 +73,7 @@ struct DatabaseView: View {
                         }
                     }
                     .refreshable {
+                        dataManager.forceRefreshDatabaseCache()
                         await loadAllDogs()
                     }
                 }

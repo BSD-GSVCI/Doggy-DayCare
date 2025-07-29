@@ -17,6 +17,8 @@ class DataManager: ObservableObject {
     // Incremental sync tracking
     private var lastSyncTime: Date = Date.distantPast
     private var lastAllDogsSyncTime: Date = Date.distantPast
+    private var allDogsCache: [Dog] = [] // Cache for database view
+    private let databaseCacheExpiration: TimeInterval = 300 // 5 minutes
     
     private init() {
         print("📱 DataManager initialized")
@@ -160,16 +162,62 @@ class DataManager: ObservableObject {
     // MARK: - Database-specific fetch (more robust)
     
     func getAllDogsForDatabase() async -> [Dog] {
+        // Always use cached data if available - never replace cache
+        if !allDogsCache.isEmpty {
+            print("✅ Using cached database data (\(allDogsCache.count) dogs)")
+            return allDogsCache
+        }
+        
+        print("🔄 Database cache is empty, fetching initial data...")
+        
         do {
-            // Bypass cache completely for database view
+            // Only fetch fresh data if cache is completely empty
             let cloudKitDogs = try await cloudKitService.fetchAllDogsIncludingDeleted()
             let convertedDogs = cloudKitDogs.map { $0.toDog() }
-            print("✅ Fetched \(convertedDogs.count) total dogs from CloudKit for database")
+            
+            // Initialize cache with fresh data
+            await MainActor.run {
+                self.allDogsCache = convertedDogs
+                self.lastAllDogsSyncTime = Date()
+            }
+            
+            print("✅ Initialized database cache with \(convertedDogs.count) dogs from CloudKit")
             return convertedDogs
         } catch {
-            print("❌ Failed to fetch all dogs: \(error)")
-            // Return cached data as fallback
-            return self.allDogs // Return last known good data
+            print("❌ Failed to fetch initial dogs: \(error)")
+            return []
+        }
+    }
+    
+    func forceRefreshDatabaseCache() {
+        allDogsCache.removeAll() // Clear cache for manual refresh
+        lastAllDogsSyncTime = Date.distantPast
+        print("🔄 Database cache manually cleared - will fetch fresh data on next access")
+    }
+    
+    // MARK: - Incremental Database Cache Updates
+    
+    func incrementallyUpdateDatabaseCache(with newDog: Dog) {
+        // Add new dog to cache if not already present
+        if !allDogsCache.contains(where: { $0.id == newDog.id }) {
+            allDogsCache.append(newDog)
+            print("✅ Incrementally added dog to database cache: \(newDog.name)")
+        }
+    }
+    
+    func incrementallyRemoveFromDatabaseCache(dogId: UUID) {
+        // Remove dog from cache if present
+        if let index = allDogsCache.firstIndex(where: { $0.id == dogId }) {
+            let removedDog = allDogsCache.remove(at: index)
+            print("✅ Incrementally removed dog from database cache: \(removedDog.name)")
+        }
+    }
+    
+    func incrementallyUpdateExistingDogInDatabaseCache(with updatedDog: Dog) {
+        // Update existing dog in cache
+        if let index = allDogsCache.firstIndex(where: { $0.id == updatedDog.id }) {
+            allDogsCache[index] = updatedDog
+            print("✅ Incrementally updated dog in database cache: \(updatedDog.name)")
         }
     }
     
@@ -189,6 +237,7 @@ class DataManager: ObservableObject {
             await MainActor.run {
                 self.dogs.append(addedDog)
                 self.lastSyncTime = Date() // Update sync time for new dog
+                self.incrementallyUpdateDatabaseCache(with: addedDog) // Incrementally add to database cache
                 self.isLoading = false
                 print("✅ Added dog: \(addedDog.name)")
             }
@@ -242,52 +291,17 @@ class DataManager: ObservableObject {
         // Handle CloudKit operations in background without blocking UI
         Task.detached {
             do {
-                var updatedDog = Dog(
-                    id: dog.id,
-                    name: dog.name,
-                    ownerName: dog.ownerName,
-                    arrivalDate: dog.arrivalDate,
-                    isBoarding: dog.isBoarding,
-                    boardingEndDate: dog.boardingEndDate,
-                    specialInstructions: dog.specialInstructions,
-                    allergiesAndFeedingInstructions: dog.allergiesAndFeedingInstructions,
-                    needsWalking: dog.needsWalking,
-                    walkingNotes: dog.walkingNotes,
-                    isDaycareFed: dog.isDaycareFed,
-                    notes: dog.notes,
-                    profilePictureData: dog.profilePictureData,
-                    isArrivalTimeSet: dog.isArrivalTimeSet,
-                    isDeleted: dog.isDeleted,
-                    age: dog.age,
-                    gender: dog.gender,
-                    vaccinations: dog.vaccinations,
-                    isNeuteredOrSpayed: dog.isNeuteredOrSpayed,
-                    ownerPhoneNumber: dog.ownerPhoneNumber,
-                    medications: dog.medications,
-                    scheduledMedications: dog.scheduledMedications
-                )
-                // Copy all the records
-                updatedDog.feedingRecords = dog.feedingRecords
-                updatedDog.medicationRecords = dog.medicationRecords
-                updatedDog.pottyRecords = dog.pottyRecords
-                // Copy additional properties
-                updatedDog.departureDate = dog.departureDate
-                updatedDog.updatedAt = Date()
-                updatedDog.createdAt = dog.createdAt
-                updatedDog.createdBy = dog.createdBy
-                updatedDog.lastModifiedBy = dog.lastModifiedBy
-                
                 print("🔄 Calling CloudKit update in background...")
-                
-                _ = try await self.cloudKitService.updateDog(updatedDog.toCloudKitDog())
-                
+                _ = try await self.cloudKitService.updateDog(dog.toCloudKitDog())
                 print("✅ CloudKit update successful")
                 
                 // Update cache with the changed dog
-                await self.updateDogsCache(with: [updatedDog])
+                await self.updateDogsCache(with: [dog])
                 
+                // Update database cache on main actor
                 await MainActor.run {
                     self.lastSyncTime = Date() // Update sync time for dog update
+                    self.incrementallyUpdateExistingDogInDatabaseCache(with: dog) // Incrementally update database cache
                 }
             } catch {
                 print("❌ Failed to update dog in CloudKit: \(error)")
@@ -434,6 +448,7 @@ class DataManager: ObservableObject {
         // Only remove from allDogs array (database view), NOT from main dogs list
         await MainActor.run {
             self.allDogs.removeAll { $0.id == dog.id }
+            self.incrementallyRemoveFromDatabaseCache(dogId: dog.id) // Incrementally remove from database cache
             print("✅ Removed dog from database view only")
         }
         

@@ -516,8 +516,10 @@ class CloudKitService: ObservableObject {
         PerformanceMonitor.shared.startOperation("fetchDogs")
         PerformanceMonitor.shared.updateProgress(0.1)
         
+        print("🔍 Cache is empty, fetching from CloudKit...")
+        
         // Fetch all dogs and filter out deleted ones locally
-        let predicate = NSPredicate(format: "isDeleted == %@ OR isDeleted == nil", NSNumber(value: false))
+        let predicate = NSPredicate(format: "isDeleted != %@", NSNumber(value: true)) // Use the same safe predicate
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
         
         // Add sorting to get most recent first (requires CloudKit index on createdAt)
@@ -525,18 +527,20 @@ class CloudKitService: ObservableObject {
         
         print("🔍 Executing CloudKit query: \(query)")
         let result = try await publicDatabase.records(matching: query)
+        print("🔍 CloudKit query completed, processing \(result.matchResults.count) results")
         
         // Replace silent error handling with proper error logging
         var records: [CKRecord] = []
-        var failedRecords: [(CKRecord.ID?, Error)] = []
+        var failedRecords: [(CKRecord.ID, Error)] = []
         
         for matchResult in result.matchResults {
             do {
                 let record = try matchResult.1.get()
                 records.append(record)
+                print("✅ Successfully processed record: \(record[DogFields.name] as? String ?? "Unknown")")
             } catch {
                 failedRecords.append((matchResult.0, error))
-                print("❌ Failed to fetch record \(matchResult.0?.recordName ?? "unknown"): \(error)")
+                print("❌ Failed to fetch record \(matchResult.0.recordName): \(error)")
             }
         }
         
@@ -554,6 +558,8 @@ class CloudKitService: ObservableObject {
         let totalBatches = (records.count + batchSize - 1) / batchSize
         var currentBatch = 0
         
+        print("🔍 Processing \(records.count) dogs in \(totalBatches) batches...")
+        
         for i in stride(from: 0, to: records.count, by: batchSize) {
             let batch = Array(records[i..<min(i + batchSize, records.count)])
             currentBatch += 1
@@ -561,6 +567,8 @@ class CloudKitService: ObservableObject {
             // Update progress
             let progress = 0.1 + (Double(currentBatch) / Double(totalBatches)) * 0.8
             PerformanceMonitor.shared.updateProgress(progress)
+            
+            print("🔍 Processing batch \(currentBatch)/\(totalBatches) with \(batch.count) dogs...")
             
             // Process batch concurrently
             let batchDogs = await withTaskGroup(of: CloudKitDog?.self) { group in
@@ -584,6 +592,10 @@ class CloudKitService: ObservableObject {
                             print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty records for \(dog.name)")
                         } catch {
                             print("⚠️ Failed to load records for dog \(dog.name): \(error)")
+                            // Continue without records for now
+                            dog.feedingRecords = []
+                            dog.medicationRecords = []
+                            dog.pottyRecords = []
                         }
                         
                         return dog
@@ -630,7 +642,7 @@ class CloudKitService: ObservableObject {
         }
         
         // Fetch all dogs and filter out deleted ones locally
-        let predicate = NSPredicate(format: "isDeleted == %@ OR isDeleted == nil", NSNumber(value: false))
+        let predicate = NSPredicate(format: "isDeleted != %@", NSNumber(value: true)) // Use the same safe predicate
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
         
         // Add sorting to get most recent first (requires CloudKit index on createdAt)
@@ -641,7 +653,7 @@ class CloudKitService: ObservableObject {
         
         // Replace silent error handling with proper error logging
         var records: [CKRecord] = []
-        var failedRecords: [(CKRecord.ID?, Error)] = []
+        var failedRecords: [(CKRecord.ID, Error)] = []
         
         for matchResult in result.matchResults {
             do {
@@ -649,7 +661,7 @@ class CloudKitService: ObservableObject {
                 records.append(record)
             } catch {
                 failedRecords.append((matchResult.0, error))
-                print("❌ Failed to fetch record \(matchResult.0?.recordName ?? "unknown"): \(error)")
+                print("❌ Failed to fetch record \(matchResult.0.recordName): \(error)")
             }
         }
         
@@ -735,7 +747,7 @@ class CloudKitService: ObservableObject {
         
         // Replace silent error handling with proper error logging
         var records: [CKRecord] = []
-        var failedRecords: [(CKRecord.ID?, Error)] = []
+        var failedRecords: [(CKRecord.ID, Error)] = []
         
         for matchResult in result.matchResults {
             do {
@@ -743,7 +755,7 @@ class CloudKitService: ObservableObject {
                 records.append(record)
             } catch {
                 failedRecords.append((matchResult.0, error))
-                print("❌ Failed to fetch record \(matchResult.0?.recordName ?? "unknown"): \(error)")
+                print("❌ Failed to fetch record \(matchResult.0.recordName): \(error)")
             }
         }
         
@@ -2114,7 +2126,7 @@ class CloudKitService: ObservableObject {
     func fetchAllDogsIncludingDeleted() async throws -> [CloudKitDog] {
         print("🔍 Starting fetchAllDogsIncludingDeleted...")
         // Fetch all dogs including deleted ones
-        let predicate = NSPredicate(format: "isDeleted == %@ OR isDeleted == nil", NSNumber(value: false))
+        let predicate = NSPredicate(format: "isDeleted != %@", NSNumber(value: true)) // Use the same safe predicate
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
         
         print("🔍 Executing CloudKit query: \(query)")
@@ -2122,7 +2134,7 @@ class CloudKitService: ObservableObject {
         
         // Replace silent error handling with proper error logging
         var records: [CKRecord] = []
-        var failedRecords: [(CKRecord.ID?, Error)] = []
+        var failedRecords: [(CKRecord.ID, Error)] = []
         
         for matchResult in result.matchResults {
             do {
@@ -2130,7 +2142,7 @@ class CloudKitService: ObservableObject {
                 records.append(record)
             } catch {
                 failedRecords.append((matchResult.0, error))
-                print("❌ Failed to fetch record \(matchResult.0?.recordName ?? "unknown"): \(error)")
+                print("❌ Failed to fetch record \(matchResult.0.recordName): \(error)")
             }
         }
         
@@ -2163,7 +2175,7 @@ class CloudKitService: ObservableObject {
         print("🚀 Starting optimized fetchDogsForImport...")
         
         // Only fetch essential dog data without records
-        let predicate = NSPredicate(format: "isDeleted == %@ OR isDeleted == nil", NSNumber(value: false))
+        let predicate = NSPredicate(format: "isDeleted != %@", NSNumber(value: true)) // Use the same safe predicate
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
         
         // Add sorting to get most recent first
@@ -2174,7 +2186,7 @@ class CloudKitService: ObservableObject {
         
         // Replace silent error handling with proper error logging
         var records: [CKRecord] = []
-        var failedRecords: [(CKRecord.ID?, Error)] = []
+        var failedRecords: [(CKRecord.ID, Error)] = []
         
         for matchResult in result.matchResults {
             do {
@@ -2182,7 +2194,7 @@ class CloudKitService: ObservableObject {
                 records.append(record)
             } catch {
                 failedRecords.append((matchResult.0, error))
-                print("❌ Failed to fetch record \(matchResult.0?.recordName ?? "unknown"): \(error)")
+                print("❌ Failed to fetch record \(matchResult.0.recordName): \(error)")
             }
         }
         
