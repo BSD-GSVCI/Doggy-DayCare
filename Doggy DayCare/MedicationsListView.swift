@@ -189,11 +189,55 @@ struct DogMedicationRow: View {
                 Spacer()
             }
             
-            // Show medication summary
-            if !dog.activeMedications.isEmpty {
-                Text("\(dog.activeMedications.count) medication(s)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            // Show medications that need attention today
+            VStack(alignment: .leading, spacing: 4) {
+                // Daily medications
+                if !dog.dailyMedications.isEmpty {
+                    ForEach(dog.dailyMedications) { medication in
+                        HStack {
+                            Image(systemName: "pills.fill")
+                                .foregroundStyle(.purple)
+                            Text(medication.name)
+                                .font(.subheadline)
+                            if let notes = medication.notes, !notes.isEmpty {
+                                Text("📝")
+                                    .font(.caption)
+                            }
+                            Spacer()
+                            Text("Daily")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                
+                // Scheduled medications due today
+                let todaysScheduledMedications = dog.todaysScheduledMedications
+                if !todaysScheduledMedications.isEmpty {
+                    ForEach(todaysScheduledMedications) { scheduledMedication in
+                        if let medication = dog.medications.first(where: { $0.id == scheduledMedication.medicationId }) {
+                            HStack {
+                                Image(systemName: "clock.fill")
+                                    .foregroundStyle(.orange)
+                                VStack(alignment: .leading) {
+                                    Text(medication.name)
+                                        .font(.subheadline)
+                                    Text(scheduledMedication.scheduledDate.formatted(date: .omitted, time: .shortened))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text(scheduledMedication.status.displayName)
+                                    .font(.caption)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color(scheduledMedication.status.color).opacity(0.2))
+                                    .foregroundStyle(Color(scheduledMedication.status.color))
+                                    .clipShape(Capsule())
+                            }
+                        }
+                    }
+                }
             }
             
             // Medication count
