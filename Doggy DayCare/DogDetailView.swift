@@ -195,7 +195,7 @@ struct DogDetailView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Daily Medications")
                                 .font(.headline)
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(.secondary)
                             
                             ForEach(dog.dailyMedications) { medication in
                                 HStack {
@@ -206,6 +206,7 @@ struct DogDetailView: View {
                                         Text(medication.name)
                                             .font(.subheadline)
                                             .fontWeight(.medium)
+                                            .foregroundStyle(.secondary)
                                         
                                         if let notes = medication.notes, !notes.isEmpty {
                                             Text(notes)
@@ -227,7 +228,7 @@ struct DogDetailView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Scheduled Medications")
                                 .font(.headline)
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(.secondary)
                             
                             ForEach(dog.scheduledMedications) { scheduledMedication in
                                 let medication = dog.medications.first(where: { $0.id == scheduledMedication.medicationId })
@@ -239,6 +240,7 @@ struct DogDetailView: View {
                                             Text(medication?.name ?? "Unknown Medication")
                                                 .font(.subheadline)
                                                 .fontWeight(.medium)
+                                                .foregroundStyle(.secondary)
                                             
                                             Text(scheduledMedication.scheduledDate.formatted(date: .abbreviated, time: .shortened))
                                                 .font(.caption)
@@ -272,7 +274,7 @@ struct DogDetailView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Administration History")
                                 .font(.headline)
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(.secondary)
                             
                         let sortedMedicationRecords = dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp })
                             ForEach(sortedMedicationRecords, id: \.id) { record in
