@@ -37,7 +37,7 @@ struct MedicationsListView: View {
         }
         
         return dogs.filter { dog in
-            dog.isCurrentlyPresent && !(dog.medications?.isEmpty ?? true)
+            dog.isCurrentlyPresent && dog.hasMedications
         }
     }
     
@@ -189,10 +189,10 @@ struct DogMedicationRow: View {
                 Spacer()
             }
             
-            // Medication type and count
-            if let medications = dog.medications, !medications.isEmpty {
-                Text(medications)
-                    .font(.subheadline)
+            // Show medication summary
+            if !dog.activeMedications.isEmpty {
+                Text("\(dog.activeMedications.count) medication(s)")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
             
@@ -453,8 +453,8 @@ struct AddMedicationView: View {
                     Text("Dog: \(dog.name)")
                         .font(.headline)
                     
-                    if let medications = dog.medications, !medications.isEmpty {
-                        Text("Medications: \(medications)")
+                    if !dog.dailyMedications.isEmpty {
+                        Text("Medications: \(dog.dailyMedications.map(\.name).joined(separator: ", "))")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }

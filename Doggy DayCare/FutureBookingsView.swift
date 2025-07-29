@@ -158,7 +158,10 @@ struct FutureBookingFormView: View {
     @State private var isDaycareFed = false
     @State private var needsWalking = false
     @State private var walkingNotes = ""
-    @State private var medications = ""
+    @State private var medications: [Medication] = []
+    @State private var scheduledMedications: [ScheduledMedication] = []
+    @State private var showingAddMedication = false
+    @State private var showingAddScheduledMedication = false
     @State private var allergiesAndFeedingInstructions = ""
     @State private var notes = ""
     @State private var isLoading = false
@@ -250,9 +253,110 @@ struct FutureBookingFormView: View {
                     }
                 }
                 
+                Section("Medications") {
+                    // Daily Medications
+                    if !medications.filter({ $0.type == .daily }).isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Daily Medications")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            
+                            ForEach(medications.filter({ $0.type == .daily })) { medication in
+                                HStack {
+                                    Text(medication.name)
+                                        .foregroundStyle(.primary)
+                                    if let notes = medication.notes {
+                                        Text("(\(notes))")
+                                            .foregroundStyle(.secondary)
+                                            .font(.caption)
+                                    }
+                                    Spacer()
+                                    Button("Remove") {
+                                        medications.removeAll { $0.id == medication.id }
+                                    }
+                                    .foregroundStyle(.red)
+                                    .font(.caption)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    
+                    // Scheduled Medications
+                    if !scheduledMedications.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Scheduled Medications")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            
+                            ForEach(scheduledMedications) { scheduledMedication in
+                                HStack {
+                                    if let medication = medications.first(where: { $0.id == scheduledMedication.medicationId }) {
+                                        Text(medication.name)
+                                            .foregroundStyle(.primary)
+                                    }
+                                    Text("(\(scheduledMedication.scheduledDate.formatted(date: .abbreviated, time: .shortened)))")
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                    if let notes = scheduledMedication.notes {
+                                        Text("(\(notes))")
+                                            .foregroundStyle(.secondary)
+                                            .font(.caption)
+                                    }
+                                    Spacer()
+                                    Button("Remove") {
+                                        scheduledMedications.removeAll { $0.id == scheduledMedication.id }
+                                    }
+                                    .foregroundStyle(.red)
+                                    .font(.caption)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    
+                    // Add Medication Buttons
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button("Add Daily Medication") {
+                            showingAddMedication = true
+                        }
+                        .foregroundStyle(.blue)
+                        .buttonStyle(.plain)
+                        .sheet(isPresented: $showingAddMedication) {
+                            AddDailyMedicationSheet(
+                                onSave: { medication in
+                                    medications.append(medication)
+                                    print("✅ Added daily medication: \(medication.name)")
+                                    print("📊 Total medications: \(medications.count)")
+                                }
+                            )
+                        }
+                        
+                        Button("Add Scheduled Medication") {
+                            showingAddScheduledMedication = true
+                        }
+                        .foregroundStyle(.blue)
+                        .buttonStyle(.plain)
+                        .sheet(isPresented: $showingAddScheduledMedication) {
+                            AddScheduledMedicationForNewDogSheet(
+                                availableMedications: medications,
+                                onSave: { scheduledMedication in
+                                    scheduledMedications.append(scheduledMedication)
+                                    print("✅ Added scheduled medication for: \(scheduledMedication.medicationId)")
+                                    print("📊 Total scheduled medications: \(scheduledMedications.count)")
+                                },
+                                onAddMedication: { medication in
+                                    medications.append(medication)
+                                    print("✅ Added medication from scheduled sheet: \(medication.name)")
+                                    print("📊 Total medications: \(medications.count)")
+                                }
+                            )
+                        }
+                    }
+                    .padding(.top, 8)
+                }
+                
                 Section("Additional Information") {
-                    TextField("Medications", text: $medications, axis: .vertical)
-                        .lineLimit(3...6)
                     TextField("Allergies & Feeding Instructions", text: $allergiesAndFeedingInstructions, axis: .vertical)
                         .lineLimit(3...6)
                     TextField("Notes", text: $notes, axis: .vertical)
@@ -348,7 +452,8 @@ struct FutureBookingFormView: View {
         // Load the imported data
         name = importedDog.name
         ownerName = importedDog.ownerName ?? ""
-        medications = importedDog.medications ?? ""
+        medications = importedDog.medications
+        scheduledMedications = importedDog.scheduledMedications
         allergiesAndFeedingInstructions = importedDog.allergiesAndFeedingInstructions ?? ""
         needsWalking = importedDog.needsWalking
         walkingNotes = importedDog.walkingNotes ?? ""
@@ -389,7 +494,6 @@ struct FutureBookingFormView: View {
             ownerName: ownerName.isEmpty ? nil : ownerName,
             arrivalDate: arrivalDate,
             isBoarding: isBoarding,
-            medications: medications.isEmpty ? nil : medications,
             allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
             needsWalking: needsWalking,
             walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
@@ -397,7 +501,9 @@ struct FutureBookingFormView: View {
             notes: notes.isEmpty ? nil : notes,
             profilePictureData: profilePictureData,
             isArrivalTimeSet: false,
-            vaccinations: vaccinations.map { VaccinationItem(name: $0.name, endDate: $0.endDate) }
+            vaccinations: vaccinations.map { VaccinationItem(name: $0.name, endDate: $0.endDate) },
+            medications: medications,
+            scheduledMedications: scheduledMedications
         )
         
         // Set boarding end date for boarding dogs
@@ -426,7 +532,11 @@ struct FutureBookingEditView: View {
     @State private var isDaycareFed: Bool
     @State private var needsWalking: Bool
     @State private var walkingNotes: String
-    @State private var medications: String
+    @State private var medications: [Medication]
+    @State private var scheduledMedications: [ScheduledMedication]
+    @State private var showingAddMedication = false
+    @State private var showingAddScheduledMedication = false
+
     @State private var allergiesAndFeedingInstructions: String
     @State private var notes: String
     @State private var isLoading = false
@@ -465,7 +575,9 @@ struct FutureBookingEditView: View {
         self._isDaycareFed = State(initialValue: dog.isDaycareFed)
         self._needsWalking = State(initialValue: dog.needsWalking)
         self._walkingNotes = State(initialValue: dog.walkingNotes ?? "")
-        self._medications = State(initialValue: dog.medications ?? "")
+        self._medications = State(initialValue: dog.medications)
+        self._scheduledMedications = State(initialValue: dog.scheduledMedications)
+
         self._allergiesAndFeedingInstructions = State(initialValue: dog.allergiesAndFeedingInstructions ?? "")
         self._notes = State(initialValue: dog.notes ?? "")
         self._profileImage = State(initialValue: dog.profilePictureData.flatMap { UIImage(data: $0) })
@@ -528,9 +640,110 @@ struct FutureBookingEditView: View {
                     }
                 }
                 
+                Section("Medications") {
+                    // Daily Medications
+                    if !medications.filter({ $0.type == .daily }).isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Daily Medications")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            
+                            ForEach(medications.filter({ $0.type == .daily })) { medication in
+                                HStack {
+                                    Text(medication.name)
+                                        .foregroundStyle(.primary)
+                                    if let notes = medication.notes {
+                                        Text("(\(notes))")
+                                            .foregroundStyle(.secondary)
+                                            .font(.caption)
+                                    }
+                                    Spacer()
+                                    Button("Remove") {
+                                        medications.removeAll { $0.id == medication.id }
+                                    }
+                                    .foregroundStyle(.red)
+                                    .font(.caption)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    
+                    // Scheduled Medications
+                    if !scheduledMedications.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Scheduled Medications")
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                            
+                            ForEach(scheduledMedications) { scheduledMedication in
+                                HStack {
+                                    if let medication = medications.first(where: { $0.id == scheduledMedication.medicationId }) {
+                                        Text(medication.name)
+                                            .foregroundStyle(.primary)
+                                    }
+                                    Text("(\(scheduledMedication.scheduledDate.formatted(date: .abbreviated, time: .shortened)))")
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                    if let notes = scheduledMedication.notes {
+                                        Text("(\(notes))")
+                                            .foregroundStyle(.secondary)
+                                            .font(.caption)
+                                    }
+                                    Spacer()
+                                    Button("Remove") {
+                                        scheduledMedications.removeAll { $0.id == scheduledMedication.id }
+                                    }
+                                    .foregroundStyle(.red)
+                                    .font(.caption)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    
+                    // Add Medication Buttons
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button("Add Daily Medication") {
+                            showingAddMedication = true
+                        }
+                        .foregroundStyle(.blue)
+                        .buttonStyle(.plain)
+                        .sheet(isPresented: $showingAddMedication) {
+                            AddDailyMedicationSheet(
+                                onSave: { medication in
+                                    medications.append(medication)
+                                    print("✅ Added daily medication: \(medication.name)")
+                                    print("📊 Total medications: \(medications.count)")
+                                }
+                            )
+                        }
+                        
+                        Button("Add Scheduled Medication") {
+                            showingAddScheduledMedication = true
+                        }
+                        .foregroundStyle(.blue)
+                        .buttonStyle(.plain)
+                        .sheet(isPresented: $showingAddScheduledMedication) {
+                            AddScheduledMedicationForNewDogSheet(
+                                availableMedications: medications,
+                                onSave: { scheduledMedication in
+                                    scheduledMedications.append(scheduledMedication)
+                                    print("✅ Added scheduled medication for: \(scheduledMedication.medicationId)")
+                                    print("📊 Total scheduled medications: \(scheduledMedications.count)")
+                                },
+                                onAddMedication: { medication in
+                                    medications.append(medication)
+                                    print("✅ Added medication from scheduled sheet: \(medication.name)")
+                                    print("📊 Total medications: \(medications.count)")
+                                }
+                            )
+                        }
+                    }
+                    .padding(.top, 8)
+                }
+                
                 Section("Additional Information") {
-                    TextField("Medications", text: $medications, axis: .vertical)
-                        .lineLimit(3...6)
                     TextField("Allergies & Feeding Instructions", text: $allergiesAndFeedingInstructions, axis: .vertical)
                         .lineLimit(3...6)
                     TextField("Notes", text: $notes, axis: .vertical)
@@ -589,6 +802,30 @@ struct FutureBookingEditView: View {
         .sheet(isPresented: $showingCamera) {
             CameraPicker(image: $profileImage)
         }
+        .sheet(isPresented: $showingAddMedication) {
+            AddDailyMedicationSheet(
+                onSave: { medication in
+                    medications.append(medication)
+                    print("✅ Added daily medication: \(medication.name)")
+                    print("📊 Total medications: \(medications.count)")
+                }
+            )
+        }
+        .sheet(isPresented: $showingAddScheduledMedication) {
+            AddScheduledMedicationForNewDogSheet(
+                availableMedications: medications,
+                onSave: { scheduledMedication in
+                    scheduledMedications.append(scheduledMedication)
+                    print("✅ Added scheduled medication for: \(scheduledMedication.medicationId)")
+                    print("📊 Total scheduled medications: \(scheduledMedications.count)")
+                },
+                onAddMedication: { medication in
+                    medications.append(medication)
+                    print("✅ Added medication from scheduled sheet: \(medication.name)")
+                    print("📊 Total medications: \(medications.count)")
+                }
+            )
+        }
     }
     
     private func updateFutureBooking() async {
@@ -603,7 +840,9 @@ struct FutureBookingEditView: View {
         updatedDog.arrivalDate = arrivalDate
         updatedDog.isBoarding = isBoarding
         updatedDog.boardingEndDate = isBoarding ? boardingEndDate : nil
-        updatedDog.medications = medications.isEmpty ? nil : medications
+
+        updatedDog.medications = medications
+        updatedDog.scheduledMedications = scheduledMedications
         updatedDog.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions
         updatedDog.needsWalking = needsWalking
         updatedDog.walkingNotes = walkingNotes.isEmpty ? nil : walkingNotes
@@ -618,7 +857,8 @@ struct FutureBookingEditView: View {
         updatedDog.isNeuteredOrSpayed = isNeuteredOrSpayed
         updatedDog.ownerPhoneNumber = ownerPhoneNumber.isEmpty ? nil : ownerPhoneNumber
         
-        await dataManager.updateDog(updatedDog)
+        // Use optimized update for vaccinations
+        await dataManager.updateDogVaccinations(updatedDog, vaccinations: vaccinations.map { VaccinationItem(name: $0.name, endDate: $0.endDate) })
         
         isLoading = false
         dismiss()

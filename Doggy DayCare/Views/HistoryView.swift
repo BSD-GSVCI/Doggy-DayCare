@@ -399,7 +399,7 @@ struct HistoryDogRow: View {
                                 .font(.caption)
                         }
                         
-                        if let medications = record.medications, !medications.isEmpty {
+                        if !record.medications.isEmpty {
                             Image(systemName: "pills")
                                 .foregroundStyle(.purple)
                                 .font(.caption)
@@ -533,14 +533,28 @@ struct HistoryDogDetailView: View {
                 }
             }
             
-            if let medications = record.medications, !medications.isEmpty {
+            if !record.medications.isEmpty {
                 Section("Medical Information") {
-                    HStack {
-                        Text("Medications")
-                        Spacer()
-                        Text(medications)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.trailing)
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(record.medications) { medication in
+                            HStack {
+                                Image(systemName: medication.type == .daily ? "pills.fill" : "clock.fill")
+                                    .foregroundStyle(medication.type == .daily ? .purple : .orange)
+                                Text(medication.name)
+                                    .font(.subheadline)
+                                if let notes = medication.notes, !notes.isEmpty {
+                                    Text("📝")
+                                        .font(.caption)
+                                }
+                                Spacer()
+                                Text(medication.type.displayName)
+                                    .font(.caption)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.blue.opacity(0.2))
+                                    .clipShape(Capsule())
+                            }
+                        }
                     }
                 }
             }

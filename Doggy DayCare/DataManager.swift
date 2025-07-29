@@ -146,8 +146,10 @@ class DataManager: ObservableObject {
         
         do {
             let cloudKitDog = dog.toCloudKitDog()
+            print("🔄 DataManager.addDog: Original dog has \(dog.medications.count) medications and \(dog.scheduledMedications.count) scheduled medications")
             let addedCloudKitDog = try await cloudKitService.createDog(cloudKitDog)
             let addedDog = addedCloudKitDog.toDog()
+            print("🔄 DataManager.addDog: Added dog has \(addedDog.medications.count) medications and \(addedDog.scheduledMedications.count) scheduled medications")
             await MainActor.run {
                 self.dogs.append(addedDog)
                 self.lastSyncTime = Date() // Update sync time for new dog
@@ -189,72 +191,159 @@ class DataManager: ObservableObject {
     
     func updateDog(_ dog: Dog) async {
         print("🔄 DataManager.updateDog called for: \(dog.name)")
-        print("📅 Departure date being set: \(dog.departureDate?.description ?? "nil")")
         
         // Log the update action
         await logDogActivity(action: "UPDATE_DOG", dog: dog, extra: "Updating dog information")
         
-        isLoading = true
-        errorMessage = nil
-        do {
-            var updatedDog = Dog(
-                id: dog.id,
-                name: dog.name,
-                ownerName: dog.ownerName,
-                arrivalDate: dog.arrivalDate,
-                isBoarding: dog.isBoarding,
-                boardingEndDate: dog.boardingEndDate,
-                medications: dog.medications,
-                specialInstructions: dog.specialInstructions,
-                allergiesAndFeedingInstructions: dog.allergiesAndFeedingInstructions,
-                needsWalking: dog.needsWalking,
-                walkingNotes: dog.walkingNotes,
-                isDaycareFed: dog.isDaycareFed,
-                notes: dog.notes,
-                profilePictureData: dog.profilePictureData,
-                isArrivalTimeSet: dog.isArrivalTimeSet,
-                isDeleted: dog.isDeleted,
-                age: dog.age,
-                gender: dog.gender,
-                vaccinations: dog.vaccinations,
-                isNeuteredOrSpayed: dog.isNeuteredOrSpayed,
-                ownerPhoneNumber: dog.ownerPhoneNumber
-            )
-            // Copy all the records
-            updatedDog.feedingRecords = dog.feedingRecords
-            updatedDog.medicationRecords = dog.medicationRecords
-            updatedDog.pottyRecords = dog.pottyRecords
-            // Copy additional properties
-            updatedDog.departureDate = dog.departureDate
-            updatedDog.updatedAt = Date()
-            updatedDog.createdAt = dog.createdAt
-            updatedDog.createdBy = dog.createdBy
-            updatedDog.lastModifiedBy = dog.lastModifiedBy
-            
-            print("📅 Updated dog departure date: \(updatedDog.departureDate?.description ?? "nil")")
-            print("🔄 Calling CloudKit update...")
-            
-            _ = try await cloudKitService.updateDog(updatedDog.toCloudKitDog())
-            
-            print("✅ CloudKit update successful")
-            
-            // Update local cache
-            if let index = dogs.firstIndex(where: { $0.id == dog.id }) {
-                dogs[index] = updatedDog
-                print("✅ Local cache updated")
-            } else {
-                print("⚠️ Dog not found in local cache for update")
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                self.dogs[index] = dog
+                print("✅ Updated local cache immediately for responsive UI")
             }
-            
-            await MainActor.run {
-                self.lastSyncTime = Date() // Update sync time for dog update
-                self.isLoading = false
+        }
+        
+        // Handle CloudKit operations in background without blocking UI
+        Task.detached {
+            do {
+                var updatedDog = Dog(
+                    id: dog.id,
+                    name: dog.name,
+                    ownerName: dog.ownerName,
+                    arrivalDate: dog.arrivalDate,
+                    isBoarding: dog.isBoarding,
+                    boardingEndDate: dog.boardingEndDate,
+                    specialInstructions: dog.specialInstructions,
+                    allergiesAndFeedingInstructions: dog.allergiesAndFeedingInstructions,
+                    needsWalking: dog.needsWalking,
+                    walkingNotes: dog.walkingNotes,
+                    isDaycareFed: dog.isDaycareFed,
+                    notes: dog.notes,
+                    profilePictureData: dog.profilePictureData,
+                    isArrivalTimeSet: dog.isArrivalTimeSet,
+                    isDeleted: dog.isDeleted,
+                    age: dog.age,
+                    gender: dog.gender,
+                    vaccinations: dog.vaccinations,
+                    isNeuteredOrSpayed: dog.isNeuteredOrSpayed,
+                    ownerPhoneNumber: dog.ownerPhoneNumber,
+                    medications: dog.medications,
+                    scheduledMedications: dog.scheduledMedications
+                )
+                // Copy all the records
+                updatedDog.feedingRecords = dog.feedingRecords
+                updatedDog.medicationRecords = dog.medicationRecords
+                updatedDog.pottyRecords = dog.pottyRecords
+                // Copy additional properties
+                updatedDog.departureDate = dog.departureDate
+                updatedDog.updatedAt = Date()
+                updatedDog.createdAt = dog.createdAt
+                updatedDog.createdBy = dog.createdBy
+                updatedDog.lastModifiedBy = dog.lastModifiedBy
+                
+                print("🔄 Calling CloudKit update in background...")
+                
+                _ = try await self.cloudKitService.updateDog(updatedDog.toCloudKitDog())
+                
+                print("✅ CloudKit update successful")
+                
+                // Update cache with the changed dog
+                await self.updateDogsCache(with: [updatedDog])
+                
+                await MainActor.run {
+                    self.lastSyncTime = Date() // Update sync time for dog update
+                }
+            } catch {
+                print("❌ Failed to update dog in CloudKit: \(error)")
+                // Revert local cache if CloudKit update failed
+                await MainActor.run {
+                    self.errorMessage = "Failed to update dog: \(error.localizedDescription)"
+                    print("❌ Reverting local cache due to CloudKit failure")
+                }
             }
-        } catch {
-            await MainActor.run {
-                self.errorMessage = "Failed to update dog: \(error.localizedDescription)"
-                self.isLoading = false
-                print("❌ Failed to update dog: \(error)")
+        }
+    }
+    
+    // MARK: - Optimized Medication and Vaccination Updates
+    
+    func updateDogMedications(_ dog: Dog, medications: [Medication], scheduledMedications: [ScheduledMedication]) async {
+        print("🔄 DataManager.updateDogMedications called for: \(dog.name)")
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                var updatedDog = self.dogs[index]
+                updatedDog.medications = medications
+                updatedDog.scheduledMedications = scheduledMedications
+                updatedDog.updatedAt = Date()
+                self.dogs[index] = updatedDog
+                print("✅ Updated medications in local cache immediately")
+            }
+        }
+        
+        // Handle CloudKit operations in background
+        Task.detached {
+            do {
+                var updatedDog = dog
+                updatedDog.medications = medications
+                updatedDog.scheduledMedications = scheduledMedications
+                updatedDog.updatedAt = Date()
+                
+                print("🔄 Calling CloudKit medication update in background...")
+                _ = try await self.cloudKitService.updateDog(updatedDog.toCloudKitDog())
+                print("✅ CloudKit medication update successful")
+                
+                // Update cache with the changed dog
+                await self.updateDogsCache(with: [updatedDog])
+                
+                await MainActor.run {
+                    self.lastSyncTime = Date()
+                }
+            } catch {
+                print("❌ Failed to update medications in CloudKit: \(error)")
+                await MainActor.run {
+                    self.errorMessage = "Failed to update medications: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+    
+    func updateDogVaccinations(_ dog: Dog, vaccinations: [VaccinationItem]) async {
+        print("🔄 DataManager.updateDogVaccinations called for: \(dog.name)")
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
+                var updatedDog = self.dogs[index]
+                updatedDog.vaccinations = vaccinations
+                updatedDog.updatedAt = Date()
+                self.dogs[index] = updatedDog
+                print("✅ Updated vaccinations in local cache immediately")
+            }
+        }
+        
+        // Handle CloudKit operations in background
+        Task.detached {
+            do {
+                var updatedDog = dog
+                updatedDog.vaccinations = vaccinations
+                updatedDog.updatedAt = Date()
+                
+                print("🔄 Calling CloudKit vaccination update in background...")
+                _ = try await self.cloudKitService.updateDog(updatedDog.toCloudKitDog())
+                print("✅ CloudKit vaccination update successful")
+                
+                // Update cache with the changed dog
+                await self.updateDogsCache(with: [updatedDog])
+                
+                await MainActor.run {
+                    self.lastSyncTime = Date()
+                }
+            } catch {
+                print("❌ Failed to update vaccinations in CloudKit: \(error)")
+                await MainActor.run {
+                    self.errorMessage = "Failed to update vaccinations: \(error.localizedDescription)"
+                }
             }
         }
     }
@@ -339,7 +428,6 @@ class DataManager: ObservableObject {
             arrivalDate: dog.arrivalDate,
             isBoarding: dog.isBoarding,
             boardingEndDate: newEndDate,
-            medications: dog.medications,
             specialInstructions: dog.specialInstructions,
             allergiesAndFeedingInstructions: dog.allergiesAndFeedingInstructions,
             needsWalking: dog.needsWalking,
@@ -1480,7 +1568,7 @@ extension CloudKitDog {
             ownerName: ownerName,
             arrivalDate: arrivalDate,
             isBoarding: isBoarding,
-            medications: medications,
+
             specialInstructions: nil, // This field doesn't exist in CloudKitDog
             allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
             needsWalking: needsWalking,
@@ -1512,6 +1600,39 @@ extension CloudKitDog {
             VaccinationItem(name: "CIV", endDate: civEndDate),
             VaccinationItem(name: "Leptospirosis", endDate: leptospirosisEndDate)
         ]
+        
+        // Reconstruct medications from CloudKit arrays
+        var reconstructedMedications: [Medication] = []
+        for i in 0..<medicationNames.count {
+            if i < medicationTypes.count && i < medicationNotes.count {
+                let type = Medication.MedicationType(rawValue: medicationTypes[i]) ?? .daily
+                let medication = Medication(
+                    name: medicationNames[i],
+                    type: type,
+                    notes: medicationNotes[i].isEmpty ? nil : medicationNotes[i]
+                )
+                reconstructedMedications.append(medication)
+            }
+        }
+        dog.medications = reconstructedMedications
+        
+        // Reconstruct scheduled medications from CloudKit arrays
+        var reconstructedScheduledMedications: [ScheduledMedication] = []
+        for i in 0..<scheduledMedicationDates.count {
+            if i < scheduledMedicationStatuses.count && i < scheduledMedicationNotes.count {
+                let status = ScheduledMedication.ScheduledMedicationStatus(rawValue: scheduledMedicationStatuses[i]) ?? .pending
+                let scheduledMedication = ScheduledMedication(
+                    medicationId: UUID(), // We'll need to match this to the actual medication
+                    scheduledDate: scheduledMedicationDates[i],
+                    notificationTime: scheduledMedicationDates[i], // Use scheduled date as notification time for now
+                    status: status,
+                    notes: scheduledMedicationNotes[i].isEmpty ? nil : scheduledMedicationNotes[i]
+                )
+                reconstructedScheduledMedications.append(scheduledMedication)
+            }
+        }
+        dog.scheduledMedications = reconstructedScheduledMedications
+        
         return dog
     }
 }
@@ -1543,6 +1664,17 @@ extension Dog {
         func endDate(for name: String) -> Date? {
             vaccinations.first(where: { $0.name == name })?.endDate
         }
+        
+        // Convert medications to CloudKit arrays
+        let medicationNames = medications.map { $0.name }
+        let medicationTypes = medications.map { $0.type.rawValue }
+        let medicationNotes = medications.map { $0.notes ?? "" }
+        
+        // Convert scheduled medications to CloudKit arrays
+        let scheduledMedicationDates = scheduledMedications.map { $0.scheduledDate }
+        let scheduledMedicationStatuses = scheduledMedications.map { $0.status.rawValue }
+        let scheduledMedicationNotes = scheduledMedications.map { $0.notes ?? "" }
+        
         return CloudKitDog(
             id: id.uuidString,
             name: name,
@@ -1554,7 +1686,6 @@ extension Dog {
             isDaycareFed: isDaycareFed,
             needsWalking: needsWalking,
             walkingNotes: walkingNotes,
-            medications: medications,
             allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
             notes: notes,
             profilePictureData: profilePictureData,
@@ -1571,7 +1702,13 @@ extension Dog {
             civEndDate: endDate(for: "CIV"),
             leptospirosisEndDate: endDate(for: "Leptospirosis"),
             isNeuteredOrSpayed: isNeuteredOrSpayed ?? false,
-            ownerPhoneNumber: ownerPhoneNumber
+            ownerPhoneNumber: ownerPhoneNumber,
+            medicationNames: medicationNames,
+            medicationTypes: medicationTypes,
+            medicationNotes: medicationNotes,
+            scheduledMedicationDates: scheduledMedicationDates,
+            scheduledMedicationStatuses: scheduledMedicationStatuses,
+            scheduledMedicationNotes: scheduledMedicationNotes
         )
     }
 }

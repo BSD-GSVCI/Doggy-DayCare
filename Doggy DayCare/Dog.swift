@@ -80,6 +80,81 @@ struct MedicationRecord: Codable, Identifiable {
     }
 }
 
+// Enhanced medication models
+struct Medication: Codable, Identifiable {
+    var id = UUID()
+    var name: String
+    var type: MedicationType
+    var notes: String?
+    var isActive: Bool = true
+    var createdAt: Date = Date()
+    var createdBy: String?
+    
+    enum MedicationType: String, Codable, CaseIterable {
+        case daily = "daily"
+        case scheduled = "scheduled"
+        
+        var displayName: String {
+            switch self {
+            case .daily: return "Daily"
+            case .scheduled: return "Scheduled"
+            }
+        }
+    }
+    
+    init(name: String, type: MedicationType, notes: String? = nil, createdBy: String? = nil) {
+        self.name = name
+        self.type = type
+        self.notes = notes
+        self.createdBy = createdBy
+    }
+}
+
+struct ScheduledMedication: Codable, Identifiable {
+    var id = UUID()
+    var medicationId: UUID
+    var scheduledDate: Date
+    var notificationTime: Date
+    var status: ScheduledMedicationStatus = .pending
+    var notes: String?
+    var administeredAt: Date?
+    var administeredBy: String?
+    var createdAt: Date = Date()
+    
+    enum ScheduledMedicationStatus: String, Codable, CaseIterable {
+        case pending = "pending"
+        case administered = "administered"
+        case skipped = "skipped"
+        case overdue = "overdue"
+        
+        var displayName: String {
+            switch self {
+            case .pending: return "Pending"
+            case .administered: return "Administered"
+            case .skipped: return "Skipped"
+            case .overdue: return "Overdue"
+            }
+        }
+        
+        var color: String {
+            switch self {
+            case .pending: return "orange"
+            case .administered: return "green"
+            case .skipped: return "gray"
+            case .overdue: return "red"
+            }
+        }
+    }
+    
+    init(medicationId: UUID, scheduledDate: Date, notificationTime: Date, status: ScheduledMedicationStatus = .pending, notes: String? = nil) {
+        self.medicationId = medicationId
+        self.scheduledDate = scheduledDate
+        self.notificationTime = notificationTime
+        self.status = status
+        self.notes = notes
+    }
+}
+
 enum DogGender: String, Codable, CaseIterable, Identifiable {
     case male, female, unknown
     var id: String { self.rawValue }
@@ -106,7 +181,7 @@ struct Dog: Codable, Identifiable {
     var departureDate: Date?
     var isBoarding: Bool
     var boardingEndDate: Date?
-    var medications: String?
+
     var specialInstructions: String?
     var allergiesAndFeedingInstructions: String?  // New field for allergies and feeding instructions
     var needsWalking: Bool
@@ -132,6 +207,10 @@ struct Dog: Codable, Identifiable {
     var medicationRecords: [MedicationRecord] = []
     var pottyRecords: [PottyRecord] = []
     
+    // Enhanced Medications
+    var medications: [Medication] = []
+    var scheduledMedications: [ScheduledMedication] = []
+    
     init(
         id: UUID = UUID(),
         name: String,
@@ -139,7 +218,6 @@ struct Dog: Codable, Identifiable {
         arrivalDate: Date,
         isBoarding: Bool = false,
         boardingEndDate: Date? = nil,
-        medications: String? = nil,
         specialInstructions: String? = nil,
         allergiesAndFeedingInstructions: String? = nil,
         needsWalking: Bool = false,
@@ -153,7 +231,9 @@ struct Dog: Codable, Identifiable {
         gender: DogGender? = nil,
         vaccinations: [VaccinationItem] = [],
         isNeuteredOrSpayed: Bool? = nil,
-        ownerPhoneNumber: String? = nil
+        ownerPhoneNumber: String? = nil,
+        medications: [Medication] = [],
+        scheduledMedications: [ScheduledMedication] = []
     ) {
         self.id = id
         self.name = name
@@ -161,7 +241,7 @@ struct Dog: Codable, Identifiable {
         self.arrivalDate = arrivalDate
         self.isBoarding = isBoarding
         self.boardingEndDate = boardingEndDate
-        self.medications = medications
+        // Initialize medications as empty array - will be populated by new system
         self.specialInstructions = specialInstructions
         self.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions
         self.needsWalking = needsWalking
@@ -180,6 +260,8 @@ struct Dog: Codable, Identifiable {
         self.vaccinations = vaccinations
         self.isNeuteredOrSpayed = isNeuteredOrSpayed
         self.ownerPhoneNumber = ownerPhoneNumber
+        self.medications = medications
+        self.scheduledMedications = scheduledMedications
     }
     
     mutating func addPottyRecord(type: PottyRecord.PottyType, notes: String? = nil, recordedBy: User? = nil) {
@@ -270,6 +352,62 @@ struct Dog: Codable, Identifiable {
             updatedAt = Date()
             lastModifiedBy = modifiedBy
         }
+    }
+    
+    // MARK: - Enhanced Medication Management
+    
+    mutating func addMedication(_ medication: Medication, createdBy: User? = nil) {
+        var newMedication = medication
+        newMedication.createdBy = createdBy?.name
+        medications.append(newMedication)
+        updatedAt = Date()
+        lastModifiedBy = createdBy
+        print("✅ Added medication '\(medication.name)' for \(name)")
+    }
+    
+    mutating func removeMedication(_ medication: Medication, modifiedBy: User? = nil) {
+        medications.removeAll { $0.id == medication.id }
+        // Also remove any scheduled medications for this medication
+        scheduledMedications.removeAll { $0.medicationId == medication.id }
+        updatedAt = Date()
+        lastModifiedBy = modifiedBy
+        print("✅ Removed medication '\(medication.name)' for \(name)")
+    }
+    
+    mutating func updateMedication(_ medication: Medication, modifiedBy: User? = nil) {
+        if let index = medications.firstIndex(where: { $0.id == medication.id }) {
+            medications[index] = medication
+            updatedAt = Date()
+            lastModifiedBy = modifiedBy
+            print("✅ Updated medication '\(medication.name)' for \(name)")
+        }
+    }
+    
+    mutating func addScheduledMedication(_ scheduledMedication: ScheduledMedication, createdBy: User? = nil) {
+        scheduledMedications.append(scheduledMedication)
+        updatedAt = Date()
+        lastModifiedBy = createdBy
+        print("✅ Added scheduled medication for \(name) on \(scheduledMedication.scheduledDate)")
+    }
+    
+    mutating func updateScheduledMedicationStatus(_ scheduledMedication: ScheduledMedication, status: ScheduledMedication.ScheduledMedicationStatus, administeredBy: User? = nil) {
+        if let index = scheduledMedications.firstIndex(where: { $0.id == scheduledMedication.id }) {
+            scheduledMedications[index].status = status
+            if status == .administered {
+                scheduledMedications[index].administeredAt = Date()
+                scheduledMedications[index].administeredBy = administeredBy?.name
+            }
+            updatedAt = Date()
+            lastModifiedBy = administeredBy
+            print("✅ Updated scheduled medication status to \(status.displayName) for \(name)")
+        }
+    }
+    
+    mutating func removeScheduledMedication(_ scheduledMedication: ScheduledMedication, modifiedBy: User? = nil) {
+        scheduledMedications.removeAll { $0.id == scheduledMedication.id }
+        updatedAt = Date()
+        lastModifiedBy = modifiedBy
+        print("✅ Removed scheduled medication for \(name)")
     }
     
     // MARK: - Computed Properties
@@ -399,5 +537,50 @@ struct Dog: Codable, Identifiable {
         let count = pottyRecords.filter { $0.type == .poop || $0.type == .both }.count
         print("poopCount for \(name): \(count) (total records: \(pottyRecords.count))")
         return count
+    }
+    
+    // MARK: - Enhanced Medication Computed Properties
+    
+    var activeMedications: [Medication] {
+        return medications.filter { $0.isActive }
+    }
+    
+    var dailyMedications: [Medication] {
+        return activeMedications.filter { $0.type == .daily }
+    }
+    
+    var scheduledMedicationTypes: [Medication] {
+        return activeMedications.filter { $0.type == .scheduled }
+    }
+    
+    var pendingScheduledMedications: [ScheduledMedication] {
+        return scheduledMedications.filter { $0.status == .pending }
+    }
+    
+    var overdueScheduledMedications: [ScheduledMedication] {
+        let now = Date()
+        return scheduledMedications.filter { 
+            $0.status == .pending && $0.scheduledDate < now 
+        }
+    }
+    
+    var todaysScheduledMedications: [ScheduledMedication] {
+        let today = Date()
+        let calendar = Calendar.current
+        return scheduledMedications.filter { scheduledMed in
+            calendar.isDate(scheduledMed.scheduledDate, inSameDayAs: today)
+        }
+    }
+    
+    var hasMedications: Bool {
+        return !activeMedications.isEmpty
+    }
+    
+    var hasScheduledMedications: Bool {
+        return !scheduledMedications.isEmpty
+    }
+    
+    var needsMedicationAttention: Bool {
+        return !pendingScheduledMedications.isEmpty || !overdueScheduledMedications.isEmpty
     }
 } 

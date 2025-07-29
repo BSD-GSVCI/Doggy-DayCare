@@ -63,7 +63,7 @@ class CloudKitService: ObservableObject {
         static let isDaycareFed = "isDaycareFed"
         static let needsWalking = "needsWalking"
         static let walkingNotes = "walkingNotes"
-        static let medications = "medications"
+
         static let allergiesAndFeedingInstructions = "allergiesAndFeedingInstructions"
         static let notes = "notes"
         static let profilePictureData = "profilePictureData"
@@ -80,6 +80,14 @@ class CloudKitService: ObservableObject {
         static let leptospirosisEndDate = "leptospirosisEndDate"
         static let isNeuteredOrSpayed = "isNeuteredOrSpayed"
         static let ownerPhoneNumber = "ownerPhoneNumber"
+        
+        // Enhanced medication fields
+        static let medicationNames = "medicationNames"
+        static let medicationTypes = "medicationTypes"
+        static let medicationNotes = "medicationNotes"
+        static let scheduledMedicationDates = "scheduledMedicationDates"
+        static let scheduledMedicationStatuses = "scheduledMedicationStatuses"
+        static let scheduledMedicationNotes = "scheduledMedicationNotes"
         
         // Audit fields
         static let createdBy = "createdBy"
@@ -348,7 +356,6 @@ class CloudKitService: ObservableObject {
         record[DogFields.isDaycareFed] = dog.isDaycareFed ? 1 : 0
         record[DogFields.needsWalking] = dog.needsWalking ? 1 : 0
         record[DogFields.walkingNotes] = dog.walkingNotes
-        record[DogFields.medications] = dog.medications
         record[DogFields.allergiesAndFeedingInstructions] = dog.allergiesAndFeedingInstructions
         record[DogFields.notes] = dog.notes
         record[DogFields.profilePictureData] = dog.profilePictureData
@@ -364,6 +371,26 @@ class CloudKitService: ObservableObject {
         record[DogFields.leptospirosisEndDate] = dog.leptospirosisEndDate
         record[DogFields.isNeuteredOrSpayed] = dog.isNeuteredOrSpayed ? 1 : 0
         record[DogFields.ownerPhoneNumber] = dog.ownerPhoneNumber
+        
+        // Save enhanced medication fields - only save if not empty to avoid CloudKit errors
+        if !dog.medicationNames.isEmpty {
+            record[DogFields.medicationNames] = dog.medicationNames
+        }
+        if !dog.medicationTypes.isEmpty {
+            record[DogFields.medicationTypes] = dog.medicationTypes
+        }
+        if !dog.medicationNotes.isEmpty {
+            record[DogFields.medicationNotes] = dog.medicationNotes
+        }
+        if !dog.scheduledMedicationDates.isEmpty {
+            record[DogFields.scheduledMedicationDates] = dog.scheduledMedicationDates
+        }
+        if !dog.scheduledMedicationStatuses.isEmpty {
+            record[DogFields.scheduledMedicationStatuses] = dog.scheduledMedicationStatuses
+        }
+        if !dog.scheduledMedicationNotes.isEmpty {
+            record[DogFields.scheduledMedicationNotes] = dog.scheduledMedicationNotes
+        }
         
         // Get the actual CloudKit user record ID (not our app's user ID)
         let cloudKitUserRecordID = try await container.userRecordID()
@@ -749,7 +776,6 @@ class CloudKitService: ObservableObject {
         record[DogFields.isDaycareFed] = dog.isDaycareFed ? 1 : 0
         record[DogFields.needsWalking] = dog.needsWalking ? 1 : 0
         record[DogFields.walkingNotes] = dog.walkingNotes
-        record[DogFields.medications] = dog.medications
         record[DogFields.allergiesAndFeedingInstructions] = dog.allergiesAndFeedingInstructions
         record[DogFields.notes] = dog.notes
         record[DogFields.profilePictureData] = dog.profilePictureData
@@ -764,6 +790,26 @@ class CloudKitService: ObservableObject {
         record[DogFields.leptospirosisEndDate] = dog.leptospirosisEndDate
         record[DogFields.isNeuteredOrSpayed] = dog.isNeuteredOrSpayed ? 1 : 0
         record[DogFields.ownerPhoneNumber] = dog.ownerPhoneNumber
+        
+        // Save enhanced medication fields - only save if not empty to avoid CloudKit errors
+        if !dog.medicationNames.isEmpty {
+            record[DogFields.medicationNames] = dog.medicationNames
+        }
+        if !dog.medicationTypes.isEmpty {
+            record[DogFields.medicationTypes] = dog.medicationTypes
+        }
+        if !dog.medicationNotes.isEmpty {
+            record[DogFields.medicationNotes] = dog.medicationNotes
+        }
+        if !dog.scheduledMedicationDates.isEmpty {
+            record[DogFields.scheduledMedicationDates] = dog.scheduledMedicationDates
+        }
+        if !dog.scheduledMedicationStatuses.isEmpty {
+            record[DogFields.scheduledMedicationStatuses] = dog.scheduledMedicationStatuses
+        }
+        if !dog.scheduledMedicationNotes.isEmpty {
+            record[DogFields.scheduledMedicationNotes] = dog.scheduledMedicationNotes
+        }
         
         // Update audit fields - get current user from AuthenticationService
         guard let currentUser = AuthenticationService.shared.currentUser else {
@@ -2486,7 +2532,7 @@ struct CloudKitDog {
     var isDaycareFed: Bool
     var needsWalking: Bool
     var walkingNotes: String?
-    var medications: String?
+
     var allergiesAndFeedingInstructions: String?
     var notes: String?
     var profilePictureData: Data?
@@ -2503,6 +2549,15 @@ struct CloudKitDog {
     var leptospirosisEndDate: Date?
     var isNeuteredOrSpayed: Bool
     var ownerPhoneNumber: String?
+    
+    // Enhanced medication fields
+    var medicationNames: [String]
+    var medicationTypes: [String]
+    var medicationNotes: [String]
+    var scheduledMedicationDates: [Date]
+    var scheduledMedicationStatuses: [String]
+    var scheduledMedicationNotes: [String]
+    
     // Records
     var feedingRecords: [FeedingRecord] = []
     var medicationRecords: [MedicationRecord] = []
@@ -2524,7 +2579,7 @@ struct CloudKitDog {
         isDaycareFed: Bool = false,
         needsWalking: Bool = false,
         walkingNotes: String? = nil,
-        medications: String? = nil,
+
         allergiesAndFeedingInstructions: String? = nil,
         notes: String? = nil,
         profilePictureData: Data? = nil,
@@ -2541,7 +2596,13 @@ struct CloudKitDog {
         civEndDate: Date? = nil,
         leptospirosisEndDate: Date? = nil,
         isNeuteredOrSpayed: Bool = false,
-        ownerPhoneNumber: String? = nil
+        ownerPhoneNumber: String? = nil,
+        medicationNames: [String] = [],
+        medicationTypes: [String] = [],
+        medicationNotes: [String] = [],
+        scheduledMedicationDates: [Date] = [],
+        scheduledMedicationStatuses: [String] = [],
+        scheduledMedicationNotes: [String] = []
     ) {
         self.id = id
         self.name = name
@@ -2553,7 +2614,7 @@ struct CloudKitDog {
         self.isDaycareFed = isDaycareFed
         self.needsWalking = needsWalking
         self.walkingNotes = walkingNotes
-        self.medications = medications
+
         self.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions
         self.notes = notes
         self.profilePictureData = profilePictureData
@@ -2573,6 +2634,12 @@ struct CloudKitDog {
         self.leptospirosisEndDate = leptospirosisEndDate
         self.isNeuteredOrSpayed = isNeuteredOrSpayed
         self.ownerPhoneNumber = ownerPhoneNumber
+        self.medicationNames = medicationNames
+        self.medicationTypes = medicationTypes
+        self.medicationNotes = medicationNotes
+        self.scheduledMedicationDates = scheduledMedicationDates
+        self.scheduledMedicationStatuses = scheduledMedicationStatuses
+        self.scheduledMedicationNotes = scheduledMedicationNotes
     }
     
     init(from record: CKRecord) {
@@ -2586,7 +2653,7 @@ struct CloudKitDog {
         self.isDaycareFed = (record[CloudKitService.DogFields.isDaycareFed] as? Int64 ?? 0) == 1
         self.needsWalking = (record[CloudKitService.DogFields.needsWalking] as? Int64 ?? 0) == 1
         self.walkingNotes = record[CloudKitService.DogFields.walkingNotes] as? String
-        self.medications = record[CloudKitService.DogFields.medications] as? String
+
         self.allergiesAndFeedingInstructions = record[CloudKitService.DogFields.allergiesAndFeedingInstructions] as? String
         self.notes = record[CloudKitService.DogFields.notes] as? String
         self.profilePictureData = record[CloudKitService.DogFields.profilePictureData] as? Data
@@ -2603,6 +2670,14 @@ struct CloudKitDog {
         self.leptospirosisEndDate = record[CloudKitService.DogFields.leptospirosisEndDate] as? Date
         self.isNeuteredOrSpayed = (record[CloudKitService.DogFields.isNeuteredOrSpayed] as? Int64 ?? 0) == 1
         self.ownerPhoneNumber = record[CloudKitService.DogFields.ownerPhoneNumber] as? String
+        
+        // Load enhanced medication fields
+        self.medicationNames = record[CloudKitService.DogFields.medicationNames] as? [String] ?? []
+        self.medicationTypes = record[CloudKitService.DogFields.medicationTypes] as? [String] ?? []
+        self.medicationNotes = record[CloudKitService.DogFields.medicationNotes] as? [String] ?? []
+        self.scheduledMedicationDates = record[CloudKitService.DogFields.scheduledMedicationDates] as? [Date] ?? []
+        self.scheduledMedicationStatuses = record[CloudKitService.DogFields.scheduledMedicationStatuses] as? [String] ?? []
+        self.scheduledMedicationNotes = record[CloudKitService.DogFields.scheduledMedicationNotes] as? [String] ?? []
         
         // Initialize empty records arrays - they will be loaded separately
         self.feedingRecords = []

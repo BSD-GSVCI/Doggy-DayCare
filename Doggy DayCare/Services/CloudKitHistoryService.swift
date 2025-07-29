@@ -77,7 +77,7 @@ class CloudKitHistoryService: ObservableObject {
                 historyRecord["boardingEndDate"] = record.boardingEndDate
                 historyRecord["isCurrentlyPresent"] = record.isCurrentlyPresent
                 historyRecord["shouldBeTreatedAsDaycare"] = record.shouldBeTreatedAsDaycare
-                historyRecord["medications"] = record.medications
+                // Medications are complex types - not stored in history records
                 historyRecord["specialInstructions"] = record.specialInstructions
                 historyRecord["allergiesAndFeedingInstructions"] = record.allergiesAndFeedingInstructions
                 historyRecord["needsWalking"] = record.needsWalking
@@ -151,7 +151,7 @@ class CloudKitHistoryService: ObservableObject {
                         existingRecord["boardingEndDate"] = record.boardingEndDate
                         existingRecord["isCurrentlyPresent"] = record.isCurrentlyPresent
                         existingRecord["shouldBeTreatedAsDaycare"] = record.shouldBeTreatedAsDaycare
-                        existingRecord["medications"] = record.medications
+                        // Medications are complex types - not stored in history records
                         existingRecord["specialInstructions"] = record.specialInstructions
                         existingRecord["allergiesAndFeedingInstructions"] = record.allergiesAndFeedingInstructions
                         existingRecord["needsWalking"] = record.needsWalking
@@ -705,7 +705,7 @@ class CloudKitHistoryService: ObservableObject {
             let arrivalTime = record.formattedArrivalTime
             let departureTime = record.formattedDepartureTime ?? ""
             let boardingEndDate = record.boardingEndDate != nil ? formatter.string(from: record.boardingEndDate!) : ""
-            let medications = record.medications ?? ""
+            let medications = record.medications.map(\.name).joined(separator: ", ")
             let specialInstructions = record.specialInstructions ?? ""
             let notes = record.notes ?? ""
             
@@ -766,7 +766,9 @@ extension DogHistoryRecord {
         self.boardingEndDate = record["boardingEndDate"] as? Date
         self.isCurrentlyPresent = isCurrentlyPresent
         self.shouldBeTreatedAsDaycare = shouldBeTreatedAsDaycare
-        self.medications = record["medications"] as? String
+        // Handle medications - for now use empty array since we're transitioning
+        self.medications = []
+        self.scheduledMedications = []
         self.specialInstructions = record["specialInstructions"] as? String
         self.allergiesAndFeedingInstructions = record["allergiesAndFeedingInstructions"] as? String
         self.needsWalking = needsWalking

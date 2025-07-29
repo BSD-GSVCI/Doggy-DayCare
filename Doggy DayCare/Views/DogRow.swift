@@ -44,7 +44,7 @@ struct DogRow: View {
                                     .font(.caption)
                             }
                             
-                            if let medications = dog.medications, !medications.isEmpty {
+                            if !dog.medications.isEmpty {
                                 Image(systemName: "pills")
                                     .foregroundStyle(.purple)
                                     .font(.caption)

@@ -131,7 +131,7 @@ class HistoryService: ObservableObject {
             let arrivalTime = record.formattedArrivalTime
             let departureTime = record.formattedDepartureTime ?? ""
             let boardingEndDate = record.boardingEndDate != nil ? formatter.string(from: record.boardingEndDate!) : ""
-            let medications = record.medications ?? ""
+            let medications = record.medications.map(\.name).joined(separator: ", ")
             let specialInstructions = record.specialInstructions ?? ""
             let notes = record.notes ?? ""
             

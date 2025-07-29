@@ -188,11 +188,49 @@ struct DogDetailView: View {
                         .font(.body)
                 }
             }
-            if let medications = dog.medications, !medications.isEmpty || !dog.medicationRecords.isEmpty {
+            if !dog.medications.isEmpty || !dog.medicationRecords.isEmpty {
                 Section("Medications") {
-                    if let medications = dog.medications, !medications.isEmpty {
-                        Text(medications)
-                            .font(.body)
+                    // Show daily medications
+                    ForEach(dog.medications.filter { $0.type == .daily }) { medication in
+                        HStack {
+                            Image(systemName: "pills.fill")
+                                .foregroundStyle(.purple)
+                            Text(medication.name)
+                                .font(.subheadline)
+                            if let notes = medication.notes, !notes.isEmpty {
+                                Text("📝")
+                                    .font(.caption)
+                            }
+                            Spacer()
+                            Text("Daily")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    
+                    // Show scheduled medications that have been actually scheduled
+                    ForEach(dog.scheduledMedications) { scheduledMedication in
+                        if let medication = dog.medications.first(where: { $0.id == scheduledMedication.medicationId }) {
+                            HStack {
+                                Image(systemName: "clock.fill")
+                                    .foregroundStyle(.orange)
+                                VStack(alignment: .leading) {
+                                    Text(medication.name)
+                                        .font(.subheadline)
+                                    Text("Scheduled for \(scheduledMedication.scheduledDate.formatted(date: .abbreviated, time: .shortened))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                if let notes = scheduledMedication.notes, !notes.isEmpty {
+                                    Text("📝")
+                                        .font(.caption)
+                                }
+                                Spacer()
+                                Text(scheduledMedication.status.displayName)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                     if !dog.medicationRecords.isEmpty {
                         let sortedMedicationRecords = dog.medicationRecords.sorted(by: { $0.timestamp > $1.timestamp })
@@ -741,7 +779,6 @@ struct SetArrivalTimeView: View {
         ownerName: "John Doe",
         arrivalDate: Date(),
         isBoarding: false,
-        medications: "Heart medication",
         allergiesAndFeedingInstructions: "No chicken",
         needsWalking: true,
         walkingNotes: "Likes to chase squirrels",

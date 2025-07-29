@@ -13,7 +13,8 @@ struct DogHistoryRecord: Codable, Identifiable {
     let boardingEndDate: Date?
     let isCurrentlyPresent: Bool
     let shouldBeTreatedAsDaycare: Bool
-    let medications: String?
+    let medications: [Medication]
+    let scheduledMedications: [ScheduledMedication]
     let specialInstructions: String?
     let allergiesAndFeedingInstructions: String?
     let needsWalking: Bool
@@ -53,6 +54,7 @@ struct DogHistoryRecord: Codable, Identifiable {
         self.isCurrentlyPresent = dog.isCurrentlyPresent
         self.shouldBeTreatedAsDaycare = dog.shouldBeTreatedAsDaycare
         self.medications = dog.medications
+        self.scheduledMedications = dog.scheduledMedications
         self.specialInstructions = dog.specialInstructions
         self.allergiesAndFeedingInstructions = dog.allergiesAndFeedingInstructions
         self.needsWalking = dog.needsWalking
@@ -86,6 +88,7 @@ struct DogHistoryRecord: Codable, Identifiable {
         self.isCurrentlyPresent = record.isCurrentlyPresent
         self.shouldBeTreatedAsDaycare = record.shouldBeTreatedAsDaycare
         self.medications = record.medications
+        self.scheduledMedications = record.scheduledMedications
         self.specialInstructions = record.specialInstructions
         self.allergiesAndFeedingInstructions = record.allergiesAndFeedingInstructions
         self.needsWalking = record.needsWalking

@@ -64,7 +64,7 @@ class BackupService {
             }.joined(separator: "; ")
             
             // Create row values in DogDetailView order
-            let rowValues = [
+            let rowValues: [String] = [
                 String(index + 1), // Add row number (starting from 1)
                 dog.name,
                 dog.ownerName ?? "",
@@ -75,7 +75,7 @@ class BackupService {
                 stayDuration,
                 dog.needsWalking ? "Yes" : "No",
                 dog.walkingNotes ?? "",
-                dog.medications ?? "",
+                dog.medications.map(\.name).joined(separator: ", "),
                 dog.specialInstructions ?? "",
                 dog.allergiesAndFeedingInstructions ?? "",
                 dog.isDaycareFed ? "Yes" : "No",
@@ -164,7 +164,7 @@ class BackupService {
     
     private func exportDogToCSV(_ dog: Dog) -> String {
         let walkingNotes = dog.walkingNotes ?? ""
-        let medications = dog.medications ?? ""
+        let medications = dog.medications.map(\.name).joined(separator: ", ")
         let specialInstructions = dog.specialInstructions ?? ""
         
         return [

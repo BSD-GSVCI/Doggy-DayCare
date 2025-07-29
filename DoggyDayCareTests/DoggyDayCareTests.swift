@@ -29,7 +29,7 @@ final class DoggyDayCareTests: XCTestCase {
         isDaycareFed: Bool = false,
         needsWalking: Bool = false,
         walkingNotes: String? = nil,
-        medications: String? = nil,
+
         notes: String? = nil
     ) async throws -> Dog {
         let dog = Dog(
