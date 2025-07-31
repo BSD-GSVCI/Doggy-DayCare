@@ -374,6 +374,13 @@ struct FutureBookingFormView: View {
                     Toggle("Neutered/Spayed", isOn: $isNeuteredOrSpayed)
                     TextField("Owner's Phone Number", text: $ownerPhoneNumber)
                         .keyboardType(.phonePad)
+                        .onChange(of: ownerPhoneNumber) { _, newValue in
+                            // Format the phone number as user types
+                            let formatted = newValue.formatPhoneNumber()
+                            if formatted != newValue {
+                                ownerPhoneNumber = formatted
+                            }
+                        }
                 }
                 Section("Vaccinations") {
                     VaccinationListEditor(vaccinations: $vaccinations)
@@ -429,7 +436,7 @@ struct FutureBookingFormView: View {
             }
         } message: {
             if let duplicateDog = duplicateDog {
-                Text("A dog with the same name and owner already exists in the database with \(duplicateDog.visitCount) previous visits. Would you like to use the imported data?")
+                Text("A dog with the same name, owner, and phone number already exists in the database with \(duplicateDog.visitCount) previous visits. Would you like to use the imported data?")
             }
         }
     }
@@ -440,7 +447,9 @@ struct FutureBookingFormView: View {
             dog.isCurrentlyPresent && // Only check currently present dogs
             dog.name.lowercased() == importedDog.name.lowercased() &&
             (dog.ownerName?.lowercased() == importedDog.ownerName?.lowercased() || 
-             (dog.ownerName == nil && importedDog.ownerName == nil))
+             (dog.ownerName == nil && importedDog.ownerName == nil)) &&
+            (dog.ownerPhoneNumber?.unformatPhoneNumber() == importedDog.ownerPhoneNumber?.unformatPhoneNumber() ||
+             (dog.ownerPhoneNumber == nil && importedDog.ownerPhoneNumber == nil))
         }
         
         if !existingDogs.isEmpty {
@@ -761,6 +770,13 @@ struct FutureBookingEditView: View {
                     Toggle("Neutered/Spayed", isOn: $isNeuteredOrSpayed)
                     TextField("Owner's Phone Number", text: $ownerPhoneNumber)
                         .keyboardType(.phonePad)
+                        .onChange(of: ownerPhoneNumber) { _, newValue in
+                            // Format the phone number as user types
+                            let formatted = newValue.formatPhoneNumber()
+                            if formatted != newValue {
+                                ownerPhoneNumber = formatted
+                            }
+                        }
                 }
                 Section("Vaccinations") {
                     VaccinationListEditor(vaccinations: $vaccinations)

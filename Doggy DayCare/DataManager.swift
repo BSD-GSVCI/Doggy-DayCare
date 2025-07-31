@@ -262,6 +262,7 @@ class DataManager: ObservableObject {
             let addedCloudKitDog = try await cloudKitService.createDog(cloudKitDog)
             let addedDog = addedCloudKitDog.toDog()
             await MainActor.run {
+                self.incrementallyUpdateDatabaseCache(with: addedDog) // Incrementally add to database cache
                 self.isLoading = false
                 print("✅ Added dog to database only: \(addedDog.name)")
             }

@@ -163,7 +163,7 @@ struct DogDetailView: View {
                     InfoRow(title: "Owner Name", value: ownerName)
                 }
                 if let ownerPhoneNumber = dog.ownerPhoneNumber, !ownerPhoneNumber.isEmpty {
-                    InfoRow(title: "Owner's Phone Number", value: ownerPhoneNumber)
+                    InfoRow(title: "Owner's Phone Number", value: ownerPhoneNumber.formatPhoneNumber())
                 }
             }
             Section("Vaccinations") {

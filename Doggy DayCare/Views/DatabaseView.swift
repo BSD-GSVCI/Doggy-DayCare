@@ -219,9 +219,9 @@ struct DatabaseView: View {
             // Group dogs by name and owner (like the import functionality does)
             var dogGroups: [String: [Dog]] = [:]
             
-            // Group all dogs by name and owner
+            // Group all dogs by name, owner, and phone number
             for dog in dogs {
-                let key = "\(dog.name.lowercased())_\(dog.ownerName?.lowercased() ?? "")"
+                let key = "\(dog.name.lowercased())_\(dog.ownerName?.lowercased() ?? "")_\(dog.ownerPhoneNumber?.unformatPhoneNumber() ?? "")"
                 if dogGroups[key] == nil {
                     dogGroups[key] = []
                 }
@@ -359,6 +359,12 @@ struct DatabaseDogRow: View {
     let dog: Dog
     let visitCount: Int
     @Binding var selectedDogForOverlay: Dog?
+    @EnvironmentObject var dataManager: DataManager
+    
+    var isOnMainPage: Bool {
+        // Check if this dog exists in the current main dogs list and is currently present
+        return dataManager.dogs.filter { $0.isCurrentlyPresent }.contains { $0.id == dog.id }
+    }
     
     var body: some View {
         HStack(spacing: 12) {
@@ -408,7 +414,7 @@ struct DatabaseDogRow: View {
             
             // Show status indicators
             HStack(spacing: 4) {
-                if dog.isCurrentlyPresent {
+                if isOnMainPage {
                     Text("EXISTS ON MAIN PAGE")
                         .font(.caption)
                         .fontWeight(.bold)

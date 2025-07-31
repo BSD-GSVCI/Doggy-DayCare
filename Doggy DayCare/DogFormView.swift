@@ -117,8 +117,8 @@ struct DogFormView: View {
     var body: some View {
         NavigationStack {
             Form {
-                    // Import from Database Section (only show when adding new dog)
-                    if dog == nil {
+                    // Import from Database Section (only show when adding new dog and not database-only)
+                    if dog == nil && !addToDatabaseOnly {
                         Section {
                             Button {
                                 showingImportDatabase = true
@@ -170,34 +170,38 @@ struct DogFormView: View {
                     
                     TextField("Name", text: $name)
                     TextField("Owner Name", text: $ownerName)
-                    DatePicker("Arrival Time", selection: $arrivalDate)
                     
-                    Toggle("Boarding", isOn: $isBoarding)
-                        .onChange(of: isBoarding) { _, newValue in
-                            if !newValue {
-                                boardingEndDate = nil
+                    // Only show arrival/boarding fields if not adding to database only
+                    if !addToDatabaseOnly {
+                        DatePicker("Arrival Time", selection: $arrivalDate)
+                        
+                        Toggle("Boarding", isOn: $isBoarding)
+                            .onChange(of: isBoarding) { _, newValue in
+                                if !newValue {
+                                    boardingEndDate = nil
+                                }
+                            }
+                        
+                        if isBoarding {
+                            let boardingEndDateBinding = Binding(
+                                get: { boardingEndDate ?? Calendar.current.startOfDay(for: Date()) },
+                                set: { boardingEndDate = $0 }
+                            )
+                            DatePicker(
+                                "Boarding End Date",
+                                selection: boardingEndDateBinding,
+                                displayedComponents: .date
+                            )
+                            .datePickerStyle(.compact)
+                            .onChange(of: boardingEndDate) { _, newValue in
+                                DispatchQueue.main.async {
+                                    // Force a view refresh to close the picker
+                                }
                             }
                         }
-                    
-                    if isBoarding {
-                        let boardingEndDateBinding = Binding(
-                            get: { boardingEndDate ?? Calendar.current.startOfDay(for: Date()) },
-                            set: { boardingEndDate = $0 }
-                        )
-                        DatePicker(
-                            "Boarding End Date",
-                            selection: boardingEndDateBinding,
-                            displayedComponents: .date
-                        )
-                        .datePickerStyle(.compact)
-                        .onChange(of: boardingEndDate) { _, newValue in
-                            DispatchQueue.main.async {
-                                // Force a view refresh to close the picker
-                            }
-                        }
+                        
+                        Toggle("Daycare Feeds", isOn: $isDaycareFed)
                     }
-                    
-                    Toggle("Daycare Feeds", isOn: $isDaycareFed)
                 }
                 
                 Section("Walking") {
@@ -341,6 +345,13 @@ struct DogFormView: View {
                     Toggle("Neutered/Spayed", isOn: $isNeuteredOrSpayed)
                     TextField("Owner's Phone Number", text: $ownerPhoneNumber)
                         .keyboardType(.phonePad)
+                        .onChange(of: ownerPhoneNumber) { _, newValue in
+                            // Format the phone number as user types
+                            let formatted = newValue.formatPhoneNumber()
+                            if formatted != newValue {
+                                ownerPhoneNumber = formatted
+                            }
+                        }
                 }
                 Section("Vaccinations") {
                     VaccinationListEditor(vaccinations: $vaccinations)
@@ -406,7 +417,7 @@ struct DogFormView: View {
             }
         } message: {
             if let duplicateDog = duplicateDog {
-                Text("A dog with the same name and owner already exists in the database with \(duplicateDog.visitCount) previous visits. Would you like to use the imported data?")
+                Text("A dog with the same name, owner, and phone number already exists in the database with \(duplicateDog.visitCount) previous visits. Would you like to use the imported data?")
             }
         }
     }
@@ -420,7 +431,9 @@ struct DogFormView: View {
                 dog.isCurrentlyPresent && // Only check currently present dogs
                 dog.name.lowercased() == importedDog.name.lowercased() &&
                 (dog.ownerName?.lowercased() == importedDog.ownerName?.lowercased() || 
-                 (dog.ownerName == nil && importedDog.ownerName == nil))
+                 (dog.ownerName == nil && importedDog.ownerName == nil)) &&
+                (dog.ownerPhoneNumber?.unformatPhoneNumber() == importedDog.ownerPhoneNumber?.unformatPhoneNumber() ||
+                 (dog.ownerPhoneNumber == nil && importedDog.ownerPhoneNumber == nil))
             }
             
             if !existingDogs.isEmpty {
@@ -508,13 +521,13 @@ struct DogFormView: View {
             let newDog = Dog(
                 name: name,
                 ownerName: ownerName.isEmpty ? nil : ownerName,
-                arrivalDate: arrivalDate,
-                isBoarding: isBoarding,
-                boardingEndDate: isBoarding ? boardingEndDate : nil,
+                arrivalDate: addToDatabaseOnly ? Date.distantPast : arrivalDate, // Use distant past for database-only dogs
+                isBoarding: addToDatabaseOnly ? false : isBoarding, // No boarding for database-only dogs
+                boardingEndDate: addToDatabaseOnly ? nil : (isBoarding ? boardingEndDate : nil), // No boarding end date for database-only dogs
                 allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
                 needsWalking: needsWalking,
                 walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
-                isDaycareFed: isDaycareFed,
+                isDaycareFed: addToDatabaseOnly ? false : isDaycareFed, // No daycare feeds for database-only dogs
                 notes: notes?.isEmpty == true ? nil : notes,
                 profilePictureData: profilePictureData,
                 age: age,
@@ -887,7 +900,7 @@ struct ImportSingleDogView: View {
         
         var dogGroups: [String: [Dog]] = [:]
         for dog in activeDogs {
-            let key = "\(dog.name.lowercased())_\(dog.ownerName?.lowercased() ?? "")"
+            let key = "\(dog.name.lowercased())_\(dog.ownerName?.lowercased() ?? "")_\(dog.ownerPhoneNumber?.unformatPhoneNumber() ?? "")"
             if dogGroups[key] == nil {
                 dogGroups[key] = []
             }
@@ -925,7 +938,7 @@ struct ImportSingleDogView: View {
         
         print("✅ Import: Final result - \(importedDogs.count) dogs available for import")
         for dog in importedDogs {
-            print("- \(dog.name) (\(dog.ownerName ?? "no owner"), visits: \(dog.visitCount), deleted: \(dog.isDeleted), present: \(dog.isCurrentlyPresent))")
+            print("- \(dog.name) (\(dog.ownerName ?? "no owner"), phone: \(dog.ownerPhoneNumber?.formatPhoneNumber() ?? "none"), visits: \(dog.visitCount), deleted: \(dog.isDeleted), present: \(dog.isCurrentlyPresent))")
         }
         
         isLoading = false
