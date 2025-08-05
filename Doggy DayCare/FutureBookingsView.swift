@@ -136,7 +136,7 @@ struct FutureBookingRow: View {
         .alert("Delete Future Booking", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
-                Task {
+                Task { @MainActor in
                     await dataManager.deleteDog(dog)
                 }
             }
@@ -429,29 +429,28 @@ struct FutureBookingEditView: View {
         
         let profilePictureData = profileImage?.jpegData(compressionQuality: 0.8)
         
-        var updatedDog = dog
-        updatedDog.name = name
-        updatedDog.ownerName = ownerName.isEmpty ? nil : ownerName
-        updatedDog.arrivalDate = arrivalDate
-        updatedDog.isBoarding = isBoarding
-        updatedDog.boardingEndDate = isBoarding ? boardingEndDate : nil
-        updatedDog.medications = medications
-        updatedDog.scheduledMedications = scheduledMedications
-        updatedDog.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions
-        updatedDog.needsWalking = needsWalking
-        updatedDog.walkingNotes = walkingNotes.isEmpty ? nil : walkingNotes
-        updatedDog.isDaycareFed = isDaycareFed
-        updatedDog.notes = notes.isEmpty ? nil : notes
-        updatedDog.profilePictureData = profilePictureData
-        updatedDog.isArrivalTimeSet = false
-        updatedDog.updatedAt = Date()
-        updatedDog.age = age
-        updatedDog.gender = gender
-        updatedDog.vaccinations = vaccinations.map { VaccinationItem(name: $0.name, endDate: $0.endDate) }
-        updatedDog.isNeuteredOrSpayed = isNeuteredOrSpayed
-        updatedDog.ownerPhoneNumber = ownerPhoneNumber.isEmpty ? nil : ownerPhoneNumber
-        
-        await dataManager.updateDogVaccinations(updatedDog, vaccinations: vaccinations.map { VaccinationItem(name: $0.name, endDate: $0.endDate) })
+        // Update the future booking using DataManager
+        await dataManager.updateFutureBooking(
+            dogWithVisit: dog,
+            name: name,
+            ownerName: ownerName.isEmpty ? nil : ownerName,
+            ownerPhoneNumber: ownerPhoneNumber.isEmpty ? nil : ownerPhoneNumber,
+            arrivalDate: arrivalDate,
+            isBoarding: isBoarding,
+            boardingEndDate: isBoarding ? boardingEndDate : nil,
+            isDaycareFed: isDaycareFed,
+            needsWalking: needsWalking,
+            walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
+            notes: notes.isEmpty ? nil : notes,
+            allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
+            profilePictureData: profilePictureData,
+            age: age,
+            gender: gender,
+            vaccinations: vaccinations,
+            isNeuteredOrSpayed: isNeuteredOrSpayed,
+            medications: medications,
+            scheduledMedications: scheduledMedications
+        )
         
         isLoading = false
         dismiss()

@@ -279,6 +279,74 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
+    func updateFutureBooking(
+        dogWithVisit: DogWithVisit,
+        name: String,
+        ownerName: String?,
+        ownerPhoneNumber: String?,
+        arrivalDate: Date,
+        isBoarding: Bool,
+        boardingEndDate: Date?,
+        isDaycareFed: Bool,
+        needsWalking: Bool,
+        walkingNotes: String?,
+        notes: String?,
+        allergiesAndFeedingInstructions: String?,
+        profilePictureData: Data?,
+        age: Int?,
+        gender: DogGender?,
+        vaccinations: [VaccinationItem],
+        isNeuteredOrSpayed: Bool?,
+        medications: [Medication],
+        scheduledMedications: [ScheduledMedication]
+    ) async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            // Update the persistent dog info
+            var updatedPersistentDog = dogWithVisit.persistentDog
+            updatedPersistentDog.name = name
+            updatedPersistentDog.ownerName = ownerName
+            updatedPersistentDog.ownerPhoneNumber = ownerPhoneNumber
+            updatedPersistentDog.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions
+            updatedPersistentDog.profilePictureData = profilePictureData
+            updatedPersistentDog.age = age
+            updatedPersistentDog.gender = gender
+            updatedPersistentDog.vaccinations = vaccinations
+            updatedPersistentDog.isNeuteredOrSpayed = isNeuteredOrSpayed
+            updatedPersistentDog.medications = medications
+            updatedPersistentDog.scheduledMedications = scheduledMedications
+            updatedPersistentDog.updatedAt = Date()
+            
+            try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            
+            // Update the visit info if it exists
+            if var visit = dogWithVisit.currentVisit {
+                visit.arrivalDate = arrivalDate
+                visit.isBoarding = isBoarding
+                visit.boardingEndDate = boardingEndDate
+                visit.isDaycareFed = isDaycareFed
+                visit.needsWalking = needsWalking
+                visit.walkingNotes = walkingNotes
+                visit.notes = notes
+                visit.updatedAt = Date()
+                
+                try await visitService.updateVisit(visit)
+            }
+            
+            print("✅ Updated future booking for \(name)")
+            
+            // Refresh data
+            await fetchDogs()
+        } catch {
+            print("❌ Failed to update future booking: \(error)")
+            errorMessage = "Failed to update future booking: \(error.localizedDescription)"
+        }
+        
+        isLoading = false
+    }
+    
     // MARK: - Migration Methods
     
     func performMigration() async throws {

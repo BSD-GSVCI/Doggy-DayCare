@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DogProfilePicture: View {
-    let dog: Dog
+    let dog: DogWithVisit
     let size: CGFloat
     @State private var showingEnlargedImage = false
     
@@ -36,7 +36,7 @@ struct DogProfilePicture: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .hideImageOverlay)) { notification in
-            if let dog = notification.object as? Dog, dog.id == self.dog.id {
+            if let dog = notification.object as? DogWithVisit, dog.id == self.dog.id {
                 showingEnlargedImage = false
             }
         }
@@ -52,7 +52,7 @@ extension Notification.Name {
 // MARK: - View Modifier for Image Overlay
 struct ImageOverlayModifier: ViewModifier {
     @State private var showingOverlay = false
-    @State private var currentDog: Dog?
+    @State private var currentDog: DogWithVisit?
     
     func body(content: Content) -> some View {
         content
@@ -91,7 +91,7 @@ struct ImageOverlayModifier: ViewModifier {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .showImageOverlay)) { notification in
-                if let (dog, showing) = notification.object as? (Dog, Bool) {
+                if let (dog, showing) = notification.object as? (DogWithVisit, Bool) {
                     currentDog = dog
                     showingOverlay = showing
                 }
