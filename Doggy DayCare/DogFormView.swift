@@ -2,7 +2,7 @@ import SwiftUI
 
 struct DogFormView: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var dataManager: DataManager
+    let dataManager: DataManager
     @StateObject private var authService = AuthenticationService.shared
     
     @State private var name = ""
@@ -49,8 +49,28 @@ struct DogFormView: View {
     
 
     
-    init(dog: Dog? = nil, addToDatabaseOnly: Bool = false) {
+    private var importSection: some View {
+        Section {
+            Button {
+                showingImportDatabase = true
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.down.doc")
+                        .foregroundStyle(.blue)
+                    Text("Import from Database")
+                        .foregroundStyle(.blue)
+                }
+            }
+        } header: {
+            Text("Quick Import")
+        } footer: {
+            Text("Import saved dog entries to avoid re-entering information")
+        }
+    }
+    
+    init(dataManager: DataManager, dog: Dog? = nil, addToDatabaseOnly: Bool = false) {
         print("DogFormView init called")
+        self.dataManager = dataManager
         self.dog = dog
         self.addToDatabaseOnly = addToDatabaseOnly
         if let dog = dog {
@@ -117,25 +137,10 @@ struct DogFormView: View {
     var body: some View {
         NavigationStack {
             Form {
-                    // Import from Database Section (only show when adding new dog and not database-only)
-                    if dog == nil && !addToDatabaseOnly {
-                        Section {
-                            Button {
-                                showingImportDatabase = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "arrow.down.doc")
-                                        .foregroundStyle(.blue)
-                                    Text("Import from Database")
-                                        .foregroundStyle(.blue)
-                                }
-                            }
-                        } header: {
-                            Text("Quick Import")
-                        } footer: {
-                            Text("Import saved dog entries to avoid re-entering information")
-                        }
-                    }
+                // Import from Database Section (only show when adding new dog and not database-only)
+                if dog == nil && !addToDatabaseOnly {
+                    importSection
+                }
                 
                 Section {
                     // Profile Picture
@@ -403,7 +408,7 @@ struct DogFormView: View {
             CameraPicker(image: $profileImage)
         }
         .sheet(isPresented: $showingImportDatabase) {
-            ImportSingleDogView { importedDog in
+            ImportSingleDogView(dataManager: dataManager) { importedDog in
                 loadDogFromImport(importedDog)
             }
         }
@@ -608,8 +613,6 @@ struct AddDailyMedicationSheet: View {
 
 struct AddScheduledMedicationForNewDogSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var dataManager: DataManager
-    @StateObject private var authService = AuthenticationService.shared
     let availableMedications: [Medication]
     let onSave: (ScheduledMedication) -> Void
     let onAddMedication: (Medication) -> Void
@@ -775,7 +778,7 @@ struct AddScheduledMedicationForNewDogSheet: View {
 
 struct ImportSingleDogView: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var dataManager: DataManager
+    let dataManager: DataManager
     @State private var searchText = ""
     @State private var isLoading = false
     @State private var importedDogs: [Dog] = []

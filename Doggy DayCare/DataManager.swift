@@ -4,8 +4,8 @@ import Foundation
 class DataManager: ObservableObject {
     static let shared = DataManager()
     
-    @Published var dogs: [Dog] = []
-    @Published var allDogs: [Dog] = []  // Separate array for all dogs including deleted ones
+    @Published var dogs: [DogWithVisit] = []
+    @Published var allDogs: [DogWithVisit] = []  // Separate array for all dogs including deleted ones
     @Published var users: [User] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -13,12 +13,18 @@ class DataManager: ObservableObject {
     private let cloudKitService = CloudKitService.shared
     private let historyService = HistoryService.shared
     private let cloudKitHistoryService = CloudKitHistoryService.shared
+    private let persistentDogService = PersistentDogService.shared
+    private let visitService = VisitService.shared
+    private let migrationService = MigrationService.shared
     
     // Incremental sync tracking
     private var lastSyncTime: Date = Date.distantPast
     private var lastAllDogsSyncTime: Date = Date.distantPast
-    private var allDogsCache: [Dog] = [] // Cache for database view
+    private var allDogsCache: [DogWithVisit] = [] // Cache for database view
     private let databaseCacheExpiration: TimeInterval = 300 // 5 minutes
+    
+    // Feature flag for persistent dog system
+    private var usePersistentDogs = true // Set to true to use new system
     
     private init() {
         print("📱 DataManager initialized")
@@ -46,6 +52,78 @@ class DataManager: ObservableObject {
         errorMessage = nil
         
         print("🔍 DataManager: Starting fetchDogs...")
+        
+        if usePersistentDogs {
+            await fetchDogsWithPersistentSystem(shouldShowLoading: shouldShowLoading)
+        } else {
+            await fetchDogsWithLegacySystem(shouldShowLoading: shouldShowLoading)
+        }
+    }
+    
+    private func fetchDogsWithPersistentSystem(shouldShowLoading: Bool) async {
+        do {
+            // Fetch persistent dogs
+            let persistentDogs = try await persistentDogService.fetchPersistentDogs()
+            print("🔍 DataManager: Got \(persistentDogs.count) persistent dogs")
+            
+            // Fetch active visits
+            let activeVisits = try await visitService.fetchActiveVisits()
+            print("🔍 DataManager: Got \(activeVisits.count) active visits")
+            
+            // Combine persistent dogs with their active visits
+            let dogsWithVisits = DogWithVisit.currentlyPresentFromPersistentDogsAndVisits(persistentDogs, activeVisits)
+            
+            print("🔍 DataManager: Created \(dogsWithVisits.count) dogs with visits")
+            
+            // Debug: Print each dog's details
+            for dogWithVisit in dogsWithVisits {
+                print("🐕 Dog: \(dogWithVisit.name), Owner: \(dogWithVisit.ownerName ?? "none"), Present: \(dogWithVisit.isCurrentlyPresent), Arrival: \(dogWithVisit.arrivalDate)")
+            }
+            
+            await MainActor.run {
+                let previousCount = self.dogs.count
+                let previousDogIds = Set(self.dogs.map { $0.id })
+                
+                self.dogs = dogsWithVisits
+                
+                // Validation checks
+                if previousCount > 0 {
+                    let newDogIds = Set(dogsWithVisits.map { $0.id })
+                    let missingDogs = previousDogIds.subtracting(newDogIds)
+                    
+                    if missingDogs.count > 0 {
+                        print("⚠️ WARNING: \(missingDogs.count) dogs disappeared after fetch")
+                    }
+                    
+                    if dogsWithVisits.count < Int(Double(previousCount) * 0.5) {
+                        print("⚠️ CRITICAL: Dog count dropped from \(previousCount) to \(dogsWithVisits.count)")
+                    }
+                }
+                
+                if shouldShowLoading {
+                    self.isLoading = false
+                }
+                print("✅ DataManager: Set \(dogsWithVisits.count) dogs in local array")
+                
+                // Update last sync time
+                self.lastSyncTime = Date()
+                
+                // Record daily snapshot for history
+                Task {
+                    await self.recordDailySnapshotIfNeeded()
+                }
+            }
+        } catch {
+            await MainActor.run {
+                self.errorMessage = "Failed to fetch dogs: \(error.localizedDescription)"
+                if shouldShowLoading {
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+    
+    private func fetchDogsWithLegacySystem(shouldShowLoading: Bool) async {
         do {
             let cloudKitDogs = try await cloudKitService.fetchDogs()
             print("🔍 DataManager: Got \(cloudKitDogs.count) CloudKit dogs")
@@ -99,9 +177,132 @@ class DataManager: ObservableObject {
                 if shouldShowLoading {
                     self.isLoading = false
                 }
-                print("❌ DataManager: Failed to fetch dogs: \(error)")
             }
         }
+    }
+    
+    
+    // MARK: - Future Booking Methods
+    
+    func addFutureBooking(
+        name: String,
+        ownerName: String?,
+        ownerPhoneNumber: String?,
+        arrivalDate: Date,
+        isBoarding: Bool,
+        boardingEndDate: Date?,
+        isDaycareFed: Bool,
+        needsWalking: Bool,
+        walkingNotes: String?,
+        notes: String?,
+        specialInstructions: String?,
+        allergiesAndFeedingInstructions: String?,
+        profilePictureData: Data?,
+        age: Int?,
+        gender: DogGender?,
+        vaccinations: [VaccinationItem],
+        isNeuteredOrSpayed: Bool?,
+        medications: [Medication],
+        scheduledMedications: [ScheduledMedication]
+    ) async {
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            // First, check if a persistent dog already exists
+            let existingDogs = try await persistentDogService.fetchPersistentDogs()
+            let matchingDog = existingDogs.first { dog in
+                dog.name.lowercased() == name.lowercased() &&
+                dog.ownerName?.lowercased() == ownerName?.lowercased() &&
+                dog.ownerPhoneNumber == ownerPhoneNumber
+            }
+            
+            let persistentDog: PersistentDog
+            if let existingDog = matchingDog {
+                // Update existing persistent dog with any new information
+                var updatedDog = existingDog
+                updatedDog.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions ?? existingDog.allergiesAndFeedingInstructions
+                updatedDog.profilePictureData = profilePictureData ?? existingDog.profilePictureData
+                updatedDog.age = age ?? existingDog.age
+                updatedDog.gender = gender ?? existingDog.gender
+                updatedDog.vaccinations = vaccinations.isEmpty ? existingDog.vaccinations : vaccinations
+                updatedDog.isNeuteredOrSpayed = isNeuteredOrSpayed ?? existingDog.isNeuteredOrSpayed
+                updatedDog.medications = medications.isEmpty ? existingDog.medications : medications
+                updatedDog.scheduledMedications = scheduledMedications.isEmpty ? existingDog.scheduledMedications : scheduledMedications
+                updatedDog.updatedAt = Date()
+                
+                try await persistentDogService.updatePersistentDog(updatedDog)
+                persistentDog = updatedDog
+            } else {
+                // Create new persistent dog
+                let newPersistentDog = PersistentDog(
+                    name: name,
+                    ownerName: ownerName,
+                    ownerPhoneNumber: ownerPhoneNumber,
+                    age: age,
+                    gender: gender,
+                    vaccinations: vaccinations,
+                    isNeuteredOrSpayed: isNeuteredOrSpayed,
+                    allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
+                    profilePictureData: profilePictureData,
+                    medications: medications,
+                    scheduledMedications: scheduledMedications
+                )
+                
+                try await persistentDogService.createPersistentDog(newPersistentDog)
+                persistentDog = newPersistentDog
+            }
+            
+            // Create the future visit
+            let visit = Visit(
+                dogId: persistentDog.id,
+                arrivalDate: arrivalDate,
+                isBoarding: isBoarding,
+                boardingEndDate: boardingEndDate,
+                isDaycareFed: isDaycareFed,
+                notes: notes,
+                specialInstructions: specialInstructions,
+                needsWalking: needsWalking,
+                walkingNotes: walkingNotes
+            )
+            
+            try await visitService.createVisit(visit)
+            print("✅ Created future booking for \(name)")
+            
+            // Refresh data
+            await fetchDogs()
+        } catch {
+            print("❌ Failed to create future booking: \(error)")
+            errorMessage = "Failed to create future booking: \(error.localizedDescription)"
+        }
+        
+        isLoading = false
+    }
+    
+    // MARK: - Migration Methods
+    
+    func performMigration() async throws {
+        print("🚀 Starting migration to persistent dog system...")
+        
+        do {
+            try await migrationService.performCompleteMigration()
+            print("✅ Migration completed successfully!")
+        } catch {
+            print("❌ Migration failed: \(error)")
+            throw error
+        }
+    }
+    
+    func getMigrationProgress() -> Double {
+        return migrationService.migrationProgress
+    }
+    
+    func getMigrationStatus() -> String {
+        return migrationService.migrationStatus
+    }
+    
+    func isMigrationComplete() -> Bool {
+        return migrationService.isMigrationComplete
     }
     
     func fetchDogsIncremental() async {
@@ -359,6 +560,40 @@ class DataManager: ObservableObject {
         }
     }
     
+    // Adapter method for DogWithVisit
+    func updateDogVaccinations(_ dogWithVisit: DogWithVisit, vaccinations: [VaccinationItem]) async {
+        print("🔄 DataManager.updateDogVaccinations called for: \(dogWithVisit.name)")
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dogWithVisit.id }) {
+                var updatedDogWithVisit = self.dogs[index]
+                updatedDogWithVisit.persistentDog.vaccinations = vaccinations
+                updatedDogWithVisit.persistentDog.updatedAt = Date()
+                self.dogs[index] = updatedDogWithVisit
+                print("✅ Updated vaccinations in local cache immediately")
+            }
+        }
+        
+        // Update the persistent dog in CloudKit
+        do {
+            var updatedPersistentDog = dogWithVisit.persistentDog
+            updatedPersistentDog.vaccinations = vaccinations
+            updatedPersistentDog.updatedAt = Date()
+            try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            print("✅ Updated vaccinations in CloudKit")
+            
+            // Refresh data
+            await fetchDogs()
+        } catch {
+            print("❌ Failed to update vaccinations: \(error)")
+            errorMessage = "Failed to update vaccinations: \(error.localizedDescription)"
+            // Refresh to restore correct state
+            await fetchDogs()
+        }
+    }
+    
+    // Legacy method kept for compatibility during migration
     func updateDogVaccinations(_ dog: Dog, vaccinations: [VaccinationItem]) async {
         print("🔄 DataManager.updateDogVaccinations called for: \(dog.name)")
         
@@ -399,6 +634,47 @@ class DataManager: ObservableObject {
         }
     }
     
+    // Adapter method for DogWithVisit
+    func deleteDog(_ dogWithVisit: DogWithVisit) async {
+        guard let visit = dogWithVisit.currentVisit else {
+            print("⚠️ No active visit found for dog: \(dogWithVisit.name)")
+            return
+        }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        print("🔄 Starting delete visit for dog: \(dogWithVisit.name)")
+        
+        // Remove from local cache immediately for responsive UI
+        await MainActor.run {
+            self.dogs.removeAll { $0.id == dogWithVisit.id }
+            print("✅ Removed dog from local cache")
+        }
+        
+        do {
+            // Delete the visit in CloudKit (this will mark it as deleted)
+            try await visitService.deleteVisit(visit)
+            print("✅ Marked visit as deleted in CloudKit")
+            
+            // Update the persistent dog's last visit date
+            var updatedPersistentDog = dogWithVisit.persistentDog
+            updatedPersistentDog.lastVisitDate = Date()
+            try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            
+            // Refresh data
+            await fetchDogs()
+        } catch {
+            print("❌ Failed to delete visit: \(error)")
+            errorMessage = "Failed to delete: \(error.localizedDescription)"
+            // Re-add to cache if delete failed
+            await fetchDogs()
+        }
+        
+        isLoading = false
+    }
+    
+    // Legacy method kept for compatibility during migration
     func deleteDog(_ dog: Dog) async {
         isLoading = true
         errorMessage = nil

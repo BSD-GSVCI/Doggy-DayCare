@@ -487,7 +487,7 @@ struct DogDetailView: View {
         }
         .sheet(isPresented: $showingEditSheet) {
             NavigationStack {
-                DogFormView(dog: dog)
+                                    DogFormView(dataManager: dataManager, dog: dog)
             }
         }
         .sheet(isPresented: $showingBoardSheet) {

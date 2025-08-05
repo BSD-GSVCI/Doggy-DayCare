@@ -19,6 +19,7 @@ struct CustomNavigationBar: View {
     @Binding var showingAddDog: Bool
     @Binding var showingExportData: Bool
     @Binding var showingLogoutConfirmation: Bool
+    @Binding var showingMigrationView: Bool
     @ObservedObject var authService: AuthenticationService
     
     var body: some View {
@@ -62,6 +63,12 @@ struct CustomNavigationBar: View {
                             } label: {
                                 Label("Export Data Manually", systemImage: "square.and.arrow.up")
                             }
+                            
+                            Button {
+                                showingMigrationView = true
+                            } label: {
+                                Label("Data Migration", systemImage: "arrow.triangle.2.circlepath")
+                            }
                         }
                         
                         Button(role: .destructive) {
@@ -92,6 +99,7 @@ struct ContentView: View {
     @State private var showingStaffManagement = false
     @State private var showingActivityLog = false
     @State private var showingDeleteLog = false
+    @State private var showingMigrationView = false
     @State private var searchText = ""
     @State private var selectedFilter: DogFilter = .all
     
@@ -385,6 +393,14 @@ struct ContentView: View {
                                 Label("Export Data", systemImage: "square.and.arrow.up")
                             }
                             
+                            if authService.currentUser?.isOwner == true {
+                                Button {
+                                    showingMigrationView = true
+                                } label: {
+                                    Label("Data Migration", systemImage: "arrow.triangle.2.circlepath")
+                                }
+                            }
+                            
                             Button(role: .destructive) {
                                 showingLogoutConfirmation = true
                             } label: {
@@ -399,7 +415,7 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingAddDog) {
                 NavigationStack {
-                    DogFormView(dog: nil, addToDatabaseOnly: false)
+                    DogFormView(dataManager: dataManager, dog: nil, addToDatabaseOnly: false)
                 }
             }
             .sheet(isPresented: $showingHistoryView) {
@@ -420,6 +436,11 @@ struct ContentView: View {
             .sheet(isPresented: $showingDeleteLog) {
                 NavigationStack {
                     DeleteLogView()
+                }
+            }
+            .sheet(isPresented: $showingMigrationView) {
+                NavigationStack {
+                    MigrationView()
                 }
             }
 
