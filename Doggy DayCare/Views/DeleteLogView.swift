@@ -2,11 +2,11 @@ import SwiftUI
 
 struct DeleteLogView: View {
     @EnvironmentObject var dataManager: DataManager
-    @State private var disappearedDogs: [Dog] = []
+    @State private var disappearedDogs: [DogWithVisit] = []
     @State private var isLoading = false
     @State private var searchText = ""
     
-    private var filteredDisappearedDogs: [Dog] {
+    private var filteredDisappearedDogs: [DogWithVisit] {
         if searchText.isEmpty {
             return disappearedDogs
         } else {
@@ -59,7 +59,21 @@ struct DeleteLogView: View {
                     List {
                         ForEach(filteredDisappearedDogs) { dog in
                             HStack(alignment: .top, spacing: 12) {
-                                DogProfilePicture(dog: dog, size: 48)
+                                // Profile picture placeholder (DogProfilePicture needs updating)
+                                if let profilePictureData = dog.profilePictureData, let uiImage = UIImage(data: profilePictureData) {
+                                    Image(uiImage: uiImage)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 48, height: 48)
+                                        .clipShape(Circle())
+                                } else {
+                                    Image(systemName: "dog")
+                                        .font(.title2)
+                                        .foregroundStyle(.gray)
+                                        .frame(width: 48, height: 48)
+                                        .background(.gray.opacity(0.2))
+                                        .clipShape(Circle())
+                                }
                                 VStack(alignment: .leading, spacing: 8) {
                                     HStack {
                                         VStack(alignment: .leading) {

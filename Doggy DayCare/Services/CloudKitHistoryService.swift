@@ -18,13 +18,13 @@ class CloudKitHistoryService: ObservableObject {
     
     // MARK: - History Management
     
-    func recordDailySnapshot(dogs: [Dog]) async {
+    func recordDailySnapshot(dogs: [DogWithVisit]) async {
         let today = Calendar.current.startOfDay(for: Date())
         await recordSnapshot(for: today, dogs: dogs)
     }
     
     // Record a snapshot for an arbitrary date using the provided dogs
-    func recordSnapshot(for date: Date, dogs: [Dog]) async {
+    func recordSnapshot(for date: Date, dogs: [DogWithVisit]) async {
         let snapshotDate = Calendar.current.startOfDay(for: date)
         print("[CloudKitHistoryService] Recording snapshot for \(dogs.count) dogs: \(dogs.map { $0.name }) on \(snapshotDate)")
         // 1. Delete all existing records for the date

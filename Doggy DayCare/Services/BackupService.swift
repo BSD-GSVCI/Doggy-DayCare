@@ -7,7 +7,7 @@ class BackupService {
     
     private init() {}
     
-    func exportDogs(_ dogs: [Dog], filename: String? = nil, to backupFolderURL: URL? = nil) async throws -> URL {
+    func exportDogs(_ dogs: [DogWithVisit], filename: String? = nil, to backupFolderURL: URL? = nil) async throws -> URL {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "MM/dd/yy"
         
@@ -162,7 +162,7 @@ class BackupService {
         }
     }
     
-    private func exportDogToCSV(_ dog: Dog) -> String {
+    private func exportDogToCSV(_ dog: DogWithVisit) -> String {
         let walkingNotes = dog.walkingNotes ?? ""
         let medications = dog.medications.map(\.name).joined(separator: ", ")
         let specialInstructions = dog.specialInstructions ?? ""

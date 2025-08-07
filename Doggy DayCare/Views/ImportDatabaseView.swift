@@ -1,13 +1,13 @@
 import SwiftUI
 
 struct ImportDatabaseView: View {
-    let onImport: ([Dog]) -> Void
+    let onImport: ([DogWithVisit]) -> Void
     @Environment(\.dismiss) private var dismiss
     
     @State private var importData = ""
     @State private var isImporting = false
     @State private var errorMessage: String?
-    @State private var previewDogs: [Dog] = []
+    @State private var previewDogs: [DogWithVisit] = []
     @State private var showingPreview = false
     
     var body: some View {
@@ -191,7 +191,7 @@ struct ImportDatabaseView: View {
                 return
             }
             
-            let dogs = try JSONDecoder().decode([Dog].self, from: data)
+            let dogs = try JSONDecoder().decode([DogWithVisit].self, from: data)
             previewDogs = dogs
             errorMessage = nil
         } catch {
@@ -202,7 +202,7 @@ struct ImportDatabaseView: View {
 }
 
 struct ImportPreviewView: View {
-    let dogs: [Dog]
+    let dogs: [DogWithVisit]
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {

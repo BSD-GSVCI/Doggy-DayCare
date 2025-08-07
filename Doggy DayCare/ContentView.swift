@@ -124,7 +124,7 @@ struct ContentView: View {
         case departed
     }
     
-    private var filteredDogs: [Dog] {
+    private var filteredDogs: [DogWithVisit] {
         let dogs = dataManager.dogs
         
         let filtered = dogs.filter { dog in
@@ -146,17 +146,17 @@ struct ContentView: View {
         }
     }
     
-    private var daycareDogs: [Dog] {
+    private var daycareDogs: [DogWithVisit] {
         filteredDogs.filter { $0.isCurrentlyPresent && $0.shouldBeTreatedAsDaycare }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
-    private var boardingDogs: [Dog] {
+    private var boardingDogs: [DogWithVisit] {
         filteredDogs.filter { $0.isCurrentlyPresent && !$0.shouldBeTreatedAsDaycare }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
-    private var departedDogs: [Dog] {
+    private var departedDogs: [DogWithVisit] {
         filteredDogs.filter { $0.departureDate != nil && Calendar.current.isDateInToday($0.departureDate!) }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
@@ -190,7 +190,7 @@ struct ContentView: View {
         }
     }
     
-    private var visibleDogs: [Dog] {
+    private var visibleDogs: [DogWithVisit] {
         // Combine all dogs that are actually visible on the main page
         return daycareDogs + boardingDogs + departedDogs
     }
@@ -534,10 +534,10 @@ private struct UserInfoView: View {
 // MARK: - Dogs List View
 private struct DogsListView: View {
     @EnvironmentObject var dataManager: DataManager
-    let daycareDogs: [Dog]
-    let boardingDogs: [Dog]
-    let departedDogs: [Dog]
-    @State private var selectedDogForOverlay: Dog?
+    let daycareDogs: [DogWithVisit]
+    let boardingDogs: [DogWithVisit]
+    let departedDogs: [DogWithVisit]
+    @State private var selectedDogForOverlay: DogWithVisit?
     
     private let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()

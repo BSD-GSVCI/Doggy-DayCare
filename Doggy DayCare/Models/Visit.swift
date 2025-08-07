@@ -25,6 +25,10 @@ struct Visit: Codable, Identifiable {
     var medicationRecords: [MedicationRecord] = []
     var pottyRecords: [PottyRecord] = []
     
+    // Visit-specific medications (can change between visits)
+    var medications: [Medication] = []
+    var scheduledMedications: [ScheduledMedication] = []
+    
     init(
         id: UUID = UUID(),
         dogId: UUID,
@@ -46,7 +50,9 @@ struct Visit: Codable, Identifiable {
         lastModifiedBy: String? = nil,
         feedingRecords: [FeedingRecord] = [],
         medicationRecords: [MedicationRecord] = [],
-        pottyRecords: [PottyRecord] = []
+        pottyRecords: [PottyRecord] = [],
+        medications: [Medication] = [],
+        scheduledMedications: [ScheduledMedication] = []
     ) {
         self.id = id
         self.dogId = dogId
@@ -69,6 +75,8 @@ struct Visit: Codable, Identifiable {
         self.feedingRecords = feedingRecords
         self.medicationRecords = medicationRecords
         self.pottyRecords = pottyRecords
+        self.medications = medications
+        self.scheduledMedications = scheduledMedications
     }
     
     // MARK: - Computed Properties
@@ -216,5 +224,50 @@ extension Visit {
     
     var snackCount: Int {
         return feedingRecords.filter { $0.type == .snack }.count
+    }
+    
+    // MARK: - Medication Properties
+    
+    var activeMedications: [Medication] {
+        return medications.filter { $0.isActive }
+    }
+    
+    var dailyMedications: [Medication] {
+        return activeMedications.filter { $0.type == .daily }
+    }
+    
+    var scheduledMedicationTypes: [Medication] {
+        return activeMedications.filter { $0.type == .scheduled }
+    }
+    
+    var pendingScheduledMedications: [ScheduledMedication] {
+        return scheduledMedications.filter { $0.status == .pending }
+    }
+    
+    var overdueScheduledMedications: [ScheduledMedication] {
+        let now = Date()
+        return scheduledMedications.filter { 
+            $0.status == .pending && $0.scheduledDate < now 
+        }
+    }
+    
+    var todaysScheduledMedications: [ScheduledMedication] {
+        let today = Date()
+        let calendar = Calendar.current
+        return scheduledMedications.filter { scheduledMed in
+            calendar.isDate(scheduledMed.scheduledDate, inSameDayAs: today)
+        }
+    }
+    
+    var hasMedications: Bool {
+        return !activeMedications.isEmpty
+    }
+    
+    var hasScheduledMedications: Bool {
+        return !scheduledMedications.isEmpty
+    }
+    
+    var needsMedicationAttention: Bool {
+        return !overdueScheduledMedications.isEmpty || !todaysScheduledMedications.isEmpty
     }
 } 

@@ -17,7 +17,7 @@ class NotificationService: ObservableObject {
         }
     }
     
-    func scheduleMedicationNotification(for dog: Dog, scheduledMedication: ScheduledMedication) async {
+    func scheduleMedicationNotification(for dog: DogWithVisit, scheduledMedication: ScheduledMedication) async {
         let content = UNMutableNotificationContent()
         content.title = "Medication Due"
         content.body = "\(dog.name) needs medication: \(scheduledMedication.notes ?? "Scheduled medication")"
@@ -42,13 +42,13 @@ class NotificationService: ObservableObject {
         }
     }
     
-    func cancelMedicationNotification(for dog: Dog, scheduledMedication: ScheduledMedication) {
+    func cancelMedicationNotification(for dog: DogWithVisit, scheduledMedication: ScheduledMedication) {
         let identifier = "medication-\(dog.id.uuidString)-\(scheduledMedication.id.uuidString)"
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
         print("✅ Cancelled medication notification for \(dog.name)")
     }
     
-    func cancelAllMedicationNotifications(for dog: Dog) {
+    func cancelAllMedicationNotifications(for dog: DogWithVisit) {
         UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
             let medicationIdentifiers = requests
                 .filter { $0.identifier.hasPrefix("medication-\(dog.id.uuidString)-") }

@@ -4,7 +4,7 @@ import Foundation
 // This replaces the legacy Dog model throughout the app
 struct DogWithVisit: Identifiable {
     let persistentDog: PersistentDog
-    let currentVisit: Visit?
+    var currentVisit: Visit?
     
     var id: UUID { persistentDog.id }
     
@@ -19,8 +19,6 @@ struct DogWithVisit: Identifiable {
     var isNeuteredOrSpayed: Bool? { persistentDog.isNeuteredOrSpayed }
     var allergiesAndFeedingInstructions: String? { persistentDog.allergiesAndFeedingInstructions }
     var profilePictureData: Data? { persistentDog.profilePictureData }
-    var medications: [Medication] { persistentDog.medications }
-    var scheduledMedications: [ScheduledMedication] { persistentDog.scheduledMedications }
     var visitCount: Int { persistentDog.visitCount }
     var lastVisitDate: Date? { persistentDog.lastVisitDate }
     var isDeleted: Bool { persistentDog.isDeleted }
@@ -45,6 +43,10 @@ struct DogWithVisit: Identifiable {
     var feedingRecords: [FeedingRecord] { currentVisit?.feedingRecords ?? [] }
     var medicationRecords: [MedicationRecord] { currentVisit?.medicationRecords ?? [] }
     var pottyRecords: [PottyRecord] { currentVisit?.pottyRecords ?? [] }
+    
+    // Medication data from current visit (visit-specific)
+    var medications: [Medication] { currentVisit?.medications ?? [] }
+    var scheduledMedications: [ScheduledMedication] { currentVisit?.scheduledMedications ?? [] }
     
     // MARK: - Computed Properties
     
@@ -87,17 +89,17 @@ struct DogWithVisit: Identifiable {
         return currentVisit?.formattedCurrentStayDuration ?? ""
     }
     
-    // MARK: - Medication Properties (from PersistentDog)
+    // MARK: - Medication Properties (from current Visit)
     
-    var activeMedications: [Medication] { persistentDog.activeMedications }
-    var dailyMedications: [Medication] { persistentDog.dailyMedications }
-    var scheduledMedicationTypes: [Medication] { persistentDog.scheduledMedicationTypes }
-    var pendingScheduledMedications: [ScheduledMedication] { persistentDog.pendingScheduledMedications }
-    var overdueScheduledMedications: [ScheduledMedication] { persistentDog.overdueScheduledMedications }
-    var todaysScheduledMedications: [ScheduledMedication] { persistentDog.todaysScheduledMedications }
-    var hasMedications: Bool { persistentDog.hasMedications }
-    var hasScheduledMedications: Bool { persistentDog.hasScheduledMedications }
-    var needsMedicationAttention: Bool { persistentDog.needsMedicationAttention }
+    var activeMedications: [Medication] { currentVisit?.activeMedications ?? [] }
+    var dailyMedications: [Medication] { currentVisit?.dailyMedications ?? [] }
+    var scheduledMedicationTypes: [Medication] { currentVisit?.scheduledMedicationTypes ?? [] }
+    var pendingScheduledMedications: [ScheduledMedication] { currentVisit?.pendingScheduledMedications ?? [] }
+    var overdueScheduledMedications: [ScheduledMedication] { currentVisit?.overdueScheduledMedications ?? [] }
+    var todaysScheduledMedications: [ScheduledMedication] { currentVisit?.todaysScheduledMedications ?? [] }
+    var hasMedications: Bool { currentVisit?.hasMedications ?? false }
+    var hasScheduledMedications: Bool { currentVisit?.hasScheduledMedications ?? false }
+    var needsMedicationAttention: Bool { currentVisit?.needsMedicationAttention ?? false }
     
     // MARK: - Initializers
     

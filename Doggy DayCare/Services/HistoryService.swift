@@ -17,7 +17,7 @@ class HistoryService: ObservableObject {
     
     // MARK: - History Management
     
-    func recordDailySnapshot(dogs: [Dog]) {
+    func recordDailySnapshot(dogs: [DogWithVisit]) {
         let today = Calendar.current.startOfDay(for: Date())
         
         // Remove any existing records for today

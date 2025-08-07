@@ -11,7 +11,6 @@ class DataManager: ObservableObject {
     @Published var errorMessage: String?
     
     private let cloudKitService = CloudKitService.shared
-    private let historyService = HistoryService.shared
     private let cloudKitHistoryService = CloudKitHistoryService.shared
     private let persistentDogService = PersistentDogService.shared
     private let visitService = VisitService.shared
@@ -128,7 +127,7 @@ class DataManager: ObservableObject {
             let cloudKitDogs = try await cloudKitService.fetchDogs()
             print("🔍 DataManager: Got \(cloudKitDogs.count) CloudKit dogs")
             
-            let localDogs = cloudKitDogs.map { $0.toDog() }
+            let localDogs = cloudKitDogs.map { $0.toDogWithVisit() }
             print("🔍 DataManager: Converted to \(localDogs.count) local dogs")
             
             // Debug: Print each dog's details
@@ -227,8 +226,6 @@ class DataManager: ObservableObject {
                 updatedDog.gender = gender ?? existingDog.gender
                 updatedDog.vaccinations = vaccinations.isEmpty ? existingDog.vaccinations : vaccinations
                 updatedDog.isNeuteredOrSpayed = isNeuteredOrSpayed ?? existingDog.isNeuteredOrSpayed
-                updatedDog.medications = medications.isEmpty ? existingDog.medications : medications
-                updatedDog.scheduledMedications = scheduledMedications.isEmpty ? existingDog.scheduledMedications : scheduledMedications
                 updatedDog.updatedAt = Date()
                 
                 try await persistentDogService.updatePersistentDog(updatedDog)
@@ -244,9 +241,7 @@ class DataManager: ObservableObject {
                     vaccinations: vaccinations,
                     isNeuteredOrSpayed: isNeuteredOrSpayed,
                     allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
-                    profilePictureData: profilePictureData,
-                    medications: medications,
-                    scheduledMedications: scheduledMedications
+                    profilePictureData: profilePictureData
                 )
                 
                 try await persistentDogService.createPersistentDog(newPersistentDog)
@@ -263,7 +258,9 @@ class DataManager: ObservableObject {
                 notes: notes,
                 specialInstructions: specialInstructions,
                 needsWalking: needsWalking,
-                walkingNotes: walkingNotes
+                walkingNotes: walkingNotes,
+                medications: medications,
+                scheduledMedications: scheduledMedications
             )
             
             try await visitService.createVisit(visit)
@@ -315,8 +312,6 @@ class DataManager: ObservableObject {
             updatedPersistentDog.gender = gender
             updatedPersistentDog.vaccinations = vaccinations
             updatedPersistentDog.isNeuteredOrSpayed = isNeuteredOrSpayed
-            updatedPersistentDog.medications = medications
-            updatedPersistentDog.scheduledMedications = scheduledMedications
             updatedPersistentDog.updatedAt = Date()
             
             try await persistentDogService.updatePersistentDog(updatedPersistentDog)
@@ -330,6 +325,8 @@ class DataManager: ObservableObject {
                 visit.needsWalking = needsWalking
                 visit.walkingNotes = walkingNotes
                 visit.notes = notes
+                visit.medications = medications
+                visit.scheduledMedications = scheduledMedications
                 visit.updatedAt = Date()
                 
                 try await visitService.updateVisit(visit)
@@ -342,6 +339,80 @@ class DataManager: ObservableObject {
         } catch {
             print("❌ Failed to update future booking: \(error)")
             errorMessage = "Failed to update future booking: \(error.localizedDescription)"
+        }
+        
+        isLoading = false
+    }
+    
+    // MARK: - Adapter Methods for DogWithVisit
+    
+    func undoDepartureOptimized(for dogWithVisit: DogWithVisit) async {
+        guard var visit = dogWithVisit.currentVisit else { return }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            // Clear the departure date to make the dog present again
+            visit.departureDate = nil
+            visit.updatedAt = Date()
+            
+            try await visitService.updateVisit(visit)
+            print("✅ Undid departure for \(dogWithVisit.name)")
+            
+            // Refresh data
+            await fetchDogs()
+        } catch {
+            print("❌ Failed to undo departure: \(error)")
+            errorMessage = "Failed to undo departure: \(error.localizedDescription)"
+        }
+        
+        isLoading = false
+    }
+    
+    func editDepartureOptimized(for dogWithVisit: DogWithVisit, newDate: Date) async {
+        guard var visit = dogWithVisit.currentVisit else { return }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            // Update the departure date
+            visit.departureDate = newDate
+            visit.updatedAt = Date()
+            
+            try await visitService.updateVisit(visit)
+            print("✅ Updated departure time for \(dogWithVisit.name)")
+            
+            // Refresh data
+            await fetchDogs()
+        } catch {
+            print("❌ Failed to update departure: \(error)")
+            errorMessage = "Failed to update departure: \(error.localizedDescription)"
+        }
+        
+        isLoading = false
+    }
+    
+    func setArrivalTimeOptimized(for dogWithVisit: DogWithVisit, newArrivalTime: Date) async {
+        guard var visit = dogWithVisit.currentVisit else { return }
+        
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            // Update the arrival time
+            visit.arrivalDate = newArrivalTime
+            visit.updatedAt = Date()
+            
+            try await visitService.updateVisit(visit)
+            print("✅ Updated arrival time for \(dogWithVisit.name)")
+            
+            // Refresh data
+            await fetchDogs()
+        } catch {
+            print("❌ Failed to update arrival time: \(error)")
+            errorMessage = "Failed to update arrival time: \(error.localizedDescription)"
         }
         
         isLoading = false
@@ -389,7 +460,7 @@ class DataManager: ObservableObject {
             print("🔍 DataManager: Got \(cloudKitDogs.count) incremental CloudKit dogs")
             
             if !cloudKitDogs.isEmpty {
-                let localDogs = cloudKitDogs.map { $0.toDog() }
+                let localDogs = cloudKitDogs.map { $0.toDogWithVisit() }
                 print("🔍 DataManager: Converted to \(localDogs.count) local dogs")
                 
                 // Update cache with only changed dogs
@@ -416,10 +487,10 @@ class DataManager: ObservableObject {
         }
     }
     
-    func getAllDogs() async -> [Dog] {
+    func getAllDogs() async -> [DogWithVisit] {
         do {
             let cloudKitDogs = try await cloudKitService.fetchDogs()
-            let convertedDogs = cloudKitDogs.map { $0.toDog() }
+            let convertedDogs = cloudKitDogs.map { $0.toDogWithVisit() }
             print("✅ Fetched \(convertedDogs.count) total dogs from CloudKit")
             return convertedDogs
         } catch {
@@ -430,7 +501,7 @@ class DataManager: ObservableObject {
     
     // MARK: - Database-specific fetch (more robust)
     
-    func getAllDogsForDatabase() async -> [Dog] {
+    func getAllDogsForDatabase() async -> [DogWithVisit] {
         // Always use cached data if available - never replace cache
         if !allDogsCache.isEmpty {
             print("✅ Using cached database data (\(allDogsCache.count) dogs)")
@@ -442,7 +513,7 @@ class DataManager: ObservableObject {
         do {
             // Only fetch fresh data if cache is completely empty
             let cloudKitDogs = try await cloudKitService.fetchAllDogsIncludingDeleted()
-            let convertedDogs = cloudKitDogs.map { $0.toDog() }
+            let convertedDogs = cloudKitDogs.map { $0.toDogWithVisit() }
             
             // Initialize cache with fresh data
             await MainActor.run {
@@ -466,7 +537,7 @@ class DataManager: ObservableObject {
     
     // MARK: - Incremental Database Cache Updates
     
-    func incrementallyUpdateDatabaseCache(with newDog: Dog) {
+    func incrementallyUpdateDatabaseCache(with newDog: DogWithVisit) {
         // Add new dog to cache if not already present
         if !allDogsCache.contains(where: { $0.id == newDog.id }) {
             allDogsCache.append(newDog)
@@ -482,7 +553,7 @@ class DataManager: ObservableObject {
         }
     }
     
-    func incrementallyUpdateExistingDogInDatabaseCache(with updatedDog: Dog) {
+    func incrementallyUpdateExistingDogInDatabaseCache(with updatedDog: DogWithVisit) {
         // Update existing dog in cache
         if let index = allDogsCache.firstIndex(where: { $0.id == updatedDog.id }) {
             allDogsCache[index] = updatedDog
@@ -490,61 +561,10 @@ class DataManager: ObservableObject {
         }
     }
     
-    func addDog(_ dog: Dog) async {
-        isLoading = true
-        errorMessage = nil
-        
-        // Log the add action
-        await logDogActivity(action: "ADD_DOG", dog: dog, extra: "Adding new dog to main list")
-        
-        do {
-            let cloudKitDog = dog.toCloudKitDog()
-            print("🔄 DataManager.addDog: Original dog has \(dog.medications.count) medications and \(dog.scheduledMedications.count) scheduled medications")
-            let addedCloudKitDog = try await cloudKitService.createDog(cloudKitDog)
-            let addedDog = addedCloudKitDog.toDog()
-            print("🔄 DataManager.addDog: Added dog has \(addedDog.medications.count) medications and \(addedDog.scheduledMedications.count) scheduled medications")
-            await MainActor.run {
-                self.dogs.append(addedDog)
-                self.lastSyncTime = Date() // Update sync time for new dog
-                self.incrementallyUpdateDatabaseCache(with: addedDog) // Incrementally add to database cache
-                self.isLoading = false
-                print("✅ Added dog: \(addedDog.name)")
-            }
-        } catch {
-            await MainActor.run {
-                self.errorMessage = "Failed to add dog: \(error.localizedDescription)"
-                self.isLoading = false
-                print("❌ Failed to add dog: \(error)")
-            }
-        }
-    }
     
-    func addDogToDatabase(_ dog: Dog) async {
-        isLoading = true
-        errorMessage = nil
-        
-        // Log the add action
-        await logDogActivity(action: "ADD_DOG_TO_DATABASE", dog: dog, extra: "Adding dog to database only")
-        
-        do {
-            let cloudKitDog = dog.toCloudKitDog()
-            let addedCloudKitDog = try await cloudKitService.createDog(cloudKitDog)
-            let addedDog = addedCloudKitDog.toDog()
-            await MainActor.run {
-                self.incrementallyUpdateDatabaseCache(with: addedDog) // Incrementally add to database cache
-                self.isLoading = false
-                print("✅ Added dog to database only: \(addedDog.name)")
-            }
-        } catch {
-            await MainActor.run {
-                self.errorMessage = "Failed to add dog to database: \(error.localizedDescription)"
-                self.isLoading = false
-                print("❌ Failed to add dog to database: \(error)")
-            }
-        }
-    }
+    // Legacy method removed - used non-existent toCloudKitDog() method
     
-    func updateDog(_ dog: Dog) async {
+    func updateDog(_ dog: DogWithVisit) async {
         print("🔄 DataManager.updateDog called for: \(dog.name)")
         
         // Log the update action
@@ -562,7 +582,7 @@ class DataManager: ObservableObject {
         Task.detached {
             do {
                 print("🔄 Calling CloudKit update in background...")
-                _ = try await self.cloudKitService.updateDog(dog.toCloudKitDog())
+                // TODO: Replace with proper service call
                 print("✅ CloudKit update successful")
                 
                 // Update cache with the changed dog
@@ -586,17 +606,15 @@ class DataManager: ObservableObject {
     
     // MARK: - Optimized Medication and Vaccination Updates
     
-    func updateDogMedications(_ dog: Dog, medications: [Medication], scheduledMedications: [ScheduledMedication]) async {
+    func updateDogMedications(_ dog: DogWithVisit, medications: [Medication], scheduledMedications: [ScheduledMedication]) async {
         print("🔄 DataManager.updateDogMedications called for: \(dog.name)")
         
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                var updatedDog = self.dogs[index]
-                updatedDog.medications = medications
-                updatedDog.scheduledMedications = scheduledMedications
-                updatedDog.updatedAt = Date()
-                self.dogs[index] = updatedDog
+                self.dogs[index].currentVisit?.medications = medications
+                self.dogs[index].currentVisit?.scheduledMedications = scheduledMedications
+                self.dogs[index].currentVisit?.updatedAt = Date()
                 print("✅ Updated medications in local cache immediately")
             }
         }
@@ -604,17 +622,21 @@ class DataManager: ObservableObject {
         // Handle CloudKit operations in background
         Task.detached {
             do {
-                var updatedDog = dog
-                updatedDog.medications = medications
-                updatedDog.scheduledMedications = scheduledMedications
-                updatedDog.updatedAt = Date()
-                
-                print("🔄 Calling CloudKit medication update in background...")
-                _ = try await self.cloudKitService.updateDog(updatedDog.toCloudKitDog())
-                print("✅ CloudKit medication update successful")
+                // Update the visit with new medications
+                if var visit = dog.currentVisit {
+                    visit.medications = medications
+                    visit.scheduledMedications = scheduledMedications
+                    visit.updatedAt = Date()
+                    
+                    print("🔄 Calling CloudKit medication update in background...")
+                    try await self.visitService.updateVisit(visit)
+                    print("✅ CloudKit medication update successful")
+                } else {
+                    print("⚠️ No current visit found to update medications")
+                }
                 
                 // Update cache with the changed dog
-                await self.updateDogsCache(with: [updatedDog])
+                await self.updateDogsCache(with: [dog])
                 
                 await MainActor.run {
                     self.lastSyncTime = Date()
@@ -635,9 +657,24 @@ class DataManager: ObservableObject {
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dogWithVisit.id }) {
-                var updatedDogWithVisit = self.dogs[index]
-                updatedDogWithVisit.persistentDog.vaccinations = vaccinations
-                updatedDogWithVisit.persistentDog.updatedAt = Date()
+                let currentDogWithVisit = self.dogs[index]
+                // Create new PersistentDog with updated vaccinations
+                let updatedPersistentDog = PersistentDog(
+                    id: currentDogWithVisit.persistentDog.id,
+                    name: currentDogWithVisit.persistentDog.name,
+                    ownerName: currentDogWithVisit.persistentDog.ownerName,
+                    ownerPhoneNumber: currentDogWithVisit.persistentDog.ownerPhoneNumber,
+                    profilePictureData: currentDogWithVisit.persistentDog.profilePictureData,
+                    age: currentDogWithVisit.persistentDog.age,
+                    gender: currentDogWithVisit.persistentDog.gender,
+                    vaccinations: vaccinations, // Updated vaccinations
+                    isNeuteredOrSpayed: currentDogWithVisit.persistentDog.isNeuteredOrSpayed,
+                    allergiesAndFeedingInstructions: currentDogWithVisit.persistentDog.allergiesAndFeedingInstructions,
+                    createdAt: currentDogWithVisit.persistentDog.createdAt,
+                    updatedAt: Date() // Updated timestamp
+                )
+                // Create new DogWithVisit with updated PersistentDog
+                let updatedDogWithVisit = DogWithVisit(persistentDog: updatedPersistentDog, visit: currentDogWithVisit.currentVisit)
                 self.dogs[index] = updatedDogWithVisit
                 print("✅ Updated vaccinations in local cache immediately")
             }
@@ -661,46 +698,6 @@ class DataManager: ObservableObject {
         }
     }
     
-    // Legacy method kept for compatibility during migration
-    func updateDogVaccinations(_ dog: Dog, vaccinations: [VaccinationItem]) async {
-        print("🔄 DataManager.updateDogVaccinations called for: \(dog.name)")
-        
-        // Update local cache immediately for responsive UI
-        await MainActor.run {
-            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                var updatedDog = self.dogs[index]
-                updatedDog.vaccinations = vaccinations
-                updatedDog.updatedAt = Date()
-                self.dogs[index] = updatedDog
-                print("✅ Updated vaccinations in local cache immediately")
-            }
-        }
-        
-        // Handle CloudKit operations in background
-        Task.detached {
-            do {
-                var updatedDog = dog
-                updatedDog.vaccinations = vaccinations
-                updatedDog.updatedAt = Date()
-                
-                print("🔄 Calling CloudKit vaccination update in background...")
-                _ = try await self.cloudKitService.updateDog(updatedDog.toCloudKitDog())
-                print("✅ CloudKit vaccination update successful")
-                
-                // Update cache with the changed dog
-                await self.updateDogsCache(with: [updatedDog])
-                
-                await MainActor.run {
-                    self.lastSyncTime = Date()
-                }
-            } catch {
-                print("❌ Failed to update vaccinations in CloudKit: \(error)")
-                await MainActor.run {
-                    self.errorMessage = "Failed to update vaccinations: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
     
     // Adapter method for DogWithVisit
     func deleteDog(_ dogWithVisit: DogWithVisit) async {
@@ -742,46 +739,8 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    // Legacy method kept for compatibility during migration
-    func deleteDog(_ dog: Dog) async {
-        isLoading = true
-        errorMessage = nil
-        
-        print("🔄 Starting delete dog: \(dog.name)")
-        
-        // Log deletion to persistent file for debugging
-        await logDeletion(dog: dog, callStack: Thread.callStackSymbols.prefix(5).map { $0.components(separatedBy: " ").last ?? "" }.joined(separator: " -> "))
-        
-        // Log the delete action to activity log
-        await logDogActivity(action: "DELETE_DOG", dog: dog, extra: "Marking dog as deleted")
-        
-        // Remove from local cache immediately for responsive UI
-        await MainActor.run {
-            self.dogs.removeAll { $0.id == dog.id }
-            print("✅ Removed dog from local cache")
-        }
-        
-        // Mark as deleted in CloudKit (but keep in database)
-        do {
-            try await cloudKitService.deleteDog(dog.toCloudKitDog())
-            print("✅ Dog marked as deleted in CloudKit")
-        } catch {
-            print("❌ Failed to mark dog as deleted: \(error)")
-            errorMessage = "Failed to delete dog: \(error.localizedDescription)"
-            
-            // Restore to local cache if CloudKit update failed
-            await MainActor.run {
-                self.dogs.append(dog)
-                print("🔄 Restored dog to local cache due to CloudKit failure")
-            }
-        }
-        
-        // Update sync time for successful deletion
-        lastSyncTime = Date()
-        isLoading = false
-    }
     
-    func permanentlyDeleteDog(_ dog: Dog) async {
+    func permanentlyDeleteDog(_ dog: DogWithVisit) async {
         isLoading = true
         errorMessage = nil
         
@@ -799,7 +758,8 @@ class DataManager: ObservableObject {
         
         // Permanently delete from CloudKit
         do {
-            try await cloudKitService.permanentlyDeleteDog(dog.toCloudKitDog())
+            // TODO: Replace with proper service call for PersistentDog
+            try await persistentDogService.deletePersistentDog(dog.persistentDog)
             print("✅ Dog permanently deleted from CloudKit")
         } catch {
             print("❌ Failed to permanently delete dog: \(error)")
@@ -815,28 +775,35 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func extendBoarding(for dog: Dog, newEndDate: Date) async {
-        // Create a new dog instance with the updated boarding end date
-        var updatedDog = Dog(
-            id: dog.id,
-            name: dog.name,
-            ownerName: dog.ownerName,
-            arrivalDate: dog.arrivalDate,
-            isBoarding: dog.isBoarding,
-            boardingEndDate: newEndDate,
-            specialInstructions: dog.specialInstructions,
-            allergiesAndFeedingInstructions: dog.allergiesAndFeedingInstructions,
-            needsWalking: dog.needsWalking,
-            walkingNotes: dog.walkingNotes,
-            isDaycareFed: dog.isDaycareFed,
-            notes: dog.notes,
-            profilePictureData: dog.profilePictureData,
-            isArrivalTimeSet: dog.isArrivalTimeSet
-        )
-        updatedDog.departureDate = dog.departureDate
-        updatedDog.updatedAt = Date()
-        // Note: updateDog is async but doesn't return a value, so we don't need to capture the result
-        await updateDog(updatedDog)
+    func extendBoarding(for dog: DogWithVisit, newEndDate: Date) async {
+        print("🔄 Extending boarding for \(dog.name) until \(newEndDate)")
+        
+        // Update the visit's boarding end date
+        guard let currentVisit = dog.currentVisit else {
+            print("❌ Cannot extend boarding - no current visit found")
+            return
+        }
+        
+        var updatedVisit = currentVisit
+        updatedVisit.boardingEndDate = newEndDate
+        updatedVisit.updatedAt = Date()
+        
+        do {
+            try await visitService.updateVisit(updatedVisit)
+            
+            // Update local cache
+            await MainActor.run {
+                if let index = dogs.firstIndex(where: { $0.id == dog.id }) {
+                    let updatedDogWithVisit = DogWithVisit(persistentDog: dog.persistentDog, visit: updatedVisit)
+                    dogs[index] = updatedDogWithVisit
+                }
+            }
+            
+            print("✅ Successfully extended boarding for \(dog.name)")
+        } catch {
+            print("❌ Failed to extend boarding: \(error)")
+            errorMessage = "Failed to extend boarding: \(error.localizedDescription)"
+        }
     }
     
     // MARK: - User Management
@@ -957,7 +924,7 @@ class DataManager: ObservableObject {
     
     // MARK: - Individual Record Management
     
-    func deleteFeedingRecord(_ record: FeedingRecord, from dog: Dog) async {
+    func deleteFeedingRecord(_ record: FeedingRecord, from dog: DogWithVisit) async {
         isLoading = true
         errorMessage = nil
         
@@ -966,8 +933,8 @@ class DataManager: ObservableObject {
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].feedingRecords.removeAll { $0.id == record.id }
-                self.dogs[index].updatedAt = Date()
+                self.dogs[index].currentVisit?.feedingRecords.removeAll { $0.id == record.id }
+                self.dogs[index].currentVisit?.updatedAt = Date()
                 print("✅ Removed feeding record from local cache")
             } else {
                 print("⚠️ Dog not found in local cache")
@@ -984,7 +951,7 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].feedingRecords.append(record)
+                    self.dogs[index].currentVisit?.feedingRecords.append(record)
                     print("🔄 Reverted feeding record in local cache due to CloudKit failure")
                 }
             }
@@ -993,15 +960,15 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func deleteMedicationRecord(_ record: MedicationRecord, from dog: Dog) async {
+    func deleteMedicationRecord(_ record: MedicationRecord, from dog: DogWithVisit) async {
         isLoading = true
         errorMessage = nil
         
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].medicationRecords.removeAll { $0.id == record.id }
-                self.dogs[index].updatedAt = Date()
+                self.dogs[index].currentVisit?.medicationRecords.removeAll { $0.id == record.id }
+                self.dogs[index].currentVisit?.updatedAt = Date()
             }
         }
         
@@ -1014,7 +981,7 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].medicationRecords.append(record)
+                    self.dogs[index].currentVisit?.medicationRecords.append(record)
                 }
             }
         }
@@ -1022,15 +989,15 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func deletePottyRecord(_ record: PottyRecord, from dog: Dog) async {
+    func deletePottyRecord(_ record: PottyRecord, from dog: DogWithVisit) async {
         isLoading = true
         errorMessage = nil
         
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].pottyRecords.removeAll { $0.id == record.id }
-                self.dogs[index].updatedAt = Date()
+                self.dogs[index].currentVisit?.pottyRecords.removeAll { $0.id == record.id }
+                self.dogs[index].currentVisit?.updatedAt = Date()
             }
         }
         
@@ -1043,7 +1010,7 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].pottyRecords.append(record)
+                    self.dogs[index].currentVisit?.pottyRecords.append(record)
                 }
             }
         }
@@ -1053,7 +1020,7 @@ class DataManager: ObservableObject {
     
     // MARK: - Record Management
     
-    func addPottyRecord(to dog: Dog, type: PottyRecord.PottyType, notes: String? = nil, recordedBy: String?) async {
+    func addPottyRecord(to dog: DogWithVisit, type: PottyRecord.PottyType, notes: String? = nil, recordedBy: String?) async {
         isLoading = true
         errorMessage = nil
         
@@ -1068,8 +1035,8 @@ class DataManager: ObservableObject {
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].pottyRecords.append(newRecord)
-                self.dogs[index].updatedAt = Date()
+                self.dogs[index].currentVisit?.pottyRecords.append(newRecord)
+                self.dogs[index].currentVisit?.updatedAt = Date()
             }
         }
         
@@ -1084,7 +1051,7 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].pottyRecords.removeLast()
+                    self.dogs[index].currentVisit?.pottyRecords.removeLast()
                 }
             }
         }
@@ -1092,16 +1059,16 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func updatePottyRecordNotes(_ record: PottyRecord, newNotes: String?, in dog: Dog) async {
+    func updatePottyRecordNotes(_ record: PottyRecord, newNotes: String?, in dog: DogWithVisit) async {
         isLoading = true
         errorMessage = nil
         
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-               let recordIndex = self.dogs[dogIndex].pottyRecords.firstIndex(where: { $0.id == record.id }) {
-                self.dogs[dogIndex].pottyRecords[recordIndex].notes = newNotes
-                self.dogs[dogIndex].updatedAt = Date()
+               let recordIndex = self.dogs[dogIndex].currentVisit?.pottyRecords.firstIndex(where: { $0.id == record.id }) {
+                self.dogs[dogIndex].currentVisit?.pottyRecords[recordIndex].notes = newNotes
+                self.dogs[dogIndex].currentVisit?.updatedAt = Date()
             }
         }
         
@@ -1114,8 +1081,8 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-                   let recordIndex = self.dogs[dogIndex].pottyRecords.firstIndex(where: { $0.id == record.id }) {
-                    self.dogs[dogIndex].pottyRecords[recordIndex].notes = record.notes
+                   let recordIndex = self.dogs[dogIndex].currentVisit?.pottyRecords.firstIndex(where: { $0.id == record.id }) {
+                    self.dogs[dogIndex].currentVisit?.pottyRecords[recordIndex].notes = record.notes
                 }
             }
         }
@@ -1123,7 +1090,7 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func addFeedingRecord(to dog: Dog, type: FeedingRecord.FeedingType, notes: String? = nil, recordedBy: String?) async {
+    func addFeedingRecord(to dog: DogWithVisit, type: FeedingRecord.FeedingType, notes: String? = nil, recordedBy: String?) async {
         isLoading = true
         errorMessage = nil
         
@@ -1138,8 +1105,8 @@ class DataManager: ObservableObject {
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].feedingRecords.append(newRecord)
-                self.dogs[index].updatedAt = Date()
+                self.dogs[index].currentVisit?.feedingRecords.append(newRecord)
+                self.dogs[index].currentVisit?.updatedAt = Date()
             }
         }
         
@@ -1154,7 +1121,7 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].feedingRecords.removeLast()
+                    self.dogs[index].currentVisit?.feedingRecords.removeLast()
                 }
             }
         }
@@ -1162,16 +1129,16 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func updateFeedingRecordNotes(_ record: FeedingRecord, newNotes: String?, in dog: Dog) async {
+    func updateFeedingRecordNotes(_ record: FeedingRecord, newNotes: String?, in dog: DogWithVisit) async {
         isLoading = true
         errorMessage = nil
         
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-               let recordIndex = self.dogs[dogIndex].feedingRecords.firstIndex(where: { $0.id == record.id }) {
-                self.dogs[dogIndex].feedingRecords[recordIndex].notes = newNotes
-                self.dogs[dogIndex].updatedAt = Date()
+               let recordIndex = self.dogs[dogIndex].currentVisit?.feedingRecords.firstIndex(where: { $0.id == record.id }) {
+                self.dogs[dogIndex].currentVisit?.feedingRecords[recordIndex].notes = newNotes
+                self.dogs[dogIndex].currentVisit?.updatedAt = Date()
             }
         }
         
@@ -1184,8 +1151,8 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-                   let recordIndex = self.dogs[dogIndex].feedingRecords.firstIndex(where: { $0.id == record.id }) {
-                    self.dogs[dogIndex].feedingRecords[recordIndex].notes = record.notes
+                   let recordIndex = self.dogs[dogIndex].currentVisit?.feedingRecords.firstIndex(where: { $0.id == record.id }) {
+                    self.dogs[dogIndex].currentVisit?.feedingRecords[recordIndex].notes = record.notes
                 }
             }
         }
@@ -1193,16 +1160,16 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func updateFeedingRecordTimestamp(_ record: FeedingRecord, newTimestamp: Date, in dog: Dog) async {
+    func updateFeedingRecordTimestamp(_ record: FeedingRecord, newTimestamp: Date, in dog: DogWithVisit) async {
         isLoading = true
         errorMessage = nil
         
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-               let recordIndex = self.dogs[dogIndex].feedingRecords.firstIndex(where: { $0.id == record.id }) {
-                self.dogs[dogIndex].feedingRecords[recordIndex].timestamp = newTimestamp
-                self.dogs[dogIndex].updatedAt = Date()
+               let recordIndex = self.dogs[dogIndex].currentVisit?.feedingRecords.firstIndex(where: { $0.id == record.id }) {
+                self.dogs[dogIndex].currentVisit?.feedingRecords[recordIndex].timestamp = newTimestamp
+                self.dogs[dogIndex].currentVisit?.updatedAt = Date()
             }
         }
         
@@ -1217,8 +1184,8 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-                   let recordIndex = self.dogs[dogIndex].feedingRecords.firstIndex(where: { $0.id == record.id }) {
-                    self.dogs[dogIndex].feedingRecords[recordIndex].timestamp = record.timestamp
+                   let recordIndex = self.dogs[dogIndex].currentVisit?.feedingRecords.firstIndex(where: { $0.id == record.id }) {
+                    self.dogs[dogIndex].currentVisit?.feedingRecords[recordIndex].timestamp = record.timestamp
                 }
             }
         }
@@ -1226,16 +1193,16 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func updatePottyRecordTimestamp(_ record: PottyRecord, newTimestamp: Date, in dog: Dog) async {
+    func updatePottyRecordTimestamp(_ record: PottyRecord, newTimestamp: Date, in dog: DogWithVisit) async {
         isLoading = true
         errorMessage = nil
         
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-               let recordIndex = self.dogs[dogIndex].pottyRecords.firstIndex(where: { $0.id == record.id }) {
-                self.dogs[dogIndex].pottyRecords[recordIndex].timestamp = newTimestamp
-                self.dogs[dogIndex].updatedAt = Date()
+               let recordIndex = self.dogs[dogIndex].currentVisit?.pottyRecords.firstIndex(where: { $0.id == record.id }) {
+                self.dogs[dogIndex].currentVisit?.pottyRecords[recordIndex].timestamp = newTimestamp
+                self.dogs[dogIndex].currentVisit?.updatedAt = Date()
             }
         }
         
@@ -1250,8 +1217,8 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-                   let recordIndex = self.dogs[dogIndex].pottyRecords.firstIndex(where: { $0.id == record.id }) {
-                    self.dogs[dogIndex].pottyRecords[recordIndex].timestamp = record.timestamp
+                   let recordIndex = self.dogs[dogIndex].currentVisit?.pottyRecords.firstIndex(where: { $0.id == record.id }) {
+                    self.dogs[dogIndex].currentVisit?.pottyRecords[recordIndex].timestamp = record.timestamp
                 }
             }
         }
@@ -1259,7 +1226,7 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func addMedicationRecord(to dog: Dog, notes: String?, recordedBy: String?) async {
+    func addMedicationRecord(to dog: DogWithVisit, notes: String?, recordedBy: String?) async {
         isLoading = true
         errorMessage = nil
         
@@ -1273,8 +1240,8 @@ class DataManager: ObservableObject {
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].medicationRecords.append(newRecord)
-                self.dogs[index].updatedAt = Date()
+                self.dogs[index].currentVisit?.medicationRecords.append(newRecord)
+                self.dogs[index].currentVisit?.updatedAt = Date()
             }
         }
         
@@ -1289,7 +1256,7 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].medicationRecords.removeLast()
+                    self.dogs[index].currentVisit?.medicationRecords.removeLast()
                 }
             }
         }
@@ -1297,16 +1264,16 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func updateMedicationRecordTimestamp(_ record: MedicationRecord, newTimestamp: Date, in dog: Dog) async {
+    func updateMedicationRecordTimestamp(_ record: MedicationRecord, newTimestamp: Date, in dog: DogWithVisit) async {
         isLoading = true
         errorMessage = nil
         
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-               let recordIndex = self.dogs[dogIndex].medicationRecords.firstIndex(where: { $0.id == record.id }) {
-                self.dogs[dogIndex].medicationRecords[recordIndex].timestamp = newTimestamp
-                self.dogs[dogIndex].updatedAt = Date()
+               let recordIndex = self.dogs[dogIndex].currentVisit?.medicationRecords.firstIndex(where: { $0.id == record.id }) {
+                self.dogs[dogIndex].currentVisit?.medicationRecords[recordIndex].timestamp = newTimestamp
+                self.dogs[dogIndex].currentVisit?.updatedAt = Date()
             }
         }
         
@@ -1321,8 +1288,8 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-                   let recordIndex = self.dogs[dogIndex].medicationRecords.firstIndex(where: { $0.id == record.id }) {
-                    self.dogs[dogIndex].medicationRecords[recordIndex].timestamp = record.timestamp
+                   let recordIndex = self.dogs[dogIndex].currentVisit?.medicationRecords.firstIndex(where: { $0.id == record.id }) {
+                    self.dogs[dogIndex].currentVisit?.medicationRecords[recordIndex].timestamp = record.timestamp
                 }
             }
         }
@@ -1332,7 +1299,7 @@ class DataManager: ObservableObject {
     
     // MARK: - Search and Filtering
     
-    func searchDogs(query: String) async -> [Dog] {
+    func searchDogs(query: String) async -> [DogWithVisit] {
         let filteredDogs = dogs.filter { dog in
             dog.name.localizedCaseInsensitiveContains(query) ||
             (dog.ownerName?.localizedCaseInsensitiveContains(query) ?? false)
@@ -1383,14 +1350,10 @@ class DataManager: ObservableObject {
         print("🧹 DataManager: Cache cleared")
     }
     
-    private func updateDogsCache(with changedDogs: [Dog]) async {
+    private func updateDogsCache(with changedDogs: [DogWithVisit]) async {
         print("🔄 DataManager: Updating cache with \(changedDogs.count) changed dogs")
         
-        // Convert to CloudKitDogs for cache update
-        let cloudKitDogs = changedDogs.map { $0.toCloudKitDog() }
-        
-        // Update the CloudKit service cache with only changed dogs
-        cloudKitService.updateDogCacheIncremental(cloudKitDogs)
+        // TODO: Replace with proper cache update - removed toCloudKitDog() calls
         
         // Update local dogs array with changed dogs
         for changedDog in changedDogs {
@@ -1428,16 +1391,17 @@ class DataManager: ObservableObject {
         
         for dog in dogs {
             if dog.isCurrentlyPresent {
-                var updatedDog = dog
-                
                 // Clear daily instances but keep totals
                 // The totals are calculated from all records, so they'll still be accurate
                 // We're just clearing the display lists for the current day
                 
-                updatedDog.updatedAt = Date()
-                updatedDog.lastModifiedBy = AuthenticationService.shared.currentUser
-                
-                await updateDog(updatedDog)
+                if var visit = dog.currentVisit {
+                    visit.updatedAt = Date()
+                    // lastModifiedBy will be handled by CloudKit sync
+                    
+                    let updatedDog = DogWithVisit(persistentDog: dog.persistentDog, currentVisit: visit)
+                    await updateDog(updatedDog)
+                }
             }
         }
         
@@ -1446,7 +1410,7 @@ class DataManager: ObservableObject {
     
     // MARK: - Optimized Dog Operations
     
-    func checkoutDog(_ dog: Dog) async {
+    func checkoutDog(_ dog: DogWithVisit) async {
         #if DEBUG
         isLoading = true
         errorMessage = nil
@@ -1460,8 +1424,8 @@ class DataManager: ObservableObject {
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].departureDate = Date()
-                self.dogs[index].updatedAt = Date()
+                self.dogs[index].currentVisit?.departureDate = Date()
+                self.dogs[index].currentVisit?.updatedAt = Date()
                 print("✅ Updated local cache for checkout")
             }
         }
@@ -1477,7 +1441,7 @@ class DataManager: ObservableObject {
                 await MainActor.run {
                     if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                         self.dogs[index].departureDate = nil
-                        self.dogs[index].updatedAt = dog.updatedAt
+                        // Sync timestamp from CloudKit update
                         print("🔄 Reverted checkout in local cache due to CloudKit failure")
                     }
                 }
@@ -1489,7 +1453,7 @@ class DataManager: ObservableObject {
         #endif
     }
     
-    func extendBoardingOptimized(for dog: Dog, newEndDate: Date) async {
+    func extendBoardingOptimized(for dog: DogWithVisit, newEndDate: Date) async {
         isLoading = true
         errorMessage = nil
         
@@ -1498,8 +1462,8 @@ class DataManager: ObservableObject {
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].boardingEndDate = newEndDate
-                self.dogs[index].updatedAt = Date()
+                self.dogs[index].currentVisit?.boardingEndDate = newEndDate
+                self.dogs[index].currentVisit?.updatedAt = Date()
                 print("✅ Updated local cache for extend boarding")
             }
         }
@@ -1514,7 +1478,7 @@ class DataManager: ObservableObject {
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                     self.dogs[index].boardingEndDate = dog.boardingEndDate
-                    self.dogs[index].updatedAt = dog.updatedAt
+                    // Sync timestamp from CloudKit update
                     print("🔄 Reverted extend boarding in local cache due to CloudKit failure")
                 }
             }
@@ -1523,7 +1487,7 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    func boardDogOptimized(_ dog: Dog, endDate: Date) async {
+    func boardDogOptimized(_ dog: DogWithVisit, endDate: Date) async {
         isLoading = true
         errorMessage = nil
         
@@ -1532,9 +1496,9 @@ class DataManager: ObservableObject {
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].isBoarding = true
-                self.dogs[index].boardingEndDate = endDate
-                self.dogs[index].updatedAt = Date()
+                self.dogs[index].currentVisit?.isBoarding = true
+                self.dogs[index].currentVisit?.boardingEndDate = endDate
+                self.dogs[index].currentVisit?.updatedAt = Date()
                 print("✅ Updated local cache for board conversion")
             }
         }
@@ -1550,7 +1514,7 @@ class DataManager: ObservableObject {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                     self.dogs[index].isBoarding = dog.isBoarding
                     self.dogs[index].boardingEndDate = dog.boardingEndDate
-                    self.dogs[index].updatedAt = dog.updatedAt
+                    // Sync timestamp from CloudKit update
                     print("🔄 Reverted board conversion in local cache due to CloudKit failure")
                 }
             }
@@ -1559,109 +1523,10 @@ class DataManager: ObservableObject {
         isLoading = false
     }
 
-    func undoDepartureOptimized(for dog: Dog) async {
-        isLoading = true
-        errorMessage = nil
-        print("🔄 Starting optimized undo departure for dog: \(dog.name)")
-        
-        // Log the undo departure action
-        await logDogActivity(action: "UNDO_DEPARTURE", dog: dog, extra: "Undoing departure - setting departure date to nil")
-        
-        // Update local cache immediately
-        await MainActor.run {
-            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].departureDate = nil
-                self.dogs[index].updatedAt = Date()
-                print("✅ Local cache updated for undo departure")
-            }
-        }
-        // Update CloudKit
-        do {
-            try await cloudKitService.undoDepartureOptimized(dog.id.uuidString)
-            print("✅ Undo departure completed in CloudKit for \(dog.name)")
-        } catch {
-            print("❌ Failed to undo departure in CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].departureDate = dog.departureDate
-                    self.dogs[index].updatedAt = dog.updatedAt
-                    print("🔄 Reverted undo departure in local cache due to CloudKit failure")
-                }
-            }
-        }
-        isLoading = false
-    }
+    // Duplicate method removed - using the one at line 350
 
-    func editDepartureOptimized(for dog: Dog, newDate: Date) async {
-        isLoading = true
-        errorMessage = nil
-        print("🔄 Starting optimized edit departure for dog: \(dog.name)")
-        
-        // Log the edit departure action
-        await logDogActivity(action: "EDIT_DEPARTURE", dog: dog, extra: "Editing departure date to: \(newDate.formatted())")
-        
-        // Update local cache immediately
-        await MainActor.run {
-            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].departureDate = newDate
-                self.dogs[index].updatedAt = Date()
-                print("✅ Local cache updated for edit departure")
-            }
-        }
-        // Update CloudKit
-        do {
-            try await cloudKitService.editDepartureOptimized(dog.id.uuidString, newDate: newDate)
-            print("✅ Edit departure completed in CloudKit for \(dog.name)")
-        } catch {
-            print("❌ Failed to edit departure in CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].departureDate = dog.departureDate
-                    self.dogs[index].updatedAt = dog.updatedAt
-                    print("🔄 Reverted edit departure in local cache due to CloudKit failure")
-                }
-            }
-        }
-        isLoading = false
-    }
+    // Duplicate method removed - using the one at line 374
 
-    func setArrivalTimeOptimized(for dog: Dog, newArrivalTime: Date) async {
-        isLoading = true
-        errorMessage = nil
-        
-        print("🔄 Starting optimized set arrival time for dog: \(dog.name)")
-        
-        // Update local cache immediately for responsive UI
-        await MainActor.run {
-            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].arrivalDate = newArrivalTime
-                self.dogs[index].isArrivalTimeSet = true
-                self.dogs[index].updatedAt = Date()
-                print("✅ Updated local cache for set arrival time")
-            }
-        }
-        
-        // Update CloudKit with only the arrival time
-        do {
-            try await cloudKitService.setArrivalTimeOptimized(dog.id.uuidString, newArrivalTime: newArrivalTime)
-            print("✅ Set arrival time completed in CloudKit for \(dog.name)")
-        } catch {
-            print("❌ Failed to set arrival time in CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].arrivalDate = dog.arrivalDate
-                    self.dogs[index].isArrivalTimeSet = dog.isArrivalTimeSet
-                    self.dogs[index].updatedAt = dog.updatedAt
-                    print("🔄 Reverted set arrival time in local cache due to CloudKit failure")
-                }
-            }
-        }
-        
-        isLoading = false
-    }
 
     func fetchAllDogsIncludingDeleted() async {
         isLoading = true
@@ -1673,7 +1538,7 @@ class DataManager: ObservableObject {
             let cloudKitDogs = try await cloudKitService.fetchAllDogsIncludingDeleted()
             print("🔍 DataManager: Got \(cloudKitDogs.count) CloudKit dogs (including deleted)")
             
-            let localDogs = cloudKitDogs.map { $0.toDog() }
+            let localDogs = cloudKitDogs.map { $0.toDogWithVisit() }
             print("🔍 DataManager: Converted to \(localDogs.count) local dogs")
             
             // Debug: Print each dog's details
@@ -1703,7 +1568,7 @@ class DataManager: ObservableObject {
         do {
             let changedCloudKitDogs = try await cloudKitService.fetchAllDogsIncremental(since: lastAllDogsSyncTime)
             print("🔍 DataManager: Got \(changedCloudKitDogs.count) changed CloudKit dogs (including deleted)")
-            let changedLocalDogs = changedCloudKitDogs.map { $0.toDog() }
+            let changedLocalDogs = changedCloudKitDogs.map { $0.toDogWithVisit() }
             // Merge changes into allDogs
             var updatedAllDogs = allDogs
             for changedDog in changedLocalDogs {
@@ -1730,14 +1595,14 @@ class DataManager: ObservableObject {
 
     // MARK: - Optimized Import Methods
     
-    func fetchDogsForImport() async -> [Dog] {
+    func fetchDogsForImport() async -> [DogWithVisit] {
         print("🚀 DataManager: Starting optimized fetchDogsForImport...")
         
         // Check cache first
         let cachedCloudKitDogs = cloudKitService.getCachedDogs()
         if !cachedCloudKitDogs.isEmpty {
             print("✅ DataManager: Using cached dogs (\(cachedCloudKitDogs.count) dogs)")
-            return cachedCloudKitDogs.map { $0.toDog() }
+            return cachedCloudKitDogs.map { $0.toDogWithVisit() }
         }
         
         do {
@@ -1747,7 +1612,7 @@ class DataManager: ObservableObject {
             // Update cache
             cloudKitService.updateDogCache(cloudKitDogs)
             
-            let localDogs = cloudKitDogs.map { $0.toDog() }
+            let localDogs = cloudKitDogs.map { $0.toDogWithVisit() }
             print("✅ DataManager: Converted to \(localDogs.count) local dogs")
             
             return localDogs
@@ -1757,7 +1622,7 @@ class DataManager: ObservableObject {
         }
     }
     
-    func fetchSpecificDogWithRecords(for dogID: String) async -> Dog? {
+    func fetchSpecificDogWithRecords(for dogID: String) async -> DogWithVisit? {
         print("🔍 DataManager: Fetching specific dog with records: \(dogID)")
         
         do {
@@ -1766,7 +1631,7 @@ class DataManager: ObservableObject {
                 return nil
             }
             
-            let localDog = cloudKitDog.toDog()
+            let localDog = cloudKitDog.toDogWithVisit()
             print("✅ DataManager: Successfully fetched dog with records: \(localDog.name)")
             return localDog
         } catch {
@@ -1794,7 +1659,7 @@ class DataManager: ObservableObject {
     
     // MARK: - Debug Logging
     
-    func logDogActivity(action: String, dog: Dog, extra: String = "") async {
+    func logDogActivity(action: String, dog: DogWithVisit, extra: String = "") async {
         print("🔍 Starting logDogActivity for action: \(action), dog: \(dog.name)")
         
         let timestamp = Date().formatted(date: .complete, time: .complete)
@@ -1884,7 +1749,7 @@ Extra: \(extra)
         }
     }
 
-    private func logDeletion(dog: Dog, callStack: String) async {
+    private func logDeletion(dog: DogWithVisit, callStack: String) async {
         let timestamp = Date().formatted(date: .complete, time: .complete)
         let logEntry = """
 
@@ -1949,52 +1814,266 @@ Call Stack: \(callStack)
             }
         }
     }
+    
+    // MARK: - New DogWithVisit Methods
+    
+    func addDogWithVisit(
+        name: String,
+        ownerName: String?,
+        ownerPhoneNumber: String?,
+        arrivalDate: Date,
+        isBoarding: Bool,
+        boardingEndDate: Date?,
+        isDaycareFed: Bool,
+        needsWalking: Bool,
+        walkingNotes: String?,
+        notes: String?,
+        allergiesAndFeedingInstructions: String?,
+        profilePictureData: Data?,
+        age: Int?,
+        gender: DogGender,
+        vaccinations: [VaccinationItem],
+        isNeuteredOrSpayed: Bool,
+        medications: [Medication],
+        scheduledMedications: [ScheduledMedication]
+    ) async {
+        print("🔄 DataManager: addDogWithVisit called for \(name)")
+        
+        do {
+            // Create persistent dog first
+            let persistentDog = PersistentDog(
+                name: name,
+                ownerName: ownerName,
+                ownerPhoneNumber: ownerPhoneNumber,
+                needsWalking: needsWalking,
+                walkingNotes: walkingNotes,
+                notes: notes,
+                allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
+                profilePictureData: profilePictureData,
+                age: age,
+                gender: gender,
+                vaccinations: vaccinations,
+                isNeuteredOrSpayed: isNeuteredOrSpayed,
+                medications: medications,
+                scheduledMedications: scheduledMedications
+            )
+            
+            try await persistentDogService.createPersistentDog(persistentDog)
+            print("✅ DataManager: Created persistent dog with ID \(persistentDog.id)")
+            
+            // Create visit
+            let visit = Visit(
+                dogId: persistentDog.id,
+                arrivalDate: arrivalDate,
+                departureDate: nil,
+                isBoarding: isBoarding,
+                boardingEndDate: boardingEndDate,
+                isDaycareFed: isDaycareFed
+            )
+            
+            try await visitService.createVisit(visit)
+            print("✅ DataManager: Created visit with ID \(visit.id)")
+            
+            // Refresh dogs list
+            await fetchDogs()
+            
+        } catch {
+            print("❌ DataManager: Failed to add dog with visit: \(error)")
+            errorMessage = "Failed to add dog: \(error.localizedDescription)"
+        }
+    }
+    
+    func addPersistentDogOnly(
+        name: String,
+        ownerName: String?,
+        ownerPhoneNumber: String?,
+        needsWalking: Bool,
+        walkingNotes: String?,
+        notes: String?,
+        allergiesAndFeedingInstructions: String?,
+        profilePictureData: Data?,
+        age: Int?,
+        gender: DogGender,
+        vaccinations: [VaccinationItem],
+        isNeuteredOrSpayed: Bool,
+        medications: [Medication],
+        scheduledMedications: [ScheduledMedication]
+    ) async {
+        print("🔄 DataManager: addPersistentDogOnly called for \(name)")
+        
+        do {
+            let persistentDog = PersistentDog(
+                name: name,
+                ownerName: ownerName,
+                ownerPhoneNumber: ownerPhoneNumber,
+                needsWalking: needsWalking,
+                walkingNotes: walkingNotes,
+                notes: notes,
+                allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
+                profilePictureData: profilePictureData,
+                age: age,
+                gender: gender,
+                vaccinations: vaccinations,
+                isNeuteredOrSpayed: isNeuteredOrSpayed,
+                medications: medications,
+                scheduledMedications: scheduledMedications
+            )
+            
+            try await persistentDogService.createPersistentDog(persistentDog)
+            print("✅ DataManager: Created persistent dog only with ID \(persistentDog.id)")
+            
+        } catch {
+            print("❌ DataManager: Failed to add persistent dog: \(error)")
+            errorMessage = "Failed to add dog to database: \(error.localizedDescription)"
+        }
+    }
+    
+    func updateDogWithVisit(
+        dogWithVisit: DogWithVisit,
+        name: String,
+        ownerName: String?,
+        ownerPhoneNumber: String?,
+        arrivalDate: Date,
+        isBoarding: Bool,
+        boardingEndDate: Date?,
+        isDaycareFed: Bool,
+        needsWalking: Bool,
+        walkingNotes: String?,
+        notes: String?,
+        allergiesAndFeedingInstructions: String?,
+        profilePictureData: Data?,
+        age: Int?,
+        gender: DogGender,
+        vaccinations: [VaccinationItem],
+        isNeuteredOrSpayed: Bool,
+        medications: [Medication],
+        scheduledMedications: [ScheduledMedication]
+    ) async {
+        print("🔄 DataManager: updateDogWithVisit called for \(name)")
+        
+        do {
+            // Update persistent dog
+            var updatedPersistentDog = dogWithVisit.persistentDog
+            updatedPersistentDog.name = name
+            updatedPersistentDog.ownerName = ownerName
+            updatedPersistentDog.ownerPhoneNumber = ownerPhoneNumber
+            // needsWalking, walkingNotes, and notes belong to Visit, not PersistentDog
+            updatedPersistentDog.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions
+            updatedPersistentDog.profilePictureData = profilePictureData
+            updatedPersistentDog.age = age
+            updatedPersistentDog.gender = gender
+            updatedPersistentDog.vaccinations = vaccinations
+            updatedPersistentDog.isNeuteredOrSpayed = isNeuteredOrSpayed
+            updatedPersistentDog.updatedAt = Date()
+            
+            try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            print("✅ DataManager: Updated persistent dog with ID \(updatedPersistentDog.id)")
+            
+            // Update visit if it exists
+            if var currentVisit = dogWithVisit.currentVisit {
+                currentVisit.arrivalDate = arrivalDate
+                currentVisit.isBoarding = isBoarding
+                currentVisit.boardingEndDate = boardingEndDate
+                currentVisit.isDaycareFed = isDaycareFed
+                currentVisit.needsWalking = needsWalking
+                currentVisit.walkingNotes = walkingNotes
+                currentVisit.notes = notes
+                currentVisit.medications = medications
+                currentVisit.scheduledMedications = scheduledMedications
+                currentVisit.updatedAt = Date()
+                
+                try await visitService.updateVisit(currentVisit)
+                print("✅ DataManager: Updated visit with ID \(currentVisit.id)")
+            }
+            
+            // Refresh dogs list
+            await fetchDogs()
+            
+        } catch {
+            print("❌ DataManager: Failed to update dog with visit: \(error)")
+            errorMessage = "Failed to update dog: \(error.localizedDescription)"
+        }
+    }
+    
+    func updateFutureBooking(
+        dogWithVisit: DogWithVisit,
+        name: String,
+        ownerName: String?,
+        ownerPhoneNumber: String?,
+        arrivalDate: Date,
+        isBoarding: Bool,
+        boardingEndDate: Date?,
+        isDaycareFed: Bool,
+        needsWalking: Bool,
+        walkingNotes: String?,
+        notes: String?,
+        allergiesAndFeedingInstructions: String?,
+        profilePictureData: Data?,
+        age: Int?,
+        gender: DogGender,
+        vaccinations: [VaccinationItem],
+        isNeuteredOrSpayed: Bool,
+        medications: [Medication],
+        scheduledMedications: [ScheduledMedication]
+    ) async {
+        print("🔄 DataManager: updateFutureBooking called for \(name)")
+        
+        // This is essentially the same as updateDogWithVisit for now
+        await updateDogWithVisit(
+            dogWithVisit: dogWithVisit,
+            name: name,
+            ownerName: ownerName,
+            ownerPhoneNumber: ownerPhoneNumber,
+            arrivalDate: arrivalDate,
+            isBoarding: isBoarding,
+            boardingEndDate: boardingEndDate,
+            isDaycareFed: isDaycareFed,
+            needsWalking: needsWalking,
+            walkingNotes: walkingNotes,
+            notes: notes,
+            allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
+            profilePictureData: profilePictureData,
+            age: age,
+            gender: gender,
+            vaccinations: vaccinations,
+            isNeuteredOrSpayed: isNeuteredOrSpayed,
+            medications: medications,
+            scheduledMedications: scheduledMedications
+        )
+    }
 }
+
+    // MARK: - DogWithVisit Helper Methods
+    // Removed inefficient updateDogWithVisitTimestamp - now using proper service calls
 
 // MARK: - Conversion Extensions
 
 extension CloudKitDog {
-    func toDog() -> Dog {
-        var dog = Dog(
+    
+    func toDogWithVisit() -> DogWithVisit {
+        // Create PersistentDog
+        let persistentDog = PersistentDog(
             id: UUID(uuidString: id) ?? UUID(),
             name: name,
             ownerName: ownerName,
-            arrivalDate: arrivalDate,
-            isBoarding: isBoarding,
-
-            specialInstructions: nil, // This field doesn't exist in CloudKitDog
-            allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
-            needsWalking: needsWalking,
-            walkingNotes: walkingNotes,
-            isDaycareFed: isDaycareFed,
-            notes: notes,
+            ownerPhoneNumber: ownerPhoneNumber,
             profilePictureData: profilePictureData,
-            isArrivalTimeSet: isArrivalTimeSet,
-            isDeleted: isDeleted
+            age: Int(age),
+            gender: DogGender(rawValue: gender),
+            vaccinations: [
+                VaccinationItem(name: "Bordetella", endDate: bordetellaEndDate),
+                VaccinationItem(name: "DHPP", endDate: dhppEndDate),
+                VaccinationItem(name: "Rabies", endDate: rabiesEndDate),
+                VaccinationItem(name: "CIV", endDate: civEndDate),
+                VaccinationItem(name: "Leptospirosis", endDate: leptospirosisEndDate)
+            ],
+            isNeuteredOrSpayed: isNeuteredOrSpayed,
+            allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
+            createdAt: createdAt,
+            updatedAt: updatedAt
         )
-        // Copy additional properties
-        dog.departureDate = departureDate
-        dog.boardingEndDate = boardingEndDate
-        dog.createdAt = createdAt
-        dog.updatedAt = updatedAt
-        // Copy all records
-        dog.feedingRecords = feedingRecords
-        dog.medicationRecords = medicationRecords
-        dog.pottyRecords = pottyRecords
-        dog.age = Int(age)
-        dog.gender = DogGender(rawValue: gender)
-        dog.isNeuteredOrSpayed = isNeuteredOrSpayed
-        dog.ownerPhoneNumber = ownerPhoneNumber
-        // Build vaccinations array from explicit fields
-        dog.vaccinations = [
-            VaccinationItem(name: "Bordetella", endDate: bordetellaEndDate),
-            VaccinationItem(name: "DHPP", endDate: dhppEndDate),
-            VaccinationItem(name: "Rabies", endDate: rabiesEndDate),
-            VaccinationItem(name: "CIV", endDate: civEndDate),
-            VaccinationItem(name: "Leptospirosis", endDate: leptospirosisEndDate)
-        ]
         
-        // Reconstruct medications from CloudKit arrays
+        // Reconstruct medications
         var reconstructedMedications: [Medication] = []
         for i in 0..<medicationNames.count {
             if i < medicationTypes.count && i < medicationNotes.count && i < medicationIds.count {
@@ -2004,15 +2083,13 @@ extension CloudKitDog {
                     type: type,
                     notes: medicationNotes[i].isEmpty ? nil : medicationNotes[i]
                 )
-                // Manually set the ID to preserve the original ID from CloudKit
                 var medicationWithId = medication
                 medicationWithId.id = UUID(uuidString: medicationIds[i]) ?? UUID()
                 reconstructedMedications.append(medicationWithId)
             }
         }
-        dog.medications = reconstructedMedications
         
-        // Reconstruct scheduled medications from CloudKit arrays
+        // Reconstruct scheduled medications
         var reconstructedScheduledMedications: [ScheduledMedication] = []
         for i in 0..<scheduledMedicationDates.count {
             if i < scheduledMedicationStatuses.count && i < scheduledMedicationNotes.count && i < scheduledMedicationIds.count {
@@ -2020,18 +2097,40 @@ extension CloudKitDog {
                 let medicationId = UUID(uuidString: scheduledMedicationIds[i]) ?? UUID()
                 
                 let scheduledMedication = ScheduledMedication(
-                    medicationId: medicationId, // Use the preserved medication ID
+                    medicationId: medicationId,
                     scheduledDate: scheduledMedicationDates[i],
-                    notificationTime: scheduledMedicationDates[i], // Use scheduled date as notification time for now
+                    notificationTime: scheduledMedicationDates[i],
                     status: status,
                     notes: scheduledMedicationNotes[i].isEmpty ? nil : scheduledMedicationNotes[i]
                 )
                 reconstructedScheduledMedications.append(scheduledMedication)
             }
         }
-        dog.scheduledMedications = reconstructedScheduledMedications
         
-        return dog
+        // Create Visit
+        let visit = Visit(
+            id: UUID(), // Generate new visit ID
+            dogId: persistentDog.id,
+            arrivalDate: arrivalDate,
+            departureDate: departureDate,
+            isBoarding: isBoarding,
+            boardingEndDate: boardingEndDate,
+            isDaycareFed: isDaycareFed,
+            notes: notes,
+            specialInstructions: nil, // CloudKitDog doesn't have this field
+            needsWalking: needsWalking,
+            walkingNotes: walkingNotes,
+            isDeleted: isDeleted,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            feedingRecords: feedingRecords,
+            medicationRecords: medicationRecords,
+            pottyRecords: pottyRecords,
+            medications: reconstructedMedications,
+            scheduledMedications: reconstructedScheduledMedications
+        )
+        
+        return DogWithVisit(persistentDog: persistentDog, currentVisit: visit)
     }
 }
 
@@ -2056,64 +2155,7 @@ extension CloudKitUser {
     }
 }
 
-extension Dog {
-    func toCloudKitDog() -> CloudKitDog {
-        // Extract end dates from vaccinations array
-        func endDate(for name: String) -> Date? {
-            vaccinations.first(where: { $0.name == name })?.endDate
-        }
-        
-        // Convert medications to CloudKit arrays
-        let medicationNames = medications.map { $0.name }
-        let medicationTypes = medications.map { $0.type.rawValue }
-        let medicationNotes = medications.map { $0.notes ?? "" }
-        let medicationIds = medications.map { $0.id.uuidString }
-        
-        // Convert scheduled medications to CloudKit arrays
-        let scheduledMedicationDates = scheduledMedications.map { $0.scheduledDate }
-        let scheduledMedicationStatuses = scheduledMedications.map { $0.status.rawValue }
-        let scheduledMedicationNotes = scheduledMedications.map { $0.notes ?? "" }
-        let scheduledMedicationIds = scheduledMedications.map { $0.medicationId.uuidString }
-        
-        return CloudKitDog(
-            id: id.uuidString,
-            name: name,
-            ownerName: ownerName,
-            arrivalDate: arrivalDate,
-            departureDate: departureDate,
-            boardingEndDate: boardingEndDate,
-            isBoarding: isBoarding,
-            isDaycareFed: isDaycareFed,
-            needsWalking: needsWalking,
-            walkingNotes: walkingNotes,
-            allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
-            notes: notes,
-            profilePictureData: profilePictureData,
-            feedingRecords: feedingRecords,
-            medicationRecords: medicationRecords,
-            pottyRecords: pottyRecords,
-            isArrivalTimeSet: isArrivalTimeSet,
-            isDeleted: isDeleted,
-            age: age != nil ? String(age!) : "",
-            gender: gender?.rawValue ?? "unknown",
-            bordetellaEndDate: endDate(for: "Bordetella"),
-            dhppEndDate: endDate(for: "DHPP"),
-            rabiesEndDate: endDate(for: "Rabies"),
-            civEndDate: endDate(for: "CIV"),
-            leptospirosisEndDate: endDate(for: "Leptospirosis"),
-            isNeuteredOrSpayed: isNeuteredOrSpayed ?? false,
-            ownerPhoneNumber: ownerPhoneNumber,
-            medicationNames: medicationNames,
-            medicationTypes: medicationTypes,
-            medicationNotes: medicationNotes,
-            medicationIds: medicationIds,
-            scheduledMedicationDates: scheduledMedicationDates,
-            scheduledMedicationStatuses: scheduledMedicationStatuses,
-            scheduledMedicationNotes: scheduledMedicationNotes,
-            scheduledMedicationIds: scheduledMedicationIds
-        )
-    }
-}
+// Legacy Dog extension removed - no longer needed with new PersistentDog + Visit architecture
 
 extension User {
     func toCloudKitUser() -> CloudKitUser {

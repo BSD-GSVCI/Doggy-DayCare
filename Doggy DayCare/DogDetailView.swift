@@ -3,7 +3,7 @@ import SwiftUI
 struct DogDetailView: View {
     @EnvironmentObject var dataManager: DataManager
     @Environment(\.dismiss) private var dismiss
-    let dog: Dog
+    let dog: DogWithVisit
     @State private var showingEditSheet = false
     @State private var showingCheckOutAlert = false
     @State private var showingBoardSheet = false
@@ -632,7 +632,7 @@ struct StatusBadge: View {
 struct BoardDogView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var dataManager: DataManager
-    let dog: Dog
+    let dog: DogWithVisit
     @Binding var endDate: Date
     @State private var isLoading = false
     
@@ -695,7 +695,7 @@ struct BoardDogView: View {
 struct ExtendStayView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var dataManager: DataManager
-    let dog: Dog
+    let dog: DogWithVisit
     @Binding var endDate: Date
     @State private var isLoading = false
     
@@ -760,7 +760,7 @@ struct ExtendStayView: View {
 struct SetArrivalTimeView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var dataManager: DataManager
-    let dog: Dog
+    let dog: DogWithVisit
     @Binding var newArrivalTime: Date
     @State private var isLoading = false
     
@@ -822,20 +822,4 @@ struct SetArrivalTimeView: View {
     }
 }
 
-#Preview {
-    let sampleDog = Dog(
-        name: "Buddy",
-        ownerName: "John Doe",
-        arrivalDate: Date(),
-        isBoarding: false,
-        allergiesAndFeedingInstructions: "No chicken",
-        needsWalking: true,
-        walkingNotes: "Likes to chase squirrels",
-        isDaycareFed: true,
-        notes: "Very friendly dog"
-    )
-    
-    NavigationStack {
-        DogDetailView(dog: sampleDog)
-    }
-} 
+ 

@@ -7,7 +7,7 @@ struct FeedingListView: View {
     
     @State private var searchText = ""
     @State private var showingAddFeeding = false
-    @State private var selectedDog: Dog?
+    @State private var selectedDog: DogWithVisit?
     @State private var selectedFeedingType: FeedingRecord.FeedingType = .breakfast
     @State private var selectedFilter: FeedingFilter = .all
     @State private var selectedSort: FeedingSort = .alphabetical
@@ -26,7 +26,7 @@ struct FeedingListView: View {
         case snack
     }
     
-    private var filteredDogs: [Dog] {
+    private var filteredDogs: [DogWithVisit] {
         let dogs = dataManager.dogs.filter { dog in
             if !searchText.isEmpty {
                 return dog.name.localizedCaseInsensitiveContains(searchText)
@@ -44,7 +44,7 @@ struct FeedingListView: View {
         }
     }
     
-    private func mostRecentFeedingTimestamp(for dog: Dog, type: FeedingRecord.FeedingType) -> Date? {
+    private func mostRecentFeedingTimestamp(for dog: DogWithVisit, type: FeedingRecord.FeedingType) -> Date? {
         let today = Calendar.current.startOfDay(for: Date())
         return dog.feedingRecords
             .filter { $0.type == type && Calendar.current.isDate($0.timestamp, inSameDayAs: today) }
@@ -53,7 +53,7 @@ struct FeedingListView: View {
             .first
     }
     
-    private var daycareDogs: [Dog] {
+    private var daycareDogs: [DogWithVisit] {
         let dogs = filteredDogs.filter { $0.shouldBeTreatedAsDaycare }
         return dogs.sorted { dog1, dog2 in
             switch selectedSort {
@@ -111,7 +111,7 @@ struct FeedingListView: View {
         }
     }
     
-    private var boardingDogs: [Dog] {
+    private var boardingDogs: [DogWithVisit] {
         let dogs = filteredDogs.filter { !$0.shouldBeTreatedAsDaycare }
         return dogs.sorted { dog1, dog2 in
             switch selectedSort {
@@ -273,7 +273,7 @@ struct FeedingListView: View {
     struct DogFeedingRow: View {
         @EnvironmentObject var dataManager: DataManager
         @StateObject private var authService = AuthenticationService.shared
-        let dog: Dog
+        let dog: DogWithVisit
         @State private var showingDeleteAlert = false
         @State private var showingFeedingPopup = false
         
@@ -582,7 +582,7 @@ struct FeedingListView: View {
     struct AddFeedingView: View {
         @Environment(\.dismiss) private var dismiss
         @EnvironmentObject var dataManager: DataManager
-        let dog: Dog
+        let dog: DogWithVisit
         let feedingType: FeedingRecord.FeedingType
         
         @State private var notes = ""
@@ -657,7 +657,7 @@ struct FeedingListView: View {
         @Environment(\.dismiss) private var dismiss
         @EnvironmentObject var dataManager: DataManager
         @StateObject private var authService = AuthenticationService.shared
-        let dog: Dog
+        let dog: DogWithVisit
         
         @State private var notes = ""
         @State private var isLoading = false

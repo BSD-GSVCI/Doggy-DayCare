@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct DogRow: View {
-    let dog: Dog
-    @Binding var selectedDogForOverlay: Dog?
+    let dog: DogWithVisit
+    @Binding var selectedDogForOverlay: DogWithVisit?
     @EnvironmentObject var dataManager: DataManager
     @State private var showingDetail = false
     @State private var showingDeleteAlert = false
@@ -278,9 +278,9 @@ struct DogRow: View {
 
 // MARK: - Local Dog Profile Picture (Independent Overlay)
 struct LocalDogProfilePicture: View {
-    let dog: Dog
+    let dog: DogWithVisit
     let size: CGFloat
-    @Binding var selectedDogForOverlay: Dog?
+    @Binding var selectedDogForOverlay: DogWithVisit?
     
     var body: some View {
         Group {

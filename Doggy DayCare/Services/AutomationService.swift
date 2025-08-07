@@ -10,7 +10,6 @@ class AutomationService: ObservableObject {
     private var backupTimer: Timer?
     private var midnightTimer: Timer?
     
-    private let historyService = HistoryService.shared
     private let cloudKitHistoryService = CloudKitHistoryService.shared
     
     private init() {
@@ -54,7 +53,7 @@ class AutomationService: ObservableObject {
             let cloudKitService = CloudKitService.shared
             // Use a separate fetch method that doesn't affect the UI sync status
             let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
-            let allDogs = allCloudKitDogs.map { $0.toDog() }
+            let allDogs = allCloudKitDogs.map { $0.toDogWithVisit() }
             print("📊 Found \(allDogs.count) total dogs in CloudKit")
             
             // Filter to only include visible dogs (same logic as ContentView)
@@ -104,8 +103,8 @@ class AutomationService: ObservableObject {
             let fileManager = FileManager.default
             if fileManager.fileExists(atPath: url.path) {
                 let attributes = try fileManager.attributesOfItem(atPath: url.path)
-                let fileSize = attributes[.size] as? Int64 ?? 0
-                let permissions = attributes[.posixPermissions] as? Int ?? 0
+                let fileSize = attributes[FileAttributeKey.size] as? Int64 ?? 0
+                let permissions = attributes[FileAttributeKey.posixPermissions] as? Int ?? 0
                 print("📁 Backup file details:")
                 print("   - Path: \(url.path)")
                 print("   - Size: \(fileSize) bytes")
@@ -189,7 +188,7 @@ class AutomationService: ObservableObject {
         do {
             let cloudKitService = CloudKitService.shared
             let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
-            let allDogs = allCloudKitDogs.map { $0.toDog() }
+            let allDogs = allCloudKitDogs.map { $0.toDogWithVisit() }
             
             let today = Date()
             print("Starting midnight transition for \(today.formatted())")
@@ -235,7 +234,8 @@ class AutomationService: ObservableObject {
                     // Only clear departure time for daycare dogs that are currently present
                     if dog.departureDate != nil {
                         print("🔄 Clearing departure time for daycare dog '\(dog.name)'")
-                        updatedDog.departureDate = nil
+                        updatedDog.currentVisit?.departureDate = nil
+                        updatedDog.currentVisit?.updatedAt = Date()
                         needsUpdate = true
                     }
                 }
@@ -243,7 +243,10 @@ class AutomationService: ObservableObject {
                 if needsUpdate {
                     // Log automated updates
                     await DataManager.shared.logDogActivity(action: "AUTOMATED_UPDATE", dog: updatedDog, extra: "Automated midnight transition update")
-                    _ = try await cloudKitService.updateDog(updatedDog.toCloudKitDog())
+                    // Update via DataManager instead of direct CloudKit call
+                    if let visit = updatedDog.currentVisit {
+                        try await VisitService.shared.updateVisit(visit)
+                    }
                 }
             }
             
@@ -403,7 +406,7 @@ class AutomationService: ObservableObject {
         do {
             let cloudKitService = CloudKitService.shared
             let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
-            let allDogs = allCloudKitDogs.map { $0.toDog() }
+            let allDogs = allCloudKitDogs.map { $0.toDogWithVisit() }
             let daycareDogs = allDogs.filter { $0.shouldBeTreatedAsDaycare && $0.isCurrentlyPresent }
             
             if !daycareDogs.isEmpty {
@@ -430,7 +433,7 @@ class AutomationService: ObservableObject {
         do {
             let cloudKitService = CloudKitService.shared
             let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
-            let allDogs = allCloudKitDogs.map { $0.toDog() }
+            let allDogs = allCloudKitDogs.map { $0.toDogWithVisit() }
             let expiredDogs = allDogs.filter { dog in
                 let today = Calendar.current.startOfDay(for: Date())
                 return dog.vaccinations.contains { vax in

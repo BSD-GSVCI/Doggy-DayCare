@@ -21,12 +21,15 @@ class PersistentDogService: ObservableObject {
         static let ownerPhoneNumber = "ownerPhoneNumber"
         static let age = "age"
         static let gender = "gender"
-        static let vaccinations = "vaccinations"
+        // Individual vaccination fields
+        static let bordetellaEndDate = "bordetellaEndDate"
+        static let dhppEndDate = "dhppEndDate"
+        static let rabiesEndDate = "rabiesEndDate"
+        static let civEndDate = "civEndDate"
+        static let leptospirosisEndDate = "leptospirosisEndDate"
         static let isNeuteredOrSpayed = "isNeuteredOrSpayed"
         static let allergiesAndFeedingInstructions = "allergiesAndFeedingInstructions"
         static let profilePictureData = "profilePictureData"
-        static let medications = "medications"
-        static let scheduledMedications = "scheduledMedications"
         static let visitCount = "visitCount"
         static let lastVisitDate = "lastVisitDate"
         static let isDeleted = "isDeleted"
@@ -66,17 +69,12 @@ class PersistentDogService: ObservableObject {
         record[PersistentDogFields.createdBy] = dog.createdBy
         record[PersistentDogFields.lastModifiedBy] = dog.lastModifiedBy
         
-        // Set vaccinations
-        let vaccinationData = try JSONEncoder().encode(dog.vaccinations)
-        record[PersistentDogFields.vaccinations] = vaccinationData
-        
-        // Set medications
-        let medicationData = try JSONEncoder().encode(dog.medications)
-        record[PersistentDogFields.medications] = medicationData
-        
-        // Set scheduled medications
-        let scheduledMedicationData = try JSONEncoder().encode(dog.scheduledMedications)
-        record[PersistentDogFields.scheduledMedications] = scheduledMedicationData
+        // Set individual vaccination fields
+        record[PersistentDogFields.bordetellaEndDate] = dog.vaccinations.first(where: { $0.name == "Bordetella" })?.endDate
+        record[PersistentDogFields.dhppEndDate] = dog.vaccinations.first(where: { $0.name == "DHPP" })?.endDate
+        record[PersistentDogFields.rabiesEndDate] = dog.vaccinations.first(where: { $0.name == "Rabies" })?.endDate
+        record[PersistentDogFields.civEndDate] = dog.vaccinations.first(where: { $0.name == "CIV" })?.endDate
+        record[PersistentDogFields.leptospirosisEndDate] = dog.vaccinations.first(where: { $0.name == "Leptospirosis" })?.endDate
         
         try await publicDatabase.save(record)
         print("✅ Created persistent dog: \(dog.name)")
@@ -109,17 +107,12 @@ class PersistentDogService: ObservableObject {
         record[PersistentDogFields.updatedAt] = Date()
         record[PersistentDogFields.lastModifiedBy] = dog.lastModifiedBy
         
-        // Update vaccinations
-        let vaccinationData = try JSONEncoder().encode(dog.vaccinations)
-        record[PersistentDogFields.vaccinations] = vaccinationData
-        
-        // Update medications
-        let medicationData = try JSONEncoder().encode(dog.medications)
-        record[PersistentDogFields.medications] = medicationData
-        
-        // Update scheduled medications
-        let scheduledMedicationData = try JSONEncoder().encode(dog.scheduledMedications)
-        record[PersistentDogFields.scheduledMedications] = scheduledMedicationData
+        // Update individual vaccination fields
+        record[PersistentDogFields.bordetellaEndDate] = dog.vaccinations.first(where: { $0.name == "Bordetella" })?.endDate
+        record[PersistentDogFields.dhppEndDate] = dog.vaccinations.first(where: { $0.name == "DHPP" })?.endDate
+        record[PersistentDogFields.rabiesEndDate] = dog.vaccinations.first(where: { $0.name == "Rabies" })?.endDate
+        record[PersistentDogFields.civEndDate] = dog.vaccinations.first(where: { $0.name == "CIV" })?.endDate
+        record[PersistentDogFields.leptospirosisEndDate] = dog.vaccinations.first(where: { $0.name == "Leptospirosis" })?.endDate
         
         try await publicDatabase.save(record)
         print("✅ Updated persistent dog: \(dog.name)")
@@ -160,23 +153,20 @@ class PersistentDogService: ObservableObject {
             let createdBy = record[PersistentDogFields.createdBy] as? String
             let lastModifiedBy = record[PersistentDogFields.lastModifiedBy] as? String
             
-            // Decode vaccinations
-            var vaccinations: [VaccinationItem] = []
-            if let vaccinationData = record[PersistentDogFields.vaccinations] as? Data {
-                vaccinations = (try? JSONDecoder().decode([VaccinationItem].self, from: vaccinationData)) ?? []
-            }
+            // Reconstruct vaccinations from individual fields
+            let bordetellaEndDate = record[PersistentDogFields.bordetellaEndDate] as? Date
+            let dhppEndDate = record[PersistentDogFields.dhppEndDate] as? Date
+            let rabiesEndDate = record[PersistentDogFields.rabiesEndDate] as? Date
+            let civEndDate = record[PersistentDogFields.civEndDate] as? Date
+            let leptospirosisEndDate = record[PersistentDogFields.leptospirosisEndDate] as? Date
             
-            // Decode medications
-            var medications: [Medication] = []
-            if let medicationData = record[PersistentDogFields.medications] as? Data {
-                medications = (try? JSONDecoder().decode([Medication].self, from: medicationData)) ?? []
-            }
-            
-            // Decode scheduled medications
-            var scheduledMedications: [ScheduledMedication] = []
-            if let scheduledMedicationData = record[PersistentDogFields.scheduledMedications] as? Data {
-                scheduledMedications = (try? JSONDecoder().decode([ScheduledMedication].self, from: scheduledMedicationData)) ?? []
-            }
+            let vaccinations = [
+                VaccinationItem(name: "Bordetella", endDate: bordetellaEndDate),
+                VaccinationItem(name: "DHPP", endDate: dhppEndDate),
+                VaccinationItem(name: "Rabies", endDate: rabiesEndDate),
+                VaccinationItem(name: "CIV", endDate: civEndDate),
+                VaccinationItem(name: "Leptospirosis", endDate: leptospirosisEndDate)
+            ]
             
             let persistentDog = PersistentDog(
                 id: id,
@@ -189,8 +179,6 @@ class PersistentDogService: ObservableObject {
                 isNeuteredOrSpayed: isNeuteredOrSpayed,
                 allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
                 profilePictureData: profilePictureData,
-                medications: medications,
-                scheduledMedications: scheduledMedications,
                 visitCount: visitCount,
                 lastVisitDate: lastVisitDate,
                 isDeleted: isDeleted,

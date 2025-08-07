@@ -3,7 +3,7 @@ import SwiftUI
 struct MedicationManagementView: View {
     @EnvironmentObject var dataManager: DataManager
     @StateObject private var authService = AuthenticationService.shared
-    let dog: Dog
+    let dog: DogWithVisit
     
     @State private var showingAddMedication = false
     @State private var showingAddScheduledMedication = false
@@ -89,8 +89,10 @@ struct MedicationManagementView: View {
         Task {
             if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
                 var updatedDog = dataManager.dogs[dogIndex]
-                updatedDog.addMedication(medication, createdBy: authService.currentUser)
-                await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
+                if updatedDog.currentVisit != nil {
+                    updatedDog.currentVisit!.medications.append(medication)
+                    await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
+                }
             }
         }
     }
@@ -99,8 +101,10 @@ struct MedicationManagementView: View {
         Task {
             if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
                 var updatedDog = dataManager.dogs[dogIndex]
-                updatedDog.removeMedication(medication, modifiedBy: authService.currentUser)
-                await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
+                if updatedDog.currentVisit != nil {
+                    updatedDog.currentVisit!.medications.removeAll { $0.id == medication.id }
+                    await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
+                }
             }
         }
     }
@@ -109,11 +113,13 @@ struct MedicationManagementView: View {
         Task {
             if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
                 var updatedDog = dataManager.dogs[dogIndex]
-                updatedDog.addScheduledMedication(scheduledMedication, createdBy: authService.currentUser)
-                await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
-                
-                // Schedule notification
-                await NotificationService.shared.scheduleMedicationNotification(for: updatedDog, scheduledMedication: scheduledMedication)
+                if updatedDog.currentVisit != nil {
+                    updatedDog.currentVisit!.scheduledMedications.append(scheduledMedication)
+                    await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
+                    
+                    // Schedule notification
+                    await NotificationService.shared.scheduleMedicationNotification(for: updatedDog, scheduledMedication: scheduledMedication)
+                }
             }
         }
     }
@@ -122,11 +128,13 @@ struct MedicationManagementView: View {
         Task {
             if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
                 var updatedDog = dataManager.dogs[dogIndex]
-                updatedDog.removeScheduledMedication(scheduledMedication, modifiedBy: authService.currentUser)
-                await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
-                
-                // Cancel notification
-                NotificationService.shared.cancelMedicationNotification(for: updatedDog, scheduledMedication: scheduledMedication)
+                if updatedDog.currentVisit != nil {
+                    updatedDog.currentVisit!.scheduledMedications.removeAll { $0.id == scheduledMedication.id }
+                    await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
+                    
+                    // Cancel notification
+                    NotificationService.shared.cancelMedicationNotification(for: updatedDog, scheduledMedication: scheduledMedication)
+                }
             }
         }
     }
@@ -215,7 +223,7 @@ struct ScheduledMedicationRow: View {
 
 struct AddMedicationSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let dog: Dog
+    let dog: DogWithVisit
     let medicationType: Medication.MedicationType
     let onSave: (Medication) -> Void
     
@@ -261,7 +269,7 @@ struct AddScheduledMedicationSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var dataManager: DataManager
     @StateObject private var authService = AuthenticationService.shared
-    let dog: Dog
+    let dog: DogWithVisit
     let onSave: (ScheduledMedication) -> Void
     let onAddMedication: (Medication) -> Void
     
@@ -281,9 +289,11 @@ struct AddScheduledMedicationSheet: View {
         Task {
             if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
                 var updatedDog = dataManager.dogs[dogIndex]
-                updatedDog.removeMedication(medication, modifiedBy: authService.currentUser)
-                await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
-                print("🗑️ Removed medication from selection list: \(medication.name)")
+                if updatedDog.currentVisit != nil {
+                    updatedDog.currentVisit!.medications.removeAll { $0.id == medication.id }
+                    await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
+                    print("🗑️ Removed medication from selection list: \(medication.name)")
+                }
             }
         }
     }

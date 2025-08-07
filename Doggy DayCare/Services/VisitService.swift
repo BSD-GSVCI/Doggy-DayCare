@@ -33,9 +33,35 @@ class VisitService: ObservableObject {
         static let updatedAt = "updatedAt"
         static let createdBy = "createdBy"
         static let lastModifiedBy = "lastModifiedBy"
-        static let feedingRecords = "feedingRecords"
-        static let medicationRecords = "medicationRecords"
-        static let pottyRecords = "pottyRecords"
+        // Individual feeding record fields
+        static let feedingTimestamps = "feedingTimestamps"
+        static let feedingTypes = "feedingTypes"
+        static let feedingNotes = "feedingNotes"
+        static let feedingRecordedBy = "feedingRecordedBy"
+        static let feedingIds = "feedingIds"
+        
+        // Individual potty record fields
+        static let pottyTimestamps = "pottyTimestamps"
+        static let pottyTypes = "pottyTypes"
+        static let pottyNotes = "pottyNotes"
+        static let pottyRecordedBy = "pottyRecordedBy"
+        static let pottyIds = "pottyIds"
+        
+        // Individual medication record fields
+        static let medicationRecordTimestamps = "medicationRecordTimestamps"
+        static let medicationRecordNotes = "medicationRecordNotes"
+        static let medicationRecordRecordedBy = "medicationRecordRecordedBy"
+        static let medicationRecordIds = "medicationRecordIds"
+        // Individual medication fields (matching CloudKit schema)
+        static let medicationNames = "medicationNames"
+        static let medicationTypes = "medicationTypes"
+        static let medicationNotes = "medicationNotes"
+        static let medicationIds = "medicationIds"
+        static let scheduledMedicationDates = "scheduledMedicationDates"
+        static let scheduledMedicationStatuses = "scheduledMedicationStatuses"
+        static let scheduledMedicationNotes = "scheduledMedicationNotes"
+        static let scheduledMedicationIds = "scheduledMedicationIds"
+        static let scheduledMedicationNotificationTimes = "scheduledMedicationNotificationTimes"
     }
     
     private init() {
@@ -70,15 +96,66 @@ class VisitService: ObservableObject {
         record[VisitFields.createdBy] = visit.createdBy
         record[VisitFields.lastModifiedBy] = visit.lastModifiedBy
         
-        // Set records
-        let feedingData = try JSONEncoder().encode(visit.feedingRecords)
-        record[VisitFields.feedingRecords] = feedingData
+        // Set feeding records as individual arrays
+        let feedingTimestamps = visit.feedingRecords.map { $0.timestamp }
+        let feedingTypes = visit.feedingRecords.map { $0.type.rawValue }
+        let feedingNotes = visit.feedingRecords.map { $0.notes ?? "" }
+        let feedingRecordedBy = visit.feedingRecords.map { $0.recordedBy ?? "" }
+        let feedingIds = visit.feedingRecords.map { $0.id.uuidString }
         
-        let medicationData = try JSONEncoder().encode(visit.medicationRecords)
-        record[VisitFields.medicationRecords] = medicationData
+        record[VisitFields.feedingTimestamps] = feedingTimestamps
+        record[VisitFields.feedingTypes] = feedingTypes
+        record[VisitFields.feedingNotes] = feedingNotes
+        record[VisitFields.feedingRecordedBy] = feedingRecordedBy
+        record[VisitFields.feedingIds] = feedingIds
         
-        let pottyData = try JSONEncoder().encode(visit.pottyRecords)
-        record[VisitFields.pottyRecords] = pottyData
+        // Set potty records as individual arrays
+        let pottyTimestamps = visit.pottyRecords.map { $0.timestamp }
+        let pottyTypes = visit.pottyRecords.map { $0.type.rawValue }
+        let pottyNotes = visit.pottyRecords.map { $0.notes ?? "" }
+        let pottyRecordedBy = visit.pottyRecords.map { $0.recordedBy ?? "" }
+        let pottyIds = visit.pottyRecords.map { $0.id.uuidString }
+        
+        record[VisitFields.pottyTimestamps] = pottyTimestamps
+        record[VisitFields.pottyTypes] = pottyTypes
+        record[VisitFields.pottyNotes] = pottyNotes
+        record[VisitFields.pottyRecordedBy] = pottyRecordedBy
+        record[VisitFields.pottyIds] = pottyIds
+        
+        // Set medication records as individual arrays
+        let medicationRecordTimestamps = visit.medicationRecords.map { $0.timestamp }
+        let medicationRecordNotes = visit.medicationRecords.map { $0.notes ?? "" }
+        let medicationRecordRecordedBy = visit.medicationRecords.map { $0.recordedBy ?? "" }
+        let medicationRecordIds = visit.medicationRecords.map { $0.id.uuidString }
+        
+        record[VisitFields.medicationRecordTimestamps] = medicationRecordTimestamps
+        record[VisitFields.medicationRecordNotes] = medicationRecordNotes
+        record[VisitFields.medicationRecordRecordedBy] = medicationRecordRecordedBy
+        record[VisitFields.medicationRecordIds] = medicationRecordIds
+        
+        // Set medications as individual arrays (matching CloudKit schema)
+        let medicationNames = visit.medications.map { $0.name }
+        let medicationTypes = visit.medications.map { $0.type.rawValue }
+        let medicationNotes = visit.medications.map { $0.notes ?? "" }
+        let medicationIds = visit.medications.map { $0.id.uuidString }
+        
+        record[VisitFields.medicationNames] = medicationNames
+        record[VisitFields.medicationTypes] = medicationTypes
+        record[VisitFields.medicationNotes] = medicationNotes
+        record[VisitFields.medicationIds] = medicationIds
+        
+        // Set scheduled medications as individual arrays
+        let scheduledMedicationDates = visit.scheduledMedications.map { $0.scheduledDate }
+        let scheduledMedicationStatuses = visit.scheduledMedications.map { $0.status.rawValue }
+        let scheduledMedicationNotes = visit.scheduledMedications.map { $0.notes ?? "" }
+        let scheduledMedicationIds = visit.scheduledMedications.map { $0.medicationId.uuidString }
+        let scheduledMedicationNotificationTimes = visit.scheduledMedications.map { $0.notificationTime }
+        
+        record[VisitFields.scheduledMedicationDates] = scheduledMedicationDates
+        record[VisitFields.scheduledMedicationStatuses] = scheduledMedicationStatuses
+        record[VisitFields.scheduledMedicationNotes] = scheduledMedicationNotes
+        record[VisitFields.scheduledMedicationIds] = scheduledMedicationIds
+        record[VisitFields.scheduledMedicationNotificationTimes] = scheduledMedicationNotificationTimes
         
         try await publicDatabase.save(record)
         print("✅ Created visit for dog: \(visit.dogId)")
@@ -111,15 +188,66 @@ class VisitService: ObservableObject {
         record[VisitFields.updatedAt] = Date()
         record[VisitFields.lastModifiedBy] = visit.lastModifiedBy
         
-        // Update records
-        let feedingData = try JSONEncoder().encode(visit.feedingRecords)
-        record[VisitFields.feedingRecords] = feedingData
+        // Update feeding records as individual arrays
+        let feedingTimestamps = visit.feedingRecords.map { $0.timestamp }
+        let feedingTypes = visit.feedingRecords.map { $0.type.rawValue }
+        let feedingNotes = visit.feedingRecords.map { $0.notes ?? "" }
+        let feedingRecordedBy = visit.feedingRecords.map { $0.recordedBy ?? "" }
+        let feedingIds = visit.feedingRecords.map { $0.id.uuidString }
         
-        let medicationData = try JSONEncoder().encode(visit.medicationRecords)
-        record[VisitFields.medicationRecords] = medicationData
+        record[VisitFields.feedingTimestamps] = feedingTimestamps
+        record[VisitFields.feedingTypes] = feedingTypes
+        record[VisitFields.feedingNotes] = feedingNotes
+        record[VisitFields.feedingRecordedBy] = feedingRecordedBy
+        record[VisitFields.feedingIds] = feedingIds
         
-        let pottyData = try JSONEncoder().encode(visit.pottyRecords)
-        record[VisitFields.pottyRecords] = pottyData
+        // Update potty records as individual arrays
+        let pottyTimestamps = visit.pottyRecords.map { $0.timestamp }
+        let pottyTypes = visit.pottyRecords.map { $0.type.rawValue }
+        let pottyNotes = visit.pottyRecords.map { $0.notes ?? "" }
+        let pottyRecordedBy = visit.pottyRecords.map { $0.recordedBy ?? "" }
+        let pottyIds = visit.pottyRecords.map { $0.id.uuidString }
+        
+        record[VisitFields.pottyTimestamps] = pottyTimestamps
+        record[VisitFields.pottyTypes] = pottyTypes
+        record[VisitFields.pottyNotes] = pottyNotes
+        record[VisitFields.pottyRecordedBy] = pottyRecordedBy
+        record[VisitFields.pottyIds] = pottyIds
+        
+        // Update medication records as individual arrays
+        let medicationRecordTimestamps = visit.medicationRecords.map { $0.timestamp }
+        let medicationRecordNotes = visit.medicationRecords.map { $0.notes ?? "" }
+        let medicationRecordRecordedBy = visit.medicationRecords.map { $0.recordedBy ?? "" }
+        let medicationRecordIds = visit.medicationRecords.map { $0.id.uuidString }
+        
+        record[VisitFields.medicationRecordTimestamps] = medicationRecordTimestamps
+        record[VisitFields.medicationRecordNotes] = medicationRecordNotes
+        record[VisitFields.medicationRecordRecordedBy] = medicationRecordRecordedBy
+        record[VisitFields.medicationRecordIds] = medicationRecordIds
+        
+        // Update medications as individual arrays (matching CloudKit schema)
+        let medicationNames = visit.medications.map { $0.name }
+        let medicationTypes = visit.medications.map { $0.type.rawValue }
+        let medicationNotes = visit.medications.map { $0.notes ?? "" }
+        let medicationIds = visit.medications.map { $0.id.uuidString }
+        
+        record[VisitFields.medicationNames] = medicationNames
+        record[VisitFields.medicationTypes] = medicationTypes
+        record[VisitFields.medicationNotes] = medicationNotes
+        record[VisitFields.medicationIds] = medicationIds
+        
+        // Update scheduled medications as individual arrays
+        let scheduledMedicationDates = visit.scheduledMedications.map { $0.scheduledDate }
+        let scheduledMedicationStatuses = visit.scheduledMedications.map { $0.status.rawValue }
+        let scheduledMedicationNotes = visit.scheduledMedications.map { $0.notes ?? "" }
+        let scheduledMedicationIds = visit.scheduledMedications.map { $0.medicationId.uuidString }
+        let scheduledMedicationNotificationTimes = visit.scheduledMedications.map { $0.notificationTime }
+        
+        record[VisitFields.scheduledMedicationDates] = scheduledMedicationDates
+        record[VisitFields.scheduledMedicationStatuses] = scheduledMedicationStatuses
+        record[VisitFields.scheduledMedicationNotes] = scheduledMedicationNotes
+        record[VisitFields.scheduledMedicationIds] = scheduledMedicationIds
+        record[VisitFields.scheduledMedicationNotificationTimes] = scheduledMedicationNotificationTimes
         
         try await publicDatabase.save(record)
         print("✅ Updated visit: \(visit.id)")
@@ -162,20 +290,142 @@ class VisitService: ObservableObject {
             let createdBy = record[VisitFields.createdBy] as? String
             let lastModifiedBy = record[VisitFields.lastModifiedBy] as? String
             
-            // Decode records
+            // Reconstruct feeding records from individual arrays
             var feedingRecords: [FeedingRecord] = []
-            if let feedingData = record[VisitFields.feedingRecords] as? Data {
-                feedingRecords = (try? JSONDecoder().decode([FeedingRecord].self, from: feedingData)) ?? []
+            if let feedingTimestamps = record[VisitFields.feedingTimestamps] as? [Date],
+               let feedingTypes = record[VisitFields.feedingTypes] as? [String],
+               let feedingNotes = record[VisitFields.feedingNotes] as? [String],
+               let feedingRecordedBy = record[VisitFields.feedingRecordedBy] as? [String],
+               let feedingIds = record[VisitFields.feedingIds] as? [String] {
+                
+                for i in 0..<feedingTimestamps.count {
+                    guard i < feedingTypes.count,
+                          i < feedingNotes.count,
+                          i < feedingRecordedBy.count,
+                          i < feedingIds.count,
+                          let feedingId = UUID(uuidString: feedingIds[i]),
+                          let feedingType = FeedingRecord.FeedingType(rawValue: feedingTypes[i]) else {
+                        continue
+                    }
+                    
+                    var feedingRecord = FeedingRecord(
+                        timestamp: feedingTimestamps[i],
+                        type: feedingType,
+                        notes: feedingNotes[i].isEmpty ? nil : feedingNotes[i],
+                        recordedBy: feedingRecordedBy[i].isEmpty ? nil : feedingRecordedBy[i]
+                    )
+                    feedingRecord.id = feedingId
+                    feedingRecords.append(feedingRecord)
+                }
             }
             
-            var medicationRecords: [MedicationRecord] = []
-            if let medicationData = record[VisitFields.medicationRecords] as? Data {
-                medicationRecords = (try? JSONDecoder().decode([MedicationRecord].self, from: medicationData)) ?? []
-            }
-            
+            // Reconstruct potty records from individual arrays
             var pottyRecords: [PottyRecord] = []
-            if let pottyData = record[VisitFields.pottyRecords] as? Data {
-                pottyRecords = (try? JSONDecoder().decode([PottyRecord].self, from: pottyData)) ?? []
+            if let pottyTimestamps = record[VisitFields.pottyTimestamps] as? [Date],
+               let pottyTypes = record[VisitFields.pottyTypes] as? [String],
+               let pottyNotes = record[VisitFields.pottyNotes] as? [String],
+               let pottyRecordedBy = record[VisitFields.pottyRecordedBy] as? [String],
+               let pottyIds = record[VisitFields.pottyIds] as? [String] {
+                
+                for i in 0..<pottyTimestamps.count {
+                    guard i < pottyTypes.count,
+                          i < pottyNotes.count,
+                          i < pottyRecordedBy.count,
+                          i < pottyIds.count,
+                          let pottyId = UUID(uuidString: pottyIds[i]),
+                          let pottyType = PottyRecord.PottyType(rawValue: pottyTypes[i]) else {
+                        continue
+                    }
+                    
+                    var pottyRecord = PottyRecord(
+                        timestamp: pottyTimestamps[i],
+                        type: pottyType,
+                        notes: pottyNotes[i].isEmpty ? nil : pottyNotes[i],
+                        recordedBy: pottyRecordedBy[i].isEmpty ? nil : pottyRecordedBy[i]
+                    )
+                    pottyRecord.id = pottyId
+                    pottyRecords.append(pottyRecord)
+                }
+            }
+            
+            // Reconstruct medication records from individual arrays
+            var medicationRecords: [MedicationRecord] = []
+            if let medicationRecordTimestamps = record[VisitFields.medicationRecordTimestamps] as? [Date],
+               let medicationRecordNotes = record[VisitFields.medicationRecordNotes] as? [String],
+               let medicationRecordRecordedBy = record[VisitFields.medicationRecordRecordedBy] as? [String],
+               let medicationRecordIds = record[VisitFields.medicationRecordIds] as? [String] {
+                
+                for i in 0..<medicationRecordTimestamps.count {
+                    guard i < medicationRecordNotes.count,
+                          i < medicationRecordRecordedBy.count,
+                          i < medicationRecordIds.count,
+                          let medicationRecordId = UUID(uuidString: medicationRecordIds[i]) else {
+                        continue
+                    }
+                    
+                    var medicationRecord = MedicationRecord(
+                        timestamp: medicationRecordTimestamps[i],
+                        notes: medicationRecordNotes[i].isEmpty ? nil : medicationRecordNotes[i],
+                        recordedBy: medicationRecordRecordedBy[i].isEmpty ? nil : medicationRecordRecordedBy[i]
+                    )
+                    medicationRecord.id = medicationRecordId
+                    medicationRecords.append(medicationRecord)
+                }
+            }
+            
+            // Reconstruct medications from individual arrays
+            var medications: [Medication] = []
+            if let medicationNames = record[VisitFields.medicationNames] as? [String],
+               let medicationTypes = record[VisitFields.medicationTypes] as? [String],
+               let medicationNotes = record[VisitFields.medicationNotes] as? [String],
+               let medicationIds = record[VisitFields.medicationIds] as? [String] {
+                
+                for i in 0..<medicationNames.count {
+                    guard i < medicationTypes.count,
+                          i < medicationNotes.count,
+                          i < medicationIds.count,
+                          let medicationId = UUID(uuidString: medicationIds[i]),
+                          let medicationType = Medication.MedicationType(rawValue: medicationTypes[i]) else {
+                        continue
+                    }
+                    
+                    var medication = Medication(
+                        name: medicationNames[i],
+                        type: medicationType,
+                        notes: medicationNotes[i].isEmpty ? nil : medicationNotes[i]
+                    )
+                    medication.id = medicationId
+                    medications.append(medication)
+                }
+            }
+            
+            // Reconstruct scheduled medications from individual arrays
+            var scheduledMedications: [ScheduledMedication] = []
+            if let scheduledMedicationDates = record[VisitFields.scheduledMedicationDates] as? [Date],
+               let scheduledMedicationStatuses = record[VisitFields.scheduledMedicationStatuses] as? [String],
+               let scheduledMedicationNotes = record[VisitFields.scheduledMedicationNotes] as? [String],
+               let scheduledMedicationIds = record[VisitFields.scheduledMedicationIds] as? [String],
+               let scheduledMedicationNotificationTimes = record[VisitFields.scheduledMedicationNotificationTimes] as? [Date] {
+                
+                for i in 0..<scheduledMedicationDates.count {
+                    guard i < scheduledMedicationStatuses.count,
+                          i < scheduledMedicationNotes.count,
+                          i < scheduledMedicationIds.count,
+                          i < scheduledMedicationNotificationTimes.count,
+                          let medicationId = UUID(uuidString: scheduledMedicationIds[i]),
+                          let status = ScheduledMedication.ScheduledMedicationStatus(rawValue: scheduledMedicationStatuses[i]) else {
+                        continue
+                    }
+                    
+                    let scheduledMedication = ScheduledMedication(
+                        medicationId: medicationId,
+                        scheduledDate: scheduledMedicationDates[i],
+                        notificationTime: scheduledMedicationNotificationTimes[i],
+                        status: status,
+                        notes: scheduledMedicationNotes[i].isEmpty ? nil : scheduledMedicationNotes[i]
+                    )
+                    scheduledMedications.append(scheduledMedication)
+                }
             }
             
             let visit = Visit(
@@ -199,7 +449,9 @@ class VisitService: ObservableObject {
                 lastModifiedBy: lastModifiedBy,
                 feedingRecords: feedingRecords,
                 medicationRecords: medicationRecords,
-                pottyRecords: pottyRecords
+                pottyRecords: pottyRecords,
+                medications: medications,
+                scheduledMedications: scheduledMedications
             )
             
             visits.append(visit)

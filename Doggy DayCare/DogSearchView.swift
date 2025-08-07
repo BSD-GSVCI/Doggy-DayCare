@@ -13,7 +13,7 @@ struct DogSearchView: View {
         case future
     }
     
-    private var filteredDogs: [Dog] {
+    private var filteredDogs: [DogWithVisit] {
         let dogs = dataManager.dogs
         
         let filtered = dogs.filter { dog in
@@ -92,7 +92,7 @@ struct DogSearchView: View {
 }
 
 struct DogSearchRow: View {
-    let dog: Dog
+    let dog: DogWithVisit
     
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()

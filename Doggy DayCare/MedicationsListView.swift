@@ -6,7 +6,7 @@ struct MedicationsListView: View {
     
     @State private var searchText = ""
     @State private var showingAddMedication = false
-    @State private var selectedDog: Dog?
+    @State private var selectedDog: DogWithVisit?
     @State private var selectedFilter: MedicationFilter = .all
     @State private var selectedSort: MedicationSort = .alphabetical
     @State private var showingDeleteAlert = false
@@ -28,7 +28,7 @@ struct MedicationsListView: View {
         case recentAdministration
     }
     
-    private var filteredDogs: [Dog] {
+    private var filteredDogs: [DogWithVisit] {
         let dogs = dataManager.dogs.filter { dog in
             if !searchText.isEmpty {
                 return dog.name.localizedCaseInsensitiveContains(searchText)
@@ -41,7 +41,7 @@ struct MedicationsListView: View {
         }
     }
     
-    private var dogsNeedingMedication: [Dog] {
+    private var dogsNeedingMedication: [DogWithVisit] {
         let filtered = filteredDogs
         
         return selectedSort == .recentAdministration ? filtered.sorted { dog1, dog2 in
@@ -55,10 +55,10 @@ struct MedicationsListView: View {
         } : filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
-    private var daycareDogs: [Dog] {
+    private var daycareDogs: [DogWithVisit] {
         dogsNeedingMedication.filter { $0.shouldBeTreatedAsDaycare }
     }
-    private var boardingDogs: [Dog] {
+    private var boardingDogs: [DogWithVisit] {
         dogsNeedingMedication.filter { !$0.shouldBeTreatedAsDaycare }
     }
     
@@ -155,7 +155,7 @@ struct MedicationFilterButton: View {
 struct DogMedicationRow: View {
     @EnvironmentObject var dataManager: DataManager
     @StateObject private var authService = AuthenticationService.shared
-    let dog: Dog
+    let dog: DogWithVisit
     @State private var showingDeleteAlert = false
     @State private var showingMedicationPopup = false
     @State private var medicationNotes = ""
@@ -169,8 +169,14 @@ struct DogMedicationRow: View {
         Task {
             if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
                 var updatedDog = dataManager.dogs[dogIndex]
-                updatedDog.updateMedicationRecord(at: record.timestamp, notes: newNote, modifiedBy: authService.currentUser)
-                await dataManager.updateDog(updatedDog)
+                if updatedDog.currentVisit != nil {
+                    // Find and update the medication record
+                    if let recordIndex = updatedDog.currentVisit!.medicationRecords.firstIndex(where: { $0.id == record.id }) {
+                        updatedDog.currentVisit!.medicationRecords[recordIndex].notes = newNote
+                        updatedDog.currentVisit!.updatedAt = Date()
+                        await dataManager.updateDog(updatedDog)
+                    }
+                }
             }
         }
     }
@@ -485,7 +491,7 @@ struct MedicationInstanceView: View {
 struct AddMedicationView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var dataManager: DataManager
-    let dog: Dog
+    let dog: DogWithVisit
     
     @State private var notes = ""
     @State private var isLoading = false

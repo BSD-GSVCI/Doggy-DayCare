@@ -41,7 +41,7 @@ struct DogHistoryRecord: Codable, Identifiable {
         return UUID(uuidString: baseString.md5ToUUID()) ?? UUID()
     }
     
-    init(from dog: Dog, date: Date) {
+    init(from dog: DogWithVisit, date: Date) {
         self.date = date
         self.dogId = dog.id
         self.dogName = dog.name

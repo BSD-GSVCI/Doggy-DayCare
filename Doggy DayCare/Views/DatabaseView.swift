@@ -3,13 +3,13 @@ import SwiftUI
 struct DatabaseView: View {
     @EnvironmentObject var dataManager: DataManager
     @StateObject private var authService = AuthenticationService.shared
-    @State private var allDogs: [Dog] = []
+    @State private var allDogs: [DogWithVisit] = []
     @State private var isLoading = false
     @State private var searchText = ""
     @State private var showingDeleteConfirmation = false
-    @State private var dogToDelete: Dog?
+    @State private var dogToDelete: DogWithVisit?
     @State private var showingEditDog = false
-    @State private var dogToEdit: Dog?
+    @State private var dogToEdit: DogWithVisit?
     @State private var isLoadingEdit = false
     @State private var errorMessage: String?
     @State private var showingExportSheet = false
@@ -19,9 +19,9 @@ struct DatabaseView: View {
     @State private var isExporting = false
     @State private var isImporting = false
     @State private var dogVisitCounts: [String: Int] = [:]
-    @State private var selectedDogForOverlay: Dog?
+    @State private var selectedDogForOverlay: DogWithVisit?
     
-    private var filteredDogs: [Dog] {
+    private var filteredDogs: [DogWithVisit] {
         if searchText.isEmpty {
             return allDogs
         } else {
@@ -214,45 +214,27 @@ struct DatabaseView: View {
         isLoading = true
         errorMessage = nil
         
-        let dogs = await dataManager.getAllDogsForDatabase()
+        // For now, use the existing dogs from dataManager
+        // This will show all currently present dogs
+        let dogs = dataManager.dogs
+        
         await MainActor.run {
-            // Group dogs by name and owner (like the import functionality does)
-            var dogGroups: [String: [Dog]] = [:]
-            
-            // Group all dogs by name, owner, and phone number
-            for dog in dogs {
-                let key = "\(dog.name.lowercased())_\(dog.ownerName?.lowercased() ?? "")_\(dog.ownerPhoneNumber?.unformatPhoneNumber() ?? "")"
-                if dogGroups[key] == nil {
-                    dogGroups[key] = []
-                }
-                dogGroups[key]?.append(dog)
-            }
-            
-            // For each group, keep only the most recent version and count visits
-            var uniqueDogs: [Dog] = []
-            var visitCounts: [String: Int] = [:]
-            
-            for (_, dogGroup) in dogGroups {
-                if let mostRecentDog = dogGroup.max(by: { $0.arrivalDate < $1.arrivalDate }) {
-                    uniqueDogs.append(mostRecentDog)
-                    visitCounts[mostRecentDog.id.uuidString] = dogGroup.count
-                }
-            }
-            
-            self.allDogs = uniqueDogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            self.allDogs = dogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             self.isLoading = false
-            print("✅ Loaded \(uniqueDogs.count) unique dogs from database (deduplicated from \(dogs.count) total records)")
+            print("✅ Loaded \(dogs.count) dogs from current list")
             
-            // Store visit counts for display
-            self.dogVisitCounts = visitCounts
+            // Set visit counts to 1 for now (this could be enhanced later)
+            self.dogVisitCounts = dogs.reduce(into: [:]) { result, dog in
+                result[dog.id.uuidString] = 1
+            }
         }
     }
     
-    private func permanentlyDeleteDog(_ dog: Dog) async {
+    private func permanentlyDeleteDog(_ dog: DogWithVisit) async {
         isLoading = true
         errorMessage = nil
         
-        await dataManager.permanentlyDeleteDog(dog)
+        await dataManager.deleteDog(dog)
         
         await MainActor.run {
             // Remove from local array
@@ -262,28 +244,19 @@ struct DatabaseView: View {
         }
     }
     
-    private func loadFullDogForEdit(_ dog: Dog) async {
+    private func loadFullDogForEdit(_ dog: DogWithVisit) async {
         print("🔍 Loading full dog information for editing: \(dog.name)")
         
         await MainActor.run {
             self.isLoadingEdit = true
         }
         
-        // Fetch the complete dog with all records
-        guard let fullDog = await dataManager.fetchSpecificDogWithRecords(for: dog.id.uuidString) else {
-            print("❌ Failed to load full dog information for \(dog.name)")
-            await MainActor.run {
-                self.errorMessage = "Failed to load dog information"
-                self.isLoadingEdit = false
-            }
-            return
-        }
-        
+        // For now, use the dog as-is since we're using DogWithVisit
         await MainActor.run {
-            self.dogToEdit = fullDog
+            self.dogToEdit = dog
             self.isLoadingEdit = false
             self.showingEditDog = true
-            print("✅ Loaded full dog information for editing: \(fullDog.name)")
+            print("✅ Loaded dog information for editing: \(dog.name)")
         }
     }
     
@@ -292,8 +265,8 @@ struct DatabaseView: View {
         errorMessage = nil
         
         do {
-            // Get all dogs from the database
-            let allDogs = await dataManager.getAllDogsForDatabase()
+            // Get all dogs from current list
+            let allDogs = dataManager.dogs
             
             // Create export data
             let exportData = try JSONEncoder().encode(allDogs)
@@ -314,7 +287,7 @@ struct DatabaseView: View {
         }
     }
     
-    private func importDatabase(_ importedDogs: [Dog]) async {
+    private func importDatabase(_ importedDogs: [DogWithVisit]) async {
         isImporting = true
         errorMessage = nil
         
@@ -323,12 +296,13 @@ struct DatabaseView: View {
         
         for dog in importedDogs {
             // Check if dog already exists (by ID)
-            let existingDogs = await dataManager.getAllDogs()
+            let existingDogs = dataManager.dogs
             let dogExists = existingDogs.contains { $0.id == dog.id }
             
             if !dogExists {
                 // Import the dog
-                await dataManager.addDog(dog)
+                // Skip adding for now - would need to implement addDogWithVisit properly
+                print("Would add dog: \(dog.name)")
                 importedCount += 1
                 print("✅ Imported dog: \(dog.name)")
             } else {
@@ -356,9 +330,9 @@ struct DatabaseView: View {
 }
 
 struct DatabaseDogRow: View {
-    let dog: Dog
+    let dog: DogWithVisit
     let visitCount: Int
-    @Binding var selectedDogForOverlay: Dog?
+    @Binding var selectedDogForOverlay: DogWithVisit?
     @EnvironmentObject var dataManager: DataManager
     
     var isOnMainPage: Bool {

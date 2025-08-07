@@ -7,7 +7,7 @@ struct WalkingListView: View {
     
     @State private var searchText = ""
     @State private var showingAddWalking = false
-    @State private var selectedDog: Dog?
+    @State private var selectedDog: DogWithVisit?
     @State private var selectedFilter: WalkingFilter = .all
     @State private var selectedSort: WalkingSort = .alphabetical
     
@@ -23,7 +23,7 @@ struct WalkingListView: View {
         case recentActivity
     }
     
-    private var filteredDogs: [Dog] {
+    private var filteredDogs: [DogWithVisit] {
         let dogs = dataManager.dogs.filter { dog in
             if !searchText.isEmpty {
                 return dog.name.localizedCaseInsensitiveContains(searchText)
@@ -42,12 +42,12 @@ struct WalkingListView: View {
         }
     }
     
-    private func hadRecentPotty(for dog: Dog) -> Bool {
+    private func hadRecentPotty(for dog: DogWithVisit) -> Bool {
         let threeHoursAgo = Date().addingTimeInterval(-3 * 3600)
         return dog.pottyRecords.contains { $0.timestamp > threeHoursAgo }
     }
     
-    private var daycareDogs: [Dog] {
+    private var daycareDogs: [DogWithVisit] {
         let dogs = filteredDogs.filter { $0.shouldBeTreatedAsDaycare }
         return selectedSort == .recentActivity ? dogs.sorted { dog1, dog2 in
             let dog1Recent = hadRecentPotty(for: dog1)
@@ -56,7 +56,7 @@ struct WalkingListView: View {
         } : dogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
     
-    private var boardingDogs: [Dog] {
+    private var boardingDogs: [DogWithVisit] {
         let dogs = filteredDogs.filter { !$0.shouldBeTreatedAsDaycare }
         return selectedSort == .recentActivity ? dogs.sorted { dog1, dog2 in
             let dog1Recent = hadRecentPotty(for: dog1)
@@ -169,7 +169,7 @@ struct WalkingFilterButton: View {
 struct DogWalkingRow: View {
     @EnvironmentObject var dataManager: DataManager
     @StateObject private var authService = AuthenticationService.shared
-    let dog: Dog
+    let dog: DogWithVisit
     @State private var showingDeleteAlert = false
     @State private var showingPottyPopup = false
     
@@ -460,7 +460,7 @@ struct PottyInstanceView: View {
 struct AddWalkingView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var dataManager: DataManager
-    let dog: Dog
+    let dog: DogWithVisit
     
     @State private var notes = ""
     @State private var isLoading = false
@@ -516,7 +516,7 @@ struct PottyPopupView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var dataManager: DataManager
     @StateObject private var authService = AuthenticationService.shared
-    let dog: Dog
+    let dog: DogWithVisit
     
     @State private var notes = ""
     @State private var isLoading = false
