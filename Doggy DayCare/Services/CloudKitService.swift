@@ -66,6 +66,7 @@ class CloudKitService: ObservableObject {
 
         static let allergiesAndFeedingInstructions = "allergiesAndFeedingInstructions"
         static let notes = "notes"
+        static let specialInstructions = "specialInstructions"
         static let profilePictureData = "profilePictureData"
         static let createdAt = "createdAt"
         static let updatedAt = "updatedAt"
@@ -360,6 +361,7 @@ class CloudKitService: ObservableObject {
         record[DogFields.walkingNotes] = dog.walkingNotes
         record[DogFields.allergiesAndFeedingInstructions] = dog.allergiesAndFeedingInstructions
         record[DogFields.notes] = dog.notes
+        record[DogFields.specialInstructions] = dog.specialInstructions
         record[DogFields.profilePictureData] = dog.profilePictureData
         record[DogFields.createdAt] = dog.createdAt
         record[DogFields.updatedAt] = dog.updatedAt
@@ -852,6 +854,7 @@ class CloudKitService: ObservableObject {
         record[DogFields.walkingNotes] = dog.walkingNotes
         record[DogFields.allergiesAndFeedingInstructions] = dog.allergiesAndFeedingInstructions
         record[DogFields.notes] = dog.notes
+        record[DogFields.specialInstructions] = dog.specialInstructions
         record[DogFields.profilePictureData] = dog.profilePictureData
         record[DogFields.updatedAt] = Date()
         record[DogFields.isArrivalTimeSet] = dog.isArrivalTimeSet ? 1 : 0
@@ -2650,6 +2653,7 @@ struct CloudKitDog {
 
     var allergiesAndFeedingInstructions: String?
     var notes: String?
+    var specialInstructions: String?
     var profilePictureData: Data?
     var createdAt: Date
     var updatedAt: Date
@@ -2777,6 +2781,7 @@ struct CloudKitDog {
 
         self.allergiesAndFeedingInstructions = record[CloudKitService.DogFields.allergiesAndFeedingInstructions] as? String
         self.notes = record[CloudKitService.DogFields.notes] as? String
+        self.specialInstructions = record[CloudKitService.DogFields.specialInstructions] as? String
         self.profilePictureData = record[CloudKitService.DogFields.profilePictureData] as? Data
         self.createdAt = record[CloudKitService.DogFields.createdAt] as? Date ?? Date()
         self.updatedAt = record[CloudKitService.DogFields.updatedAt] as? Date ?? Date()

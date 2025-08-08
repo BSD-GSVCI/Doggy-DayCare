@@ -14,7 +14,6 @@ class DataManager: ObservableObject {
     private let cloudKitHistoryService = CloudKitHistoryService.shared
     private let persistentDogService = PersistentDogService.shared
     private let visitService = VisitService.shared
-    private let migrationService = MigrationService.shared
     
     // Incremental sync tracking
     private var lastSyncTime: Date = Date.distantPast
@@ -254,11 +253,6 @@ class DataManager: ObservableObject {
                 arrivalDate: arrivalDate,
                 isBoarding: isBoarding,
                 boardingEndDate: boardingEndDate,
-                isDaycareFed: isDaycareFed,
-                notes: notes,
-                specialInstructions: specialInstructions,
-                needsWalking: needsWalking,
-                walkingNotes: walkingNotes,
                 medications: medications,
                 scheduledMedications: scheduledMedications
             )
@@ -288,6 +282,7 @@ class DataManager: ObservableObject {
         needsWalking: Bool,
         walkingNotes: String?,
         notes: String?,
+        specialInstructions: String?,
         allergiesAndFeedingInstructions: String?,
         profilePictureData: Data?,
         age: Int?,
@@ -307,6 +302,7 @@ class DataManager: ObservableObject {
             updatedPersistentDog.ownerName = ownerName
             updatedPersistentDog.ownerPhoneNumber = ownerPhoneNumber
             updatedPersistentDog.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions
+            updatedPersistentDog.specialInstructions = specialInstructions
             updatedPersistentDog.profilePictureData = profilePictureData
             updatedPersistentDog.age = age
             updatedPersistentDog.gender = gender
@@ -321,15 +317,21 @@ class DataManager: ObservableObject {
                 visit.arrivalDate = arrivalDate
                 visit.isBoarding = isBoarding
                 visit.boardingEndDate = boardingEndDate
-                visit.isDaycareFed = isDaycareFed
-                visit.needsWalking = needsWalking
-                visit.walkingNotes = walkingNotes
-                visit.notes = notes
                 visit.medications = medications
                 visit.scheduledMedications = scheduledMedications
                 visit.updatedAt = Date()
                 
                 try await visitService.updateVisit(visit)
+                
+                // Update persistent dog fields (modify the already existing updatedPersistentDog)
+                updatedPersistentDog.isDaycareFed = isDaycareFed
+                updatedPersistentDog.needsWalking = needsWalking
+                updatedPersistentDog.walkingNotes = walkingNotes
+                updatedPersistentDog.notes = notes
+                updatedPersistentDog.specialInstructions = specialInstructions
+                updatedPersistentDog.updatedAt = Date()
+                
+                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
             }
             
             print("✅ Updated future booking for \(name)")
@@ -418,31 +420,6 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
-    // MARK: - Migration Methods
-    
-    func performMigration() async throws {
-        print("🚀 Starting migration to persistent dog system...")
-        
-        do {
-            try await migrationService.performCompleteMigration()
-            print("✅ Migration completed successfully!")
-        } catch {
-            print("❌ Migration failed: \(error)")
-            throw error
-        }
-    }
-    
-    func getMigrationProgress() -> Double {
-        return migrationService.migrationProgress
-    }
-    
-    func getMigrationStatus() -> String {
-        return migrationService.migrationStatus
-    }
-    
-    func isMigrationComplete() -> Bool {
-        return migrationService.isMigrationComplete
-    }
     
     func fetchDogsIncremental() async {
         // Don't show loading indicator for background refreshes
@@ -580,26 +557,17 @@ class DataManager: ObservableObject {
         
         // Handle CloudKit operations in background without blocking UI
         Task.detached {
-            do {
-                print("🔄 Calling CloudKit update in background...")
-                // TODO: Replace with proper service call
-                print("✅ CloudKit update successful")
-                
-                // Update cache with the changed dog
-                await self.updateDogsCache(with: [dog])
-                
-                // Update database cache on main actor
-                await MainActor.run {
-                    self.lastSyncTime = Date() // Update sync time for dog update
-                    self.incrementallyUpdateExistingDogInDatabaseCache(with: dog) // Incrementally update database cache
-                }
-            } catch {
-                print("❌ Failed to update dog in CloudKit: \(error)")
-                // Revert local cache if CloudKit update failed
-                await MainActor.run {
-                    self.errorMessage = "Failed to update dog: \(error.localizedDescription)"
-                    print("❌ Reverting local cache due to CloudKit failure")
-                }
+            print("🔄 Calling CloudKit update in background...")
+            // TODO: Replace with proper service call
+            print("✅ CloudKit update successful")
+            
+            // Update cache with the changed dog
+            await self.updateDogsCache(with: [dog])
+            
+            // Update database cache on main actor
+            await MainActor.run {
+                self.lastSyncTime = Date() // Update sync time for dog update
+                self.incrementallyUpdateExistingDogInDatabaseCache(with: dog) // Incrementally update database cache
             }
         }
     }
@@ -664,17 +632,17 @@ class DataManager: ObservableObject {
                     name: currentDogWithVisit.persistentDog.name,
                     ownerName: currentDogWithVisit.persistentDog.ownerName,
                     ownerPhoneNumber: currentDogWithVisit.persistentDog.ownerPhoneNumber,
-                    profilePictureData: currentDogWithVisit.persistentDog.profilePictureData,
                     age: currentDogWithVisit.persistentDog.age,
                     gender: currentDogWithVisit.persistentDog.gender,
                     vaccinations: vaccinations, // Updated vaccinations
                     isNeuteredOrSpayed: currentDogWithVisit.persistentDog.isNeuteredOrSpayed,
                     allergiesAndFeedingInstructions: currentDogWithVisit.persistentDog.allergiesAndFeedingInstructions,
+                    profilePictureData: currentDogWithVisit.persistentDog.profilePictureData,
                     createdAt: currentDogWithVisit.persistentDog.createdAt,
                     updatedAt: Date() // Updated timestamp
                 )
                 // Create new DogWithVisit with updated PersistentDog
-                let updatedDogWithVisit = DogWithVisit(persistentDog: updatedPersistentDog, visit: currentDogWithVisit.currentVisit)
+                let updatedDogWithVisit = DogWithVisit(persistentDog: updatedPersistentDog, currentVisit: currentDogWithVisit.currentVisit)
                 self.dogs[index] = updatedDogWithVisit
                 print("✅ Updated vaccinations in local cache immediately")
             }
@@ -794,7 +762,7 @@ class DataManager: ObservableObject {
             // Update local cache
             await MainActor.run {
                 if let index = dogs.firstIndex(where: { $0.id == dog.id }) {
-                    let updatedDogWithVisit = DogWithVisit(persistentDog: dog.persistentDog, visit: updatedVisit)
+                    let updatedDogWithVisit = DogWithVisit(persistentDog: dog.persistentDog, currentVisit: updatedVisit)
                     dogs[index] = updatedDogWithVisit
                 }
             }
@@ -1440,7 +1408,7 @@ class DataManager: ObservableObject {
                 // Revert local cache if CloudKit update failed
                 await MainActor.run {
                     if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                        self.dogs[index].departureDate = nil
+                        self.dogs[index].currentVisit?.departureDate = nil
                         // Sync timestamp from CloudKit update
                         print("🔄 Reverted checkout in local cache due to CloudKit failure")
                     }
@@ -1477,7 +1445,7 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].boardingEndDate = dog.boardingEndDate
+                    self.dogs[index].currentVisit?.boardingEndDate = dog.boardingEndDate
                     // Sync timestamp from CloudKit update
                     print("🔄 Reverted extend boarding in local cache due to CloudKit failure")
                 }
@@ -1512,8 +1480,8 @@ class DataManager: ObservableObject {
             // Revert local cache if CloudKit update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].isBoarding = dog.isBoarding
-                    self.dogs[index].boardingEndDate = dog.boardingEndDate
+                    self.dogs[index].currentVisit?.isBoarding = dog.isBoarding
+                    self.dogs[index].currentVisit?.boardingEndDate = dog.boardingEndDate
                     // Sync timestamp from CloudKit update
                     print("🔄 Reverted board conversion in local cache due to CloudKit failure")
                 }
@@ -1828,6 +1796,7 @@ Call Stack: \(callStack)
         needsWalking: Bool,
         walkingNotes: String?,
         notes: String?,
+        specialInstructions: String?,
         allergiesAndFeedingInstructions: String?,
         profilePictureData: Data?,
         age: Int?,
@@ -1845,17 +1814,17 @@ Call Stack: \(callStack)
                 name: name,
                 ownerName: ownerName,
                 ownerPhoneNumber: ownerPhoneNumber,
-                needsWalking: needsWalking,
-                walkingNotes: walkingNotes,
-                notes: notes,
-                allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
-                profilePictureData: profilePictureData,
                 age: age,
                 gender: gender,
                 vaccinations: vaccinations,
                 isNeuteredOrSpayed: isNeuteredOrSpayed,
-                medications: medications,
-                scheduledMedications: scheduledMedications
+                allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
+                profilePictureData: profilePictureData,
+                needsWalking: needsWalking,
+                walkingNotes: walkingNotes,
+                isDaycareFed: isDaycareFed,
+                notes: notes,
+                specialInstructions: specialInstructions
             )
             
             try await persistentDogService.createPersistentDog(persistentDog)
@@ -1868,7 +1837,8 @@ Call Stack: \(callStack)
                 departureDate: nil,
                 isBoarding: isBoarding,
                 boardingEndDate: boardingEndDate,
-                isDaycareFed: isDaycareFed
+                medications: medications,
+                scheduledMedications: scheduledMedications
             )
             
             try await visitService.createVisit(visit)
@@ -1890,14 +1860,13 @@ Call Stack: \(callStack)
         needsWalking: Bool,
         walkingNotes: String?,
         notes: String?,
+        specialInstructions: String?,
         allergiesAndFeedingInstructions: String?,
         profilePictureData: Data?,
         age: Int?,
         gender: DogGender,
         vaccinations: [VaccinationItem],
-        isNeuteredOrSpayed: Bool,
-        medications: [Medication],
-        scheduledMedications: [ScheduledMedication]
+        isNeuteredOrSpayed: Bool
     ) async {
         print("🔄 DataManager: addPersistentDogOnly called for \(name)")
         
@@ -1906,17 +1875,16 @@ Call Stack: \(callStack)
                 name: name,
                 ownerName: ownerName,
                 ownerPhoneNumber: ownerPhoneNumber,
-                needsWalking: needsWalking,
-                walkingNotes: walkingNotes,
-                notes: notes,
-                allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
-                profilePictureData: profilePictureData,
                 age: age,
                 gender: gender,
                 vaccinations: vaccinations,
                 isNeuteredOrSpayed: isNeuteredOrSpayed,
-                medications: medications,
-                scheduledMedications: scheduledMedications
+                allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
+                profilePictureData: profilePictureData,
+                needsWalking: needsWalking,
+                walkingNotes: walkingNotes,
+                notes: notes,
+                specialInstructions: specialInstructions
             )
             
             try await persistentDogService.createPersistentDog(persistentDog)
@@ -1940,6 +1908,7 @@ Call Stack: \(callStack)
         needsWalking: Bool,
         walkingNotes: String?,
         notes: String?,
+        specialInstructions: String?,
         allergiesAndFeedingInstructions: String?,
         profilePictureData: Data?,
         age: Int?,
@@ -1957,8 +1926,9 @@ Call Stack: \(callStack)
             updatedPersistentDog.name = name
             updatedPersistentDog.ownerName = ownerName
             updatedPersistentDog.ownerPhoneNumber = ownerPhoneNumber
-            // needsWalking, walkingNotes, and notes belong to Visit, not PersistentDog
+            // needsWalking, walkingNotes, and notes belong to PersistentDog now
             updatedPersistentDog.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions
+            updatedPersistentDog.specialInstructions = specialInstructions
             updatedPersistentDog.profilePictureData = profilePictureData
             updatedPersistentDog.age = age
             updatedPersistentDog.gender = gender
@@ -1974,16 +1944,23 @@ Call Stack: \(callStack)
                 currentVisit.arrivalDate = arrivalDate
                 currentVisit.isBoarding = isBoarding
                 currentVisit.boardingEndDate = boardingEndDate
-                currentVisit.isDaycareFed = isDaycareFed
-                currentVisit.needsWalking = needsWalking
-                currentVisit.walkingNotes = walkingNotes
-                currentVisit.notes = notes
                 currentVisit.medications = medications
                 currentVisit.scheduledMedications = scheduledMedications
                 currentVisit.updatedAt = Date()
                 
+                // Update persistent dog fields (modify the already existing updatedPersistentDog)
+                updatedPersistentDog.isDaycareFed = isDaycareFed
+                updatedPersistentDog.needsWalking = needsWalking
+                updatedPersistentDog.walkingNotes = walkingNotes
+                updatedPersistentDog.notes = notes
+                updatedPersistentDog.specialInstructions = specialInstructions
+                updatedPersistentDog.updatedAt = Date()
+                
                 try await visitService.updateVisit(currentVisit)
                 print("✅ DataManager: Updated visit with ID \(currentVisit.id)")
+                
+                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+                print("✅ DataManager: Updated persistent dog with ID \(updatedPersistentDog.id)")
             }
             
             // Refresh dogs list
@@ -2007,6 +1984,7 @@ Call Stack: \(callStack)
         needsWalking: Bool,
         walkingNotes: String?,
         notes: String?,
+        specialInstructions: String?,
         allergiesAndFeedingInstructions: String?,
         profilePictureData: Data?,
         age: Int?,
@@ -2031,6 +2009,7 @@ Call Stack: \(callStack)
             needsWalking: needsWalking,
             walkingNotes: walkingNotes,
             notes: notes,
+            specialInstructions: specialInstructions,
             allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
             profilePictureData: profilePictureData,
             age: age,
@@ -2057,7 +2036,6 @@ extension CloudKitDog {
             name: name,
             ownerName: ownerName,
             ownerPhoneNumber: ownerPhoneNumber,
-            profilePictureData: profilePictureData,
             age: Int(age),
             gender: DogGender(rawValue: gender),
             vaccinations: [
@@ -2069,6 +2047,12 @@ extension CloudKitDog {
             ],
             isNeuteredOrSpayed: isNeuteredOrSpayed,
             allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
+            profilePictureData: profilePictureData,
+            needsWalking: needsWalking,
+            walkingNotes: walkingNotes,
+            isDaycareFed: isDaycareFed,
+            notes: notes,
+            specialInstructions: specialInstructions,
             createdAt: createdAt,
             updatedAt: updatedAt
         )
@@ -2096,13 +2080,13 @@ extension CloudKitDog {
                 let status = ScheduledMedication.ScheduledMedicationStatus(rawValue: scheduledMedicationStatuses[i]) ?? .pending
                 let medicationId = UUID(uuidString: scheduledMedicationIds[i]) ?? UUID()
                 
-                let scheduledMedication = ScheduledMedication(
+                var scheduledMedication = ScheduledMedication(
                     medicationId: medicationId,
                     scheduledDate: scheduledMedicationDates[i],
-                    notificationTime: scheduledMedicationDates[i],
-                    status: status,
-                    notes: scheduledMedicationNotes[i].isEmpty ? nil : scheduledMedicationNotes[i]
+                    notificationTime: scheduledMedicationDates[i]
                 )
+                scheduledMedication.status = status
+                scheduledMedication.notes = scheduledMedicationNotes[i].isEmpty ? nil : scheduledMedicationNotes[i]
                 reconstructedScheduledMedications.append(scheduledMedication)
             }
         }
@@ -2115,11 +2099,6 @@ extension CloudKitDog {
             departureDate: departureDate,
             isBoarding: isBoarding,
             boardingEndDate: boardingEndDate,
-            isDaycareFed: isDaycareFed,
-            notes: notes,
-            specialInstructions: nil, // CloudKitDog doesn't have this field
-            needsWalking: needsWalking,
-            walkingNotes: walkingNotes,
             isDeleted: isDeleted,
             createdAt: createdAt,
             updatedAt: updatedAt,

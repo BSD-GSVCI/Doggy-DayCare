@@ -13,6 +13,11 @@ struct PersistentDog: Codable, Identifiable {
     var profilePictureData: Data?
     var visitCount: Int = 0
     var lastVisitDate: Date?
+    var needsWalking: Bool = false
+    var walkingNotes: String?
+    var isDaycareFed: Bool = false
+    var notes: String?
+    var specialInstructions: String?
     var isDeleted: Bool = false
     var createdAt: Date
     var updatedAt: Date
@@ -32,6 +37,11 @@ struct PersistentDog: Codable, Identifiable {
         profilePictureData: Data? = nil,
         visitCount: Int = 0,
         lastVisitDate: Date? = nil,
+        needsWalking: Bool = false,
+        walkingNotes: String? = nil,
+        isDaycareFed: Bool = false,
+        notes: String? = nil,
+        specialInstructions: String? = nil,
         isDeleted: Bool = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
@@ -50,6 +60,11 @@ struct PersistentDog: Codable, Identifiable {
         self.profilePictureData = profilePictureData
         self.visitCount = visitCount
         self.lastVisitDate = lastVisitDate
+        self.needsWalking = needsWalking
+        self.walkingNotes = walkingNotes
+        self.isDaycareFed = isDaycareFed
+        self.notes = notes
+        self.specialInstructions = specialInstructions
         self.isDeleted = isDeleted
         self.createdAt = createdAt
         self.updatedAt = updatedAt

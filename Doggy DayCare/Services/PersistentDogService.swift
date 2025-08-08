@@ -32,6 +32,11 @@ class PersistentDogService: ObservableObject {
         static let profilePictureData = "profilePictureData"
         static let visitCount = "visitCount"
         static let lastVisitDate = "lastVisitDate"
+        static let needsWalking = "needsWalking"
+        static let walkingNotes = "walkingNotes"
+        static let isDaycareFed = "isDaycareFed"
+        static let notes = "notes"
+        static let specialInstructions = "specialInstructions"
         static let isDeleted = "isDeleted"
         static let createdAt = "createdAt"
         static let updatedAt = "updatedAt"
@@ -63,6 +68,11 @@ class PersistentDogService: ObservableObject {
         record[PersistentDogFields.profilePictureData] = dog.profilePictureData
         record[PersistentDogFields.visitCount] = dog.visitCount
         record[PersistentDogFields.lastVisitDate] = dog.lastVisitDate
+        record[PersistentDogFields.needsWalking] = dog.needsWalking ? 1 : 0
+        record[PersistentDogFields.walkingNotes] = dog.walkingNotes
+        record[PersistentDogFields.isDaycareFed] = dog.isDaycareFed ? 1 : 0
+        record[PersistentDogFields.notes] = dog.notes
+        record[PersistentDogFields.specialInstructions] = dog.specialInstructions
         record[PersistentDogFields.isDeleted] = dog.isDeleted ? 1 : 0
         record[PersistentDogFields.createdAt] = dog.createdAt
         record[PersistentDogFields.updatedAt] = dog.updatedAt
@@ -103,6 +113,11 @@ class PersistentDogService: ObservableObject {
         record[PersistentDogFields.profilePictureData] = dog.profilePictureData
         record[PersistentDogFields.visitCount] = dog.visitCount
         record[PersistentDogFields.lastVisitDate] = dog.lastVisitDate
+        record[PersistentDogFields.needsWalking] = dog.needsWalking ? 1 : 0
+        record[PersistentDogFields.walkingNotes] = dog.walkingNotes
+        record[PersistentDogFields.isDaycareFed] = dog.isDaycareFed ? 1 : 0
+        record[PersistentDogFields.notes] = dog.notes
+        record[PersistentDogFields.specialInstructions] = dog.specialInstructions
         record[PersistentDogFields.isDeleted] = dog.isDeleted ? 1 : 0
         record[PersistentDogFields.updatedAt] = Date()
         record[PersistentDogFields.lastModifiedBy] = dog.lastModifiedBy
@@ -147,6 +162,11 @@ class PersistentDogService: ObservableObject {
             let profilePictureData = record[PersistentDogFields.profilePictureData] as? Data
             let visitCount = record[PersistentDogFields.visitCount] as? Int ?? 0
             let lastVisitDate = record[PersistentDogFields.lastVisitDate] as? Date
+            let needsWalking = (record[PersistentDogFields.needsWalking] as? Int64 ?? 0) == 1
+            let walkingNotes = record[PersistentDogFields.walkingNotes] as? String
+            let isDaycareFed = (record[PersistentDogFields.isDaycareFed] as? Int64 ?? 0) == 1
+            let notes = record[PersistentDogFields.notes] as? String
+            let specialInstructions = record[PersistentDogFields.specialInstructions] as? String
             let isDeleted = (record[PersistentDogFields.isDeleted] as? Int64 ?? 0) == 1
             let createdAt = record[PersistentDogFields.createdAt] as? Date ?? Date()
             let updatedAt = record[PersistentDogFields.updatedAt] as? Date ?? Date()
@@ -181,6 +201,11 @@ class PersistentDogService: ObservableObject {
                 profilePictureData: profilePictureData,
                 visitCount: visitCount,
                 lastVisitDate: lastVisitDate,
+                needsWalking: needsWalking,
+                walkingNotes: walkingNotes,
+                isDaycareFed: isDaycareFed,
+                notes: notes,
+                specialInstructions: specialInstructions,
                 isDeleted: isDeleted,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

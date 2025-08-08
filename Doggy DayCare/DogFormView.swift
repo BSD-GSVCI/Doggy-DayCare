@@ -17,6 +17,7 @@ struct DogFormView: View {
 
     @State private var allergiesAndFeedingInstructions = ""
     @State private var notes: String?
+    @State private var specialInstructions: String?
     @State private var showingBoardingDatePicker = false
     @State private var profileImage: UIImage?
     @State private var showingImagePicker = false
@@ -218,7 +219,7 @@ struct DogFormView: View {
                 }
                 
                 Section("Medications") {
-                    if let dog = dog {
+                    if dog != nil {
                         // For existing dogs, show a simplified view since medications are managed elsewhere
                     Text("Edit medications from the dog detail view")
                         .foregroundStyle(.secondary)
@@ -512,6 +513,7 @@ struct DogFormView: View {
                 needsWalking: needsWalking,
                 walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
                 notes: notes?.isEmpty == true ? nil : notes,
+                specialInstructions: specialInstructions?.isEmpty == true ? nil : specialInstructions,
                 allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
                 profilePictureData: profilePictureData,
                 age: age,
@@ -537,14 +539,13 @@ struct DogFormView: View {
                     needsWalking: needsWalking,
                     walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
                     notes: notes?.isEmpty == true ? nil : notes,
+                    specialInstructions: specialInstructions?.isEmpty == true ? nil : specialInstructions,
                     allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
                     profilePictureData: profilePictureData,
                     age: age,
                     gender: gender,
                     vaccinations: vaccinations,
-                    isNeuteredOrSpayed: isNeuteredOrSpayed,
-                    medications: medications,
-                    scheduledMedications: scheduledMedications
+                    isNeuteredOrSpayed: isNeuteredOrSpayed
                 )
             } else {
                 print("📝 DogFormView: Adding dog to main page and database")
@@ -559,6 +560,7 @@ struct DogFormView: View {
                     needsWalking: needsWalking,
                     walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
                     notes: notes?.isEmpty == true ? nil : notes,
+                    specialInstructions: specialInstructions?.isEmpty == true ? nil : specialInstructions,
                     allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
                     profilePictureData: profilePictureData,
                     age: age,

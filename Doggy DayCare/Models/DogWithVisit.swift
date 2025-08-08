@@ -2,7 +2,7 @@ import Foundation
 
 // This struct combines a PersistentDog with its current Visit for UI display
 // This replaces the legacy Dog model throughout the app
-struct DogWithVisit: Identifiable {
+struct DogWithVisit: Identifiable, Codable {
     let persistentDog: PersistentDog
     var currentVisit: Visit?
     
@@ -33,11 +33,11 @@ struct DogWithVisit: Identifiable {
     var departureDate: Date? { currentVisit?.departureDate }
     var isBoarding: Bool { currentVisit?.isBoarding ?? false }
     var boardingEndDate: Date? { currentVisit?.boardingEndDate }
-    var isDaycareFed: Bool { currentVisit?.isDaycareFed ?? false }
-    var notes: String? { currentVisit?.notes }
-    var specialInstructions: String? { currentVisit?.specialInstructions }
-    var needsWalking: Bool { currentVisit?.needsWalking ?? false }
-    var walkingNotes: String? { currentVisit?.walkingNotes }
+    var isDaycareFed: Bool { persistentDog.isDaycareFed }
+    var notes: String? { persistentDog.notes }
+    var specialInstructions: String? { persistentDog.specialInstructions }
+    var needsWalking: Bool { persistentDog.needsWalking }
+    var walkingNotes: String? { persistentDog.walkingNotes }
     
     // Activity records from current visit
     var feedingRecords: [FeedingRecord] { currentVisit?.feedingRecords ?? [] }

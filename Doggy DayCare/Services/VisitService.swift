@@ -21,11 +21,6 @@ class VisitService: ObservableObject {
         static let departureDate = "departureDate"
         static let isBoarding = "isBoarding"
         static let boardingEndDate = "boardingEndDate"
-        static let isDaycareFed = "isDaycareFed"
-        static let notes = "notes"
-        static let specialInstructions = "specialInstructions"
-        static let needsWalking = "needsWalking"
-        static let walkingNotes = "walkingNotes"
         static let isDeleted = "isDeleted"
         static let deletedAt = "deletedAt"
         static let deletedBy = "deletedBy"
@@ -83,11 +78,6 @@ class VisitService: ObservableObject {
         record[VisitFields.departureDate] = visit.departureDate
         record[VisitFields.isBoarding] = visit.isBoarding ? 1 : 0
         record[VisitFields.boardingEndDate] = visit.boardingEndDate
-        record[VisitFields.isDaycareFed] = visit.isDaycareFed ? 1 : 0
-        record[VisitFields.notes] = visit.notes
-        record[VisitFields.specialInstructions] = visit.specialInstructions
-        record[VisitFields.needsWalking] = visit.needsWalking ? 1 : 0
-        record[VisitFields.walkingNotes] = visit.walkingNotes
         record[VisitFields.isDeleted] = visit.isDeleted ? 1 : 0
         record[VisitFields.deletedAt] = visit.deletedAt
         record[VisitFields.deletedBy] = visit.deletedBy
@@ -177,11 +167,6 @@ class VisitService: ObservableObject {
         record[VisitFields.departureDate] = visit.departureDate
         record[VisitFields.isBoarding] = visit.isBoarding ? 1 : 0
         record[VisitFields.boardingEndDate] = visit.boardingEndDate
-        record[VisitFields.isDaycareFed] = visit.isDaycareFed ? 1 : 0
-        record[VisitFields.notes] = visit.notes
-        record[VisitFields.specialInstructions] = visit.specialInstructions
-        record[VisitFields.needsWalking] = visit.needsWalking ? 1 : 0
-        record[VisitFields.walkingNotes] = visit.walkingNotes
         record[VisitFields.isDeleted] = visit.isDeleted ? 1 : 0
         record[VisitFields.deletedAt] = visit.deletedAt
         record[VisitFields.deletedBy] = visit.deletedBy
@@ -277,11 +262,6 @@ class VisitService: ObservableObject {
             let departureDate = record[VisitFields.departureDate] as? Date
             let isBoarding = (record[VisitFields.isBoarding] as? Int64 ?? 0) == 1
             let boardingEndDate = record[VisitFields.boardingEndDate] as? Date
-            let isDaycareFed = (record[VisitFields.isDaycareFed] as? Int64 ?? 0) == 1
-            let notes = record[VisitFields.notes] as? String
-            let specialInstructions = record[VisitFields.specialInstructions] as? String
-            let needsWalking = (record[VisitFields.needsWalking] as? Int64 ?? 0) == 1
-            let walkingNotes = record[VisitFields.walkingNotes] as? String
             let isDeleted = (record[VisitFields.isDeleted] as? Int64 ?? 0) == 1
             let deletedAt = record[VisitFields.deletedAt] as? Date
             let deletedBy = record[VisitFields.deletedBy] as? String
@@ -435,11 +415,6 @@ class VisitService: ObservableObject {
                 departureDate: departureDate,
                 isBoarding: isBoarding,
                 boardingEndDate: boardingEndDate,
-                isDaycareFed: isDaycareFed,
-                notes: notes,
-                specialInstructions: specialInstructions,
-                needsWalking: needsWalking,
-                walkingNotes: walkingNotes,
                 isDeleted: isDeleted,
                 deletedAt: deletedAt,
                 deletedBy: deletedBy,

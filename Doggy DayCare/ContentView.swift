@@ -19,7 +19,6 @@ struct CustomNavigationBar: View {
     @Binding var showingAddDog: Bool
     @Binding var showingExportData: Bool
     @Binding var showingLogoutConfirmation: Bool
-    @Binding var showingMigrationView: Bool
     @ObservedObject var authService: AuthenticationService
     
     var body: some View {
@@ -64,11 +63,6 @@ struct CustomNavigationBar: View {
                                 Label("Export Data Manually", systemImage: "square.and.arrow.up")
                             }
                             
-                            Button {
-                                showingMigrationView = true
-                            } label: {
-                                Label("Data Migration", systemImage: "arrow.triangle.2.circlepath")
-                            }
                         }
                         
                         Button(role: .destructive) {
@@ -99,7 +93,6 @@ struct ContentView: View {
     @State private var showingStaffManagement = false
     @State private var showingActivityLog = false
     @State private var showingDeleteLog = false
-    @State private var showingMigrationView = false
     @State private var searchText = ""
     @State private var selectedFilter: DogFilter = .all
     
@@ -436,11 +429,6 @@ struct ContentView: View {
             .sheet(isPresented: $showingDeleteLog) {
                 NavigationStack {
                     DeleteLogView()
-                }
-            }
-            .sheet(isPresented: $showingMigrationView) {
-                NavigationStack {
-                    MigrationView()
                 }
             }
 

@@ -7,11 +7,6 @@ struct Visit: Codable, Identifiable {
     var departureDate: Date?
     var isBoarding: Bool
     var boardingEndDate: Date?
-    var isDaycareFed: Bool
-    var notes: String?
-    var specialInstructions: String?
-    var needsWalking: Bool
-    var walkingNotes: String?
     var isDeleted: Bool = false
     var deletedAt: Date?
     var deletedBy: String?
@@ -36,11 +31,6 @@ struct Visit: Codable, Identifiable {
         departureDate: Date? = nil,
         isBoarding: Bool = false,
         boardingEndDate: Date? = nil,
-        isDaycareFed: Bool = false,
-        notes: String? = nil,
-        specialInstructions: String? = nil,
-        needsWalking: Bool = false,
-        walkingNotes: String? = nil,
         isDeleted: Bool = false,
         deletedAt: Date? = nil,
         deletedBy: String? = nil,
@@ -60,11 +50,6 @@ struct Visit: Codable, Identifiable {
         self.departureDate = departureDate
         self.isBoarding = isBoarding
         self.boardingEndDate = boardingEndDate
-        self.isDaycareFed = isDaycareFed
-        self.notes = notes
-        self.specialInstructions = specialInstructions
-        self.needsWalking = needsWalking
-        self.walkingNotes = walkingNotes
         self.isDeleted = isDeleted
         self.deletedAt = deletedAt
         self.deletedBy = deletedBy
