@@ -71,12 +71,12 @@ struct DatabaseView: View {
                                     }
                                 }
                         }
+                        }
                     }
                     .refreshable {
                         dataManager.forceRefreshDatabaseCache()
                         await loadAllDogs()
                     }
-                }
                 }
             }
             .navigationTitle("Database")
@@ -209,23 +209,27 @@ struct DatabaseView: View {
             }
         }
     }
-    
+}
+
+extension DatabaseView {
     private func loadAllDogs() async {
         isLoading = true
         errorMessage = nil
         
-        // For now, use the existing dogs from dataManager
-        // This will show all currently present dogs
-        let dogs = dataManager.dogs
+        // Fetch all persistent dogs from the database
+        await dataManager.fetchAllPersistentDogs()
+        
+        // Use the allDogs property which now contains all persistent dogs
+        let dogs = dataManager.allDogs
         
         await MainActor.run {
             self.allDogs = dogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             self.isLoading = false
             print("✅ Loaded \(dogs.count) dogs from current list")
             
-            // Set visit counts to 1 for now (this could be enhanced later)
+            // Use actual visit counts from persistent dogs
             self.dogVisitCounts = dogs.reduce(into: [:]) { result, dog in
-                result[dog.id.uuidString] = 1
+                result[dog.id.uuidString] = dog.persistentDog.visitCount
             }
         }
     }

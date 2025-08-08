@@ -1376,6 +1376,31 @@ class DataManager: ObservableObject {
         print("✅ Daily reset completed")
     }
     
+    // MARK: - Persistent Dog Statistics
+    
+    private func updatePersistentDogStatistics(dogId: UUID, lastVisitDate: Date) async {
+        do {
+            // Fetch current persistent dog
+            let predicate = NSPredicate(format: "id == %@", dogId.uuidString)
+            let persistentDogs = try await persistentDogService.fetchPersistentDogs(predicate: predicate)
+            
+            guard var persistentDog = persistentDogs.first else {
+                print("❌ Could not find persistent dog with ID: \(dogId)")
+                return
+            }
+            
+            // Update statistics
+            persistentDog.visitCount += 1
+            persistentDog.lastVisitDate = lastVisitDate
+            persistentDog.updatedAt = Date()
+            
+            try await persistentDogService.updatePersistentDog(persistentDog)
+            print("✅ Updated persistent dog statistics: visitCount=\(persistentDog.visitCount), lastVisitDate=\(lastVisitDate)")
+        } catch {
+            print("❌ Failed to update persistent dog statistics: \(error)")
+        }
+    }
+    
     // MARK: - Optimized Dog Operations
     
     func checkoutDog(_ dog: DogWithVisit) async {
@@ -1389,20 +1414,40 @@ class DataManager: ObservableObject {
         // Log the checkout action
         await logDogActivity(action: "CHECKOUT_DOG", dog: dog, extra: "Checking out dog - setting departure date to current time")
         
+        let departureDate = Date()
+        
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].currentVisit?.departureDate = Date()
-                self.dogs[index].currentVisit?.updatedAt = Date()
+                self.dogs[index].currentVisit?.departureDate = departureDate
+                self.dogs[index].currentVisit?.updatedAt = departureDate
                 print("✅ Updated local cache for checkout")
             }
         }
         
+        // Capture value before detached task
+        let usesPersistentDogs = self.usePersistentDogs
+        
         // Handle CloudKit operations in background without blocking UI
         Task.detached {
             do {
-                try await self.cloudKitService.checkoutDog(dog.id.uuidString)
-                print("✅ Checkout completed in CloudKit for \(dog.name)")
+                if usesPersistentDogs {
+                    // Use new persistent dog system
+                    if var currentVisit = dog.currentVisit {
+                        currentVisit.departureDate = departureDate
+                        currentVisit.updatedAt = departureDate
+                        
+                        try await self.visitService.updateVisit(currentVisit)
+                        print("✅ Visit updated in CloudKit for \(dog.name)")
+                        
+                        // Update persistent dog statistics
+                        await self.updatePersistentDogStatistics(dogId: dog.id, lastVisitDate: departureDate)
+                    }
+                } else {
+                    // Use legacy system
+                    try await self.cloudKitService.checkoutDog(dog.id.uuidString)
+                    print("✅ Checkout completed in CloudKit for \(dog.name)")
+                }
             } catch {
                 print("❌ Failed to checkout dog in CloudKit: \(error)")
                 // Revert local cache if CloudKit update failed
@@ -1496,30 +1541,44 @@ class DataManager: ObservableObject {
     // Duplicate method removed - using the one at line 374
 
 
-    func fetchAllDogsIncludingDeleted() async {
+    func fetchAllPersistentDogs() async {
         isLoading = true
         errorMessage = nil
         
-        print("🔍 DataManager: Starting fetchAllDogsIncludingDeleted...")
+        print("🔍 DataManager: Starting fetchAllPersistentDogs (scalable version)...")
         
         do {
-            let cloudKitDogs = try await cloudKitService.fetchAllDogsIncludingDeleted()
-            print("🔍 DataManager: Got \(cloudKitDogs.count) CloudKit dogs (including deleted)")
+            // Fetch all persistent dogs from the database
+            let persistentDogs = try await persistentDogService.fetchPersistentDogs()
+            print("🔍 DataManager: Got \(persistentDogs.count) persistent dogs")
             
-            let localDogs = cloudKitDogs.map { $0.toDogWithVisit() }
-            print("🔍 DataManager: Converted to \(localDogs.count) local dogs")
+            // Fetch only active visits (much more scalable than fetching all visits)
+            let activeVisits = try await visitService.fetchActiveVisits()
+            print("🔍 DataManager: Got \(activeVisits.count) active visits")
             
-            // Debug: Print each dog's details
-            for dog in localDogs {
-                print("🐕 AllDogs: \(dog.name), Owner: \(dog.ownerName ?? "none"), Deleted: \(dog.isDeleted), Present: \(dog.isCurrentlyPresent)")
+            // Create DogWithVisit for each persistent dog
+            var dogsWithVisits: [DogWithVisit] = []
+            for persistentDog in persistentDogs {
+                // Find active visit for this dog (if any)
+                let activeVisit = activeVisits.first { $0.dogId == persistentDog.id }
+                
+                let dogWithVisit = DogWithVisit(persistentDog: persistentDog, currentVisit: activeVisit)
+                dogsWithVisits.append(dogWithVisit)
+                
+                let visitInfo = activeVisit?.arrivalDate.description ?? "No active visit"
+                print("🐕 Dog: \(persistentDog.name), VisitCount: \(persistentDog.visitCount), LastVisit: \(persistentDog.lastVisitDate?.description ?? "Never"), Active: \(visitInfo)")
             }
+            
+            print("🔍 DataManager: Created \(dogsWithVisits.count) dogs with persistent data (no all-visits fetch)")
             
             await MainActor.run {
-                self.allDogs = localDogs
-                print("✅ DataManager: Set \(localDogs.count) dogs in allDogs array")
+                self.allDogs = dogsWithVisits.sorted { $0.name < $1.name }
+                self.allDogsCache = dogsWithVisits
+                self.lastAllDogsSyncTime = Date()
+                print("✅ DataManager: Set \(dogsWithVisits.count) dogs in allDogs array (scalable approach)")
             }
         } catch {
-            print("❌ Failed to fetch all dogs: \(error)")
+            print("❌ Failed to fetch all persistent dogs: \(error)")
             await MainActor.run {
                 self.errorMessage = "Failed to fetch dogs: \(error.localizedDescription)"
             }
@@ -1566,28 +1625,11 @@ class DataManager: ObservableObject {
     func fetchDogsForImport() async -> [DogWithVisit] {
         print("🚀 DataManager: Starting optimized fetchDogsForImport...")
         
-        // Check cache first
-        let cachedCloudKitDogs = cloudKitService.getCachedDogs()
-        if !cachedCloudKitDogs.isEmpty {
-            print("✅ DataManager: Using cached dogs (\(cachedCloudKitDogs.count) dogs)")
-            return cachedCloudKitDogs.map { $0.toDogWithVisit() }
-        }
+        // Use the same method as database view to get all persistent dogs
+        await fetchAllPersistentDogs()
         
-        do {
-            let cloudKitDogs = try await cloudKitService.fetchDogsForImport()
-            print("✅ DataManager: Got \(cloudKitDogs.count) optimized CloudKit dogs")
-            
-            // Update cache
-            cloudKitService.updateDogCache(cloudKitDogs)
-            
-            let localDogs = cloudKitDogs.map { $0.toDogWithVisit() }
-            print("✅ DataManager: Converted to \(localDogs.count) local dogs")
-            
-            return localDogs
-        } catch {
-            print("❌ DataManager: Failed to fetch dogs for import: \(error)")
-            return []
-        }
+        print("✅ DataManager: Got \(allDogs.count) dogs for import")
+        return allDogs
     }
     
     func fetchSpecificDogWithRecords(for dogID: String) async -> DogWithVisit? {
@@ -1820,6 +1862,8 @@ Call Stack: \(callStack)
                 isNeuteredOrSpayed: isNeuteredOrSpayed,
                 allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
                 profilePictureData: profilePictureData,
+                visitCount: 1, // First visit
+                lastVisitDate: arrivalDate,
                 needsWalking: needsWalking,
                 walkingNotes: walkingNotes,
                 isDaycareFed: isDaycareFed,

@@ -92,7 +92,6 @@ struct ContentView: View {
     @State private var showingHistoryView = false
     @State private var showingStaffManagement = false
     @State private var showingActivityLog = false
-    @State private var showingDeleteLog = false
     @State private var searchText = ""
     @State private var selectedFilter: DogFilter = .all
     
@@ -313,11 +312,6 @@ struct ContentView: View {
                                     Label("View Activity Logs", systemImage: "tray.full")
                                 }
                                 
-                                Button {
-                                    showingDeleteLog = true
-                                } label: {
-                                    Label("View Delete Logs", systemImage: "archivebox")
-                                }
                                 
                                 Button {
                                     if backupFolderURL != nil {
@@ -416,11 +410,6 @@ struct ContentView: View {
             .sheet(isPresented: $showingActivityLog) {
                 NavigationStack {
                     ActivityLogView()
-                }
-            }
-            .sheet(isPresented: $showingDeleteLog) {
-                NavigationStack {
-                    DeleteLogView()
                 }
             }
 

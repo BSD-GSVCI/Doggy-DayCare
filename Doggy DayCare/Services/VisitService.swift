@@ -455,6 +455,81 @@ class VisitService: ObservableObject {
         return try await fetchVisits(predicate: predicate)
     }
     
+    func fetchAllVisits() async throws -> [Visit] {
+        // Fetch all visits without any filtering
+        // WARNING: This method is not scalable and should be replaced with date-ranged queries
+        let predicate = NSPredicate(value: true)
+        return try await fetchVisits(predicate: predicate)
+    }
+    
+    // MARK: - Scalable Date-Ranged Queries
+    
+    func fetchVisitsInDateRange(from startDate: Date, to endDate: Date, includeDeleted: Bool = false) async throws -> [Visit] {
+        let predicate: NSPredicate
+        if includeDeleted {
+            predicate = NSPredicate(format: "\(VisitFields.arrivalDate) >= %@ AND \(VisitFields.arrivalDate) <= %@", 
+                                   startDate as NSDate, endDate as NSDate)
+        } else {
+            predicate = NSPredicate(format: "\(VisitFields.arrivalDate) >= %@ AND \(VisitFields.arrivalDate) <= %@ AND \(VisitFields.isDeleted) != %@", 
+                                   startDate as NSDate, endDate as NSDate, NSNumber(value: true))
+        }
+        return try await fetchVisits(predicate: predicate)
+    }
+    
+    func fetchRecentVisitsForDog(_ dogId: UUID, limit: Int = 10) async throws -> [Visit] {
+        let predicate = NSPredicate(format: "\(VisitFields.dogId) == %@ AND \(VisitFields.isDeleted) != %@", 
+                                   dogId.uuidString, NSNumber(value: true))
+        let query = CKQuery(recordType: RecordTypes.visit, predicate: predicate)
+        query.sortDescriptors = [NSSortDescriptor(key: VisitFields.arrivalDate, ascending: false)]
+        
+        let result = try await publicDatabase.records(matching: query, inZoneWith: nil, desiredKeys: nil, resultsLimit: limit)
+        let records = result.matchResults.compactMap { try? $0.1.get() }
+        
+        // Use the existing parsing logic from fetchVisits
+        var visits: [Visit] = []
+        
+        for record in records {
+            guard let idString = record[VisitFields.id] as? String,
+                  let id = UUID(uuidString: idString),
+                  let dogIdString = record[VisitFields.dogId] as? String,
+                  let dogId = UUID(uuidString: dogIdString),
+                  let arrivalDate = record[VisitFields.arrivalDate] as? Date else {
+                continue
+            }
+            
+            // Parse the visit (simplified version of the parsing logic from fetchVisits)
+            let visit = Visit(
+                id: id,
+                dogId: dogId,
+                arrivalDate: arrivalDate,
+                departureDate: record[VisitFields.departureDate] as? Date,
+                isBoarding: (record[VisitFields.isBoarding] as? Int64 ?? 0) == 1,
+                boardingEndDate: record[VisitFields.boardingEndDate] as? Date,
+                isDeleted: (record[VisitFields.isDeleted] as? Int64 ?? 0) == 1,
+                deletedAt: record[VisitFields.deletedAt] as? Date,
+                deletedBy: record[VisitFields.deletedBy] as? String,
+                createdAt: record[VisitFields.createdAt] as? Date ?? Date(),
+                updatedAt: record[VisitFields.updatedAt] as? Date ?? Date(),
+                createdBy: record[VisitFields.createdBy] as? String,
+                lastModifiedBy: record[VisitFields.lastModifiedBy] as? String
+            )
+            
+            visits.append(visit)
+        }
+        
+        return visits
+    }
+    
+    func fetchVisitsInLastNDays(_ days: Int, includeDeleted: Bool = false) async throws -> [Visit] {
+        let calendar = Calendar.current
+        let endDate = Date()
+        guard let startDate = calendar.date(byAdding: .day, value: -days, to: endDate) else {
+            throw CloudKitError.unknownError("Failed to calculate start date for last \(days) days")
+        }
+        
+        return try await fetchVisitsInDateRange(from: startDate, to: endDate, includeDeleted: includeDeleted)
+    }
+    
     func fetchVisitsForDate(_ date: Date) async throws -> [Visit] {
         let calendar = Calendar.current
         let startOfDay = calendar.startOfDay(for: date)
