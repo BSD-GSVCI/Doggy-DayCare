@@ -386,14 +386,6 @@ struct ContentView: View {
                                 Label("Export Data", systemImage: "square.and.arrow.up")
                             }
                             
-                            if authService.currentUser?.isOwner == true {
-                                Button {
-                                    showingMigrationView = true
-                                } label: {
-                                    Label("Data Migration", systemImage: "arrow.triangle.2.circlepath")
-                                }
-                            }
-                            
                             Button(role: .destructive) {
                                 showingLogoutConfirmation = true
                             } label: {

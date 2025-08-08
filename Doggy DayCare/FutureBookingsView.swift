@@ -165,6 +165,7 @@ struct FutureBookingEditView: View {
     @State private var showingAddScheduledMedication = false
     @State private var allergiesAndFeedingInstructions: String
     @State private var notes: String
+    @State private var specialInstructions: String
     @State private var isLoading = false
     @State private var profileImage: UIImage?
     @State private var showingImagePicker = false
@@ -197,6 +198,7 @@ struct FutureBookingEditView: View {
         self._scheduledMedications = State(initialValue: dog.scheduledMedications)
         self._allergiesAndFeedingInstructions = State(initialValue: dog.allergiesAndFeedingInstructions ?? "")
         self._notes = State(initialValue: dog.notes ?? "")
+        self._specialInstructions = State(initialValue: dog.specialInstructions ?? "")
         self._profileImage = State(initialValue: dog.profilePictureData.flatMap { UIImage(data: $0) })
         self._age = State(initialValue: dog.age)
         self._gender = State(initialValue: dog.gender ?? .unknown)
@@ -442,6 +444,7 @@ struct FutureBookingEditView: View {
             needsWalking: needsWalking,
             walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
             notes: notes.isEmpty ? nil : notes,
+            specialInstructions: specialInstructions.isEmpty ? nil : specialInstructions,
             allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
             profilePictureData: profilePictureData,
             age: age,
