@@ -216,10 +216,10 @@ extension DatabaseView {
         isLoading = true
         errorMessage = nil
         
-        // Fetch all persistent dogs from the database
+        // Fetch all persistent dogs from the database (uses smart caching)
         await dataManager.fetchAllPersistentDogs()
         
-        // Use the allDogs property which now contains all persistent dogs
+        // Use the allDogs property which now contains cached persistent dogs
         let dogs = dataManager.allDogs
         
         await MainActor.run {

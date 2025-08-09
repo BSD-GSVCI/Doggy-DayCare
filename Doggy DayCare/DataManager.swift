@@ -18,8 +18,6 @@ class DataManager: ObservableObject {
     // Incremental sync tracking
     private var lastSyncTime: Date = Date.distantPast
     private var lastAllDogsSyncTime: Date = Date.distantPast
-    private var allDogsCache: [DogWithVisit] = [] // Cache for database view
-    private let databaseCacheExpiration: TimeInterval = 300 // 5 minutes
     
     // Feature flag for persistent dog system
     private var usePersistentDogs = true // Set to true to use new system
@@ -540,66 +538,69 @@ class DataManager: ObservableObject {
     
     // MARK: - Database-specific fetch (more robust)
     
-    func getAllDogsForDatabase() async -> [DogWithVisit] {
-        // Always use cached data if available - never replace cache
-        if !allDogsCache.isEmpty {
-            print("✅ Using cached database data (\(allDogsCache.count) dogs)")
-            return allDogsCache
-        }
-        
-        print("🔄 Database cache is empty, fetching initial data...")
-        
-        do {
-            // Only fetch fresh data if cache is completely empty
-            let cloudKitDogs = try await cloudKitService.fetchAllDogsIncludingDeleted()
-            let convertedDogs = cloudKitDogs.map { $0.toDogWithVisit() }
-            
-            // Initialize cache with fresh data
-            await MainActor.run {
-                self.allDogsCache = convertedDogs
-                self.lastAllDogsSyncTime = Date()
-            }
-            
-            print("✅ Initialized database cache with \(convertedDogs.count) dogs from CloudKit")
-            return convertedDogs
-        } catch {
-            print("❌ Failed to fetch initial dogs: \(error)")
-            return []
-        }
-    }
     
     func forceRefreshDatabaseCache() {
-        allDogsCache.removeAll() // Clear cache for manual refresh
+        // Clear AdvancedCache and reset sync time for PersistentDogs
+        Task {
+            await AdvancedCache.shared.remove("persistent_dogs_cache")
+        }
         lastAllDogsSyncTime = Date.distantPast
+        
+        #if DEBUG
         print("🔄 Database cache manually cleared - will fetch fresh data on next access")
+        #endif
     }
     
-    // MARK: - Incremental Database Cache Updates
     
-    func incrementallyUpdateDatabaseCache(with newDog: DogWithVisit) {
-        // Add new dog to cache if not already present
-        if !allDogsCache.contains(where: { $0.id == newDog.id }) {
-            allDogsCache.append(newDog)
-            print("✅ Incrementally added dog to database cache: \(newDog.name)")
+    // MARK: - Smart Incremental Cache Updates for PersistentDogs
+    
+    /// Incrementally add a new persistent dog to the cache
+    private func incrementallyUpdatePersistentDogCache(add persistentDog: PersistentDog) async {
+        // Get current cached dogs
+        if var cachedDogs: [PersistentDog] = await AdvancedCache.shared.get("persistent_dogs_cache") {
+            // Add if not already present
+            if !cachedDogs.contains(where: { $0.id == persistentDog.id }) {
+                cachedDogs.append(persistentDog)
+                await AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
+                
+                #if DEBUG
+                print("✅ Incrementally added persistent dog to cache: \(persistentDog.name)")
+                #endif
+            }
         }
     }
     
-    func incrementallyRemoveFromDatabaseCache(dogId: UUID) {
-        // Remove dog from cache if present
-        if let index = allDogsCache.firstIndex(where: { $0.id == dogId }) {
-            let removedDog = allDogsCache.remove(at: index)
-            print("✅ Incrementally removed dog from database cache: \(removedDog.name)")
+    /// Incrementally update an existing persistent dog in the cache
+    private func incrementallyUpdatePersistentDogCache(update persistentDog: PersistentDog) async {
+        // Get current cached dogs
+        if var cachedDogs: [PersistentDog] = await AdvancedCache.shared.get("persistent_dogs_cache") {
+            // Update if exists
+            if let index = cachedDogs.firstIndex(where: { $0.id == persistentDog.id }) {
+                cachedDogs[index] = persistentDog
+                await AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
+                
+                #if DEBUG
+                print("✅ Incrementally updated persistent dog in cache: \(persistentDog.name)")
+                #endif
+            }
         }
     }
     
-    func incrementallyUpdateExistingDogInDatabaseCache(with updatedDog: DogWithVisit) {
-        // Update existing dog in cache
-        if let index = allDogsCache.firstIndex(where: { $0.id == updatedDog.id }) {
-            allDogsCache[index] = updatedDog
-            print("✅ Incrementally updated dog in database cache: \(updatedDog.name)")
+    /// Incrementally remove a persistent dog from the cache
+    private func incrementallyUpdatePersistentDogCache(remove dogId: UUID) async {
+        // Get current cached dogs
+        if var cachedDogs: [PersistentDog] = await AdvancedCache.shared.get("persistent_dogs_cache") {
+            // Remove if exists
+            if let index = cachedDogs.firstIndex(where: { $0.id == dogId }) {
+                let removedDog = cachedDogs.remove(at: index)
+                await AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
+                
+                #if DEBUG
+                print("✅ Incrementally removed persistent dog from cache: \(removedDog.name)")
+                #endif
+            }
         }
     }
-    
     
     // Legacy method removed - used non-existent toCloudKitDog() method
     
@@ -626,10 +627,11 @@ class DataManager: ObservableObject {
             // Update cache with the changed dog
             await self.updateDogsCache(with: [dog])
             
-            // Update database cache on main actor
+            // Update persistent dog cache if this dog was updated
+            await self.incrementallyUpdatePersistentDogCache(update: dog.persistentDog)
+            
             await MainActor.run {
                 self.lastSyncTime = Date() // Update sync time for dog update
-                self.incrementallyUpdateExistingDogInDatabaseCache(with: dog) // Incrementally update database cache
             }
         }
     }
@@ -779,11 +781,16 @@ class DataManager: ObservableObject {
         // Log the permanent delete action
         await logDogActivity(action: "PERMANENTLY_DELETE_DOG", dog: dog, extra: "Permanently deleting dog from database")
         
+        // Update persistent dog cache to remove this dog
+        await incrementallyUpdatePersistentDogCache(remove: dog.id)
+        
         // Only remove from allDogs array (database view), NOT from main dogs list
         await MainActor.run {
             self.allDogs.removeAll { $0.id == dog.id }
-            self.incrementallyRemoveFromDatabaseCache(dogId: dog.id) // Incrementally remove from database cache
-            print("✅ Removed dog from database view only")
+            
+            #if DEBUG
+            print("✅ Removed dog from database view and cache")
+            #endif
         }
         
         // Permanently delete from CloudKit
@@ -1607,34 +1614,65 @@ class DataManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        print("🔍 DataManager: Starting fetchAllPersistentDogs (scalable version)...")
+        #if DEBUG
+        print("🔍 DataManager: Starting fetchAllPersistentDogs with smart caching...")
+        #endif
+        
+        // Check cache first
+        if let cachedDogs: [PersistentDog] = await AdvancedCache.shared.get("persistent_dogs_cache") {
+            #if DEBUG
+            print("💾 Using cached persistent dogs (\(cachedDogs.count) dogs)")
+            #endif
+            
+            let dogsWithVisits = cachedDogs.map { persistentDog in
+                DogWithVisit(persistentDog: persistentDog, currentVisit: nil)
+            }
+            
+            await MainActor.run {
+                self.allDogs = dogsWithVisits.sorted { $0.name < $1.name }
+                self.isLoading = false
+            }
+            return
+        }
+        
+        #if DEBUG
+        print("🔄 Cache miss - fetching persistent dogs from service...")
+        #endif
         
         do {
-            // Fetch all persistent dogs from the database (database view only needs this)
+            // Fetch all persistent dogs from the database
             let persistentDogs = try await persistentDogService.fetchPersistentDogs()
-            print("🔍 DataManager: Got \(persistentDogs.count) persistent dogs")
             
-            // Create DogWithVisit for each persistent dog (no current visit needed for database view)
+            #if DEBUG
+            print("🔍 DataManager: Got \(persistentDogs.count) persistent dogs from service")
+            #endif
+            
+            // Cache the persistent dogs (1 hour expiration)
+            await AdvancedCache.shared.set(persistentDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
+            
+            // Create DogWithVisit for each persistent dog
             let dogsWithVisits = persistentDogs.map { persistentDog in
                 DogWithVisit(persistentDog: persistentDog, currentVisit: nil)
             }
             
-            print("🔍 DataManager: Created \(dogsWithVisits.count) dogs with persistent data only")
-            
             await MainActor.run {
                 self.allDogs = dogsWithVisits.sorted { $0.name < $1.name }
-                self.allDogsCache = dogsWithVisits
                 self.lastAllDogsSyncTime = Date()
-                print("✅ DataManager: Set \(dogsWithVisits.count) dogs in allDogs array (database view)")
+                self.isLoading = false
+                
+                #if DEBUG
+                print("✅ DataManager: Set \(dogsWithVisits.count) dogs in allDogs array (cached)")
+                #endif
             }
         } catch {
+            #if DEBUG
             print("❌ Failed to fetch all persistent dogs: \(error)")
+            #endif
             await MainActor.run {
                 self.errorMessage = "Failed to fetch dogs: \(error.localizedDescription)"
+                self.isLoading = false
             }
         }
-        
-        isLoading = false
     }
     
     // True incremental sync for all dogs (including deleted)
@@ -1977,7 +2015,13 @@ Call Stack: \(callStack)
             )
             
             try await visitService.createVisit(visit)
+            
+            #if DEBUG
             print("✅ DataManager: Created visit with ID \(visit.id)")
+            #endif
+            
+            // Update persistent dog cache with new dog
+            await incrementallyUpdatePersistentDogCache(add: persistentDog)
             
             // Refresh dogs list
             await fetchDogs()
@@ -2023,7 +2067,13 @@ Call Stack: \(callStack)
             )
             
             try await persistentDogService.createPersistentDog(persistentDog)
+            
+            #if DEBUG
             print("✅ DataManager: Created persistent dog only with ID \(persistentDog.id)")
+            #endif
+            
+            // Update persistent dog cache with new dog
+            await incrementallyUpdatePersistentDogCache(add: persistentDog)
             
         } catch {
             print("❌ DataManager: Failed to add persistent dog: \(error)")
