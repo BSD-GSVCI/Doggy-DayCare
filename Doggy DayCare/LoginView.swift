@@ -9,7 +9,9 @@ struct LoginView: View {
     init(ownerExists: Bool = false, hasCheckedOwnerExistence: Bool = false) {
         self.ownerExists = ownerExists
         self.hasCheckedOwnerExistence = hasCheckedOwnerExistence
+        #if DEBUG
         print("🔍 LOGIN DEBUG: LoginView initialized with ownerExists: \(ownerExists), hasCheckedOwnerExistence: \(hasCheckedOwnerExistence)")
+        #endif
     }
     
     @State private var email = ""
@@ -101,10 +103,14 @@ struct LoginView: View {
                                     .autocorrectionDisabled()
                                     .padding(.horizontal)
                                     .onTapGesture {
+                                        #if DEBUG
                                         print("[LoginView] Email TextField tapped at \(Date())")
+                                        #endif
                                     }
                                     .onChange(of: email) {
+                                        #if DEBUG
                                         print("[LoginView] Email TextField editing began/changed at \(Date()), value: \(email)")
+                                        #endif
                                     }
                                 
                                 SecureField("Password", text: $ownerPassword)
@@ -405,7 +411,9 @@ struct LoginView: View {
             }
         }
         .onAppear {
+            #if DEBUG
             print("🔍 LOGIN DEBUG: LoginView onAppear called, ownerExists: \(ownerExists), hasCheckedOwnerExistence: \(hasCheckedOwnerExistence)")
+            #endif
             
             // Clear any existing error message and fields
             errorMessage = nil
@@ -417,7 +425,9 @@ struct LoginView: View {
             
             // Set initial owner signup mode based on passed-in values
             isOwnerSignupMode = !ownerExists
+            #if DEBUG
             print("🔍 LOGIN DEBUG: Set isOwnerSignupMode to: \(isOwnerSignupMode)")
+            #endif
         }
     }
     
@@ -513,7 +523,9 @@ struct LoginView: View {
             }
         } catch {
             errorMessage = "Failed to create account: \(error.localizedDescription)"
+            #if DEBUG
             print("Sign up error: \(error)")
+            #endif
         }
         
         isLoading = false

@@ -78,7 +78,9 @@ class AuthenticationService: ObservableObject {
             if let storedHashedPassword = cloudKitUser.hashedPassword {
                 // Use CloudKit stored password
                 guard verifyPassword(password, against: storedHashedPassword) else {
+                    #if DEBUG
                     print("Invalid password for owner: \(cloudKitUser.name)")
+                    #endif
                     throw AuthError.invalidPassword
                 }
             } else {
@@ -86,18 +88,24 @@ class AuthenticationService: ObservableObject {
                 if cloudKitUser.isOriginalOwner {
                     guard let storedPassword = UserDefaults.standard.string(forKey: ownerPasswordKey),
                           password == storedPassword else {
+                        #if DEBUG
                         print("Invalid owner password")
+                        #endif
                         throw AuthError.invalidPassword
                     }
                 } else {
                     guard let userEmail = cloudKitUser.email else {
+                        #if DEBUG
                         print("Promoted owner has no email")
+                        #endif
                         throw AuthError.invalidCredentials
                     }
                     let passwordKey = "owner_password_\(userEmail.lowercased())"
                     guard let storedPassword = UserDefaults.standard.string(forKey: passwordKey),
                           password == storedPassword else {
+                        #if DEBUG
                         print("Invalid password for promoted owner: \(cloudKitUser.name)")
+                        #endif
                         throw AuthError.invalidPassword
                     }
                 }
@@ -111,24 +119,36 @@ class AuthenticationService: ObservableObject {
                 var updatedUser = cloudKitUser
                 updatedUser.lastLogin = Date()
                 _ = try await cloudKitService.updateUser(updatedUser)
+                #if DEBUG
                 print("✅ Updated last login time for user: \(updatedUser.name)")
+                #endif
             } catch {
                 // If we can't update last login (e.g., no write permissions), 
                 // just log it but don't fail the login
+                #if DEBUG
                 print("⚠️ Could not update last login time (this is normal for non-owner users): \(error)")
+                #endif
             }
             
             // Set current user
             currentUser = cloudKitUser.toUser()
+            #if DEBUG
             print("Successfully signed in user: \(cloudKitUser.name)")
+            #endif
             
             // Update CloudKit user ID for cross-device compatibility
             do {
+                #if DEBUG
                 print("🔄 Attempting to update CloudKit user ID for owner login...")
+                #endif
                 try await cloudKitService.updateCurrentUserCloudKitID()
+                #if DEBUG
                 print("✅ Successfully updated CloudKit user ID for owner")
+                #endif
             } catch {
+                #if DEBUG
                 print("⚠️ Failed to update CloudKit user ID for owner: \(error)")
+                #endif
             }
             
             return
@@ -138,10 +158,14 @@ class AuthenticationService: ObservableObject {
             let allUsers = try await cloudKitService.fetchAllUsers()
             let staffUsers = allUsers.filter { $0.name == name && !$0.isOwner && $0.isActive }
             
+            #if DEBUG
             print("Found \(staffUsers.count) matching users")
+            #endif
             
             guard let cloudKitUser = staffUsers.first else {
+                #if DEBUG
                 print("No user found")
+                #endif
                 throw AuthError.userNotFound
             }
             
@@ -150,7 +174,9 @@ class AuthenticationService: ObservableObject {
                 // Use CloudKit stored password
                 guard let password = password,
                       verifyPassword(password, against: storedHashedPassword) else {
+                    #if DEBUG
                     print("Invalid staff password")
+                    #endif
                     throw AuthError.invalidPassword
                 }
             } else {
@@ -158,7 +184,9 @@ class AuthenticationService: ObservableObject {
                 let passwordKey = "staff_password_\(cloudKitUser.name)"
                 guard let storedPassword = UserDefaults.standard.string(forKey: passwordKey),
                       password == storedPassword else {
+                    #if DEBUG
                     print("Invalid staff password")
+                    #endif
                     throw AuthError.invalidPassword
                 }
                 

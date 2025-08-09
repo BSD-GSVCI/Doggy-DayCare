@@ -91,8 +91,10 @@ struct FutureBookingFormView: View {
             AddDailyMedicationSheet(
                 onSave: { medication in
                     medications.append(medication)
+                    #if DEBUG
                     print("✅ Added daily medication: \(medication.name)")
                     print("📊 Total medications: \(medications.count)")
+                    #endif
                 }
             )
         }
@@ -101,13 +103,17 @@ struct FutureBookingFormView: View {
                 availableMedications: medications,
                 onSave: { scheduledMedication in
                     scheduledMedications.append(scheduledMedication)
+                    #if DEBUG
                     print("✅ Added scheduled medication for: \(scheduledMedication.medicationId)")
                     print("📊 Total scheduled medications: \(scheduledMedications.count)")
+                    #endif
                 },
                 onAddMedication: { medication in
                     medications.append(medication)
+                    #if DEBUG
                     print("✅ Added medication from scheduled sheet: \(medication.name)")
                     print("📊 Total medications: \(medications.count)")
+                    #endif
                 }
             )
         }

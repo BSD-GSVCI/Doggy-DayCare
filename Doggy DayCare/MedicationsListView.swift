@@ -314,12 +314,16 @@ struct DogMedicationRow: View {
     }
     
     private func addMedicationRecord(notes: String) async {
+        #if DEBUG
         print("🔄 DogMedicationRow.addMedicationRecord called for \(dog.name)")
         print("📝 Notes parameter: '\(notes)'")
         print("📝 Notes isEmpty: \(notes.isEmpty)")
+        #endif
         
         await dataManager.addMedicationRecord(to: dog, notes: notes.isEmpty ? nil : notes, recordedBy: authService.currentUser?.name)
+        #if DEBUG
         print("✅ Medication record added for \(dog.name)")
+        #endif
     }
     
     private func deleteLastMedication() {
@@ -387,7 +391,9 @@ struct MedicationInstanceView: View {
                     .onLongPressGesture {
                 let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                 impactFeedback.impactOccurred()
+                #if DEBUG
                 print("Long press detected on medication record at \(record.timestamp.formatted(date: .omitted, time: .shortened))")
+                #endif
                 showingDeleteAlert = true
             }
         .alert("Delete Medication Record", isPresented: $showingDeleteAlert) {

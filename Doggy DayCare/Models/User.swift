@@ -34,7 +34,9 @@ struct User: Codable, Identifiable {
         
         // Staff must be active to work
         guard isActive else {
+            #if DEBUG
             print("DEBUG: User \(name) is not active")
+            #endif
             return false
         }
         
@@ -43,24 +45,32 @@ struct User: Codable, Identifiable {
             let calendar = Calendar.current
             let today = calendar.component(.weekday, from: Date())  // 1 = Sunday, 2 = Monday, etc.
             
+            #if DEBUG
             print("DEBUG: User \(name) - Today is weekday \(today), scheduled days: \(days)")
+            #endif
             
             // Check if today is in the scheduled days
             guard days.contains(today) else { 
+                #if DEBUG
                 print("DEBUG: User \(name) - Today (\(today)) is not in scheduled days (\(days))")
+                #endif
                 return false 
             }
             
+            #if DEBUG
             print("DEBUG: User \(name) - Today is scheduled!")
+            #endif
             
             // Check working hours if they are set
             if let startTime = scheduleStartTime, let endTime = scheduleEndTime {
                 let now = Date()
                 let calendar = Calendar.current
                 
+                #if DEBUG
                 print("DEBUG: User \(name) - Raw start time: \(startTime)")
                 print("DEBUG: User \(name) - Raw end time: \(endTime)")
                 print("DEBUG: User \(name) - Current time: \(now)")
+                #endif
                 
                 // Extract time components from the stored times
                 let startHour = calendar.component(.hour, from: startTime)
@@ -77,24 +87,32 @@ struct User: Codable, Identifiable {
                 let endMinutes = endHour * 60 + endMinute
                 let currentMinutes = currentHour * 60 + currentMinute
                 
+                #if DEBUG
                 print("DEBUG: User \(name) - Working hours: \(startHour):\(startMinute) to \(endHour):\(endMinute)")
                 print("DEBUG: User \(name) - Current time: \(currentHour):\(currentMinute)")
                 print("DEBUG: User \(name) - Start minutes: \(startMinutes), End minutes: \(endMinutes), Current minutes: \(currentMinutes)")
+                #endif
                 
                 // Check if current time is within working hours
                 let isWithinHours = currentMinutes >= startMinutes && currentMinutes <= endMinutes
+                #if DEBUG
                 print("DEBUG: User \(name) - Within working hours: \(isWithinHours)")
                 print("DEBUG: User \(name) - Comparison: \(currentMinutes) >= \(startMinutes) && \(currentMinutes) <= \(endMinutes)")
+                #endif
                 return isWithinHours
             } else {
                 // If no time constraints are set, allow access for the entire day
+                #if DEBUG
                 print("DEBUG: User \(name) - No time constraints, allowing all-day access")
+                #endif
                 return true
             }
         }
         
         // If no schedule is set, staff cannot work
+        #if DEBUG
         print("DEBUG: User \(name) - No schedule set")
+        #endif
         return false
     }
     

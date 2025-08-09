@@ -23,12 +23,16 @@ class PerformanceMonitor: ObservableObject {
         currentOperation = operation
         isSyncing = true
         syncProgress = 0.0
+        #if DEBUG
         print("⏱️ Started operation: \(operation)")
+        #endif
     }
     
     func updateProgress(_ progress: Double) {
         syncProgress = progress
+        #if DEBUG
         print("📊 Progress: \(Int(progress * 100))%")
+        #endif
     }
     
     func completeOperation(_ operation: String) {
@@ -47,7 +51,9 @@ class PerformanceMonitor: ObservableObject {
         }
         performanceMetrics[operation]?.append(duration)
         
+        #if DEBUG
         print("✅ Completed \(operation) in \(String(format: "%.2f", duration))s")
+        #endif
         
         // Clean up
         operationStartTimes.removeValue(forKey: operation)
@@ -59,7 +65,9 @@ class PerformanceMonitor: ObservableObject {
         currentOperation = ""
         operationStartTimes.removeValue(forKey: operation)
         
+        #if DEBUG
         print("❌ Failed \(operation): \(error.localizedDescription)")
+        #endif
     }
     
     // MARK: - Performance Analysis
@@ -104,7 +112,9 @@ class PerformanceMonitor: ObservableObject {
     func clearMetrics() {
         performanceMetrics.removeAll()
         syncTimes.removeAll()
+        #if DEBUG
         print("🧹 Performance metrics cleared")
+        #endif
     }
 }
 

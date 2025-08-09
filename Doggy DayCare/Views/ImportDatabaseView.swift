@@ -267,6 +267,8 @@ struct ImportPreviewView: View {
 
 #Preview {
     ImportDatabaseView { dogs in
+        #if DEBUG
         print("Importing \(dogs.count) dogs")
+        #endif
     }
 } 

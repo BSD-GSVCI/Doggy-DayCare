@@ -39,15 +39,21 @@ struct Doggy_DayCareApp: App {
             self.handleMidnightBackgroundTask(task as! BGAppRefreshTask)
         }
         
+        #if DEBUG
         print("✅ Background tasks registered in main app")
+        #endif
     }
     
     private func handleBackupBackgroundTask(_ task: BGAppRefreshTask) {
+        #if DEBUG
         print("🔄 Background backup task started")
+        #endif
         
         // Set up task expiration
         task.expirationHandler = {
+            #if DEBUG
             print("⏰ Backup background task expired")
+            #endif
             task.setTaskCompleted(success: false)
         }
         
@@ -63,11 +69,15 @@ struct Doggy_DayCareApp: App {
     }
     
     private func handleMidnightBackgroundTask(_ task: BGAppRefreshTask) {
+        #if DEBUG
         print("🔄 Background midnight task started")
+        #endif
         
         // Set up task expiration
         task.expirationHandler = {
+            #if DEBUG
             print("⏰ Midnight background task expired")
+            #endif
             task.setTaskCompleted(success: false)
         }
         
@@ -83,10 +93,14 @@ struct Doggy_DayCareApp: App {
     }
     
     private func checkOwnerExistence() async {
+        #if DEBUG
         print("🔍 APP DEBUG: Starting owner existence check at app level...")
+        #endif
         
         if hasCheckedOwnerExistence {
+            #if DEBUG
             print("🔍 APP DEBUG: Owner existence already checked, skipping...")
+            #endif
             return
         }
         
@@ -99,19 +113,25 @@ struct Doggy_DayCareApp: App {
             let allUsers = try await cloudKitService.fetchAllUsers()
             let owners = allUsers.filter { $0.isOwner && $0.isActive }
             
+            #if DEBUG
             print("🔍 APP DEBUG: Found \(owners.count) active owners")
             for owner in owners {
                 print("🔍 APP DEBUG: Owner: \(owner.name), email: \(owner.email ?? "none"), isOriginalOwner: \(owner.isOriginalOwner)")
             }
+            #endif
             
             await MainActor.run {
                 ownerExists = !owners.isEmpty
                 hasCheckedOwnerExistence = true
                 isCheckingOwnerExistence = false
+                #if DEBUG
                 print("🔍 APP DEBUG: ownerExists set to: \(ownerExists)")
+                #endif
             }
         } catch {
+            #if DEBUG
             print("🔍 APP DEBUG: Error checking for owner: \(error)")
+            #endif
             await MainActor.run {
                 ownerExists = false
                 hasCheckedOwnerExistence = true
@@ -177,23 +197,31 @@ struct Doggy_DayCareApp: App {
                     .background(Color(.systemBackground))
                     .task {
                         isInitializingCloudKit = true
+                        #if DEBUG
                         print("🚀 Starting CloudKit initialization...")
+                        #endif
                         
                         do {
                             try await dataManager.authenticate()
+                            #if DEBUG
                             print("✅ CloudKit initialization completed successfully")
+                            #endif
                             
                             // Check owner existence immediately after CloudKit is ready
                             await checkOwnerExistence()
                             
                             // Initialize automation service for automatic backups
                             _ = AutomationService.shared
+                            #if DEBUG
                             print("✅ Automation service initialized")
+                            #endif
                             
                             isInitialized = true
                             isInitializingCloudKit = false
                         } catch {
+                            #if DEBUG
                             print("❌ CloudKit initialization failed: \(error)")
+                            #endif
                             initializationError = "CloudKit setup failed: \(error.localizedDescription)"
                             isInitializingCloudKit = false
                         }
@@ -211,12 +239,16 @@ struct Doggy_DayCareApp: App {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+                #if DEBUG
                 print("📱 App entering background")
+                #endif
                 UserDefaults.standard.set(Date(), forKey: "app_background_time")
                 AutomationService.shared.applicationDidEnterBackground()
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                #if DEBUG
                 print("📱 App entering foreground")
+                #endif
                 AutomationService.shared.applicationWillEnterForeground()
                 
                 // Reset owner existence check if app was in background for a while
@@ -226,7 +258,9 @@ struct Doggy_DayCareApp: App {
                     
                     // If app was in background for more than 5 minutes, recheck owner existence
                     if timeInBackground > 300 {
+                        #if DEBUG
                         print("🔍 APP DEBUG: App was in background for \(timeInBackground) seconds, rechecking owner existence")
+                        #endif
                         hasCheckedOwnerExistence = false
                         Task {
                             await checkOwnerExistence()

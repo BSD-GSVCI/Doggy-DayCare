@@ -24,7 +24,9 @@ struct HistoryView: View {
         
         availableDates = await cloudKitHistoryService.getAvailableDates()
         let records = await cloudKitHistoryService.getHistoryForDate(selectedDate)
+        #if DEBUG
         print("[HistoryView] Loaded \(records.count) records for \(selectedDate): \(records.map { $0.dogName })")
+        #endif
         
         // Break down the complex filter logic
         let filtered = records.filter { record in
@@ -59,7 +61,9 @@ struct HistoryView: View {
     private func loadHistoryDataFromCloud() async {
         // Always force a full sync from CloudKit
         let records = await cloudKitHistoryService.updateCacheForDate(selectedDate)
+        #if DEBUG
         print("[HistoryView] Forced CloudKit sync: loaded \(records.count) records for \(selectedDate)")
+        #endif
         // Apply the same filtering logic as loadHistoryData
         let filtered = records.filter { record in
             if searchText.isEmpty {

@@ -441,7 +441,9 @@ struct DogDetailView: View {
                             let totalPoopCount = dog.pottyRecords.filter { $0.type == .poop || $0.type == .both }.count
                             
                             // Debug: Print the counts
+                            #if DEBUG
                             let _ = print("🐕 Total potty counts for \(dog.name): pee=\(totalPeeCount), poop=\(totalPoopCount), total records=\(dog.pottyRecords.count)")
+                            #endif
                             
                             HStack {
                                 Image(systemName: "drop.fill")

@@ -285,14 +285,18 @@ struct AddScheduledMedicationSheet: View {
     private func deleteMedicationFromList(_ medication: Medication) {
         // This function removes a medication from the dog's medications list
         // It's separate from the existing deleteMedication function which is for removing already scheduled medications
+        #if DEBUG
         print("🗑️ Long press detected - attempting to delete medication: \(medication.name)")
+        #endif
         Task {
             if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
                 var updatedDog = dataManager.dogs[dogIndex]
                 if updatedDog.currentVisit != nil {
                     updatedDog.currentVisit!.medications.removeAll { $0.id == medication.id }
                     await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
+                    #if DEBUG
                     print("🗑️ Removed medication from selection list: \(medication.name)")
+                    #endif
                 }
             }
         }

@@ -59,7 +59,9 @@ class AdvancedCache: ObservableObject {
             evictOldItems()
         }
         
+        #if DEBUG
         print("💾 Cached \(key) (memory + disk)")
+        #endif
     }
     
     func get<T: Codable>(_ key: String) async -> T? {
@@ -91,7 +93,9 @@ class AdvancedCache: ObservableObject {
         Task {
             await diskCache.remove(key)
         }
+        #if DEBUG
         print("🗑️ Removed cache for \(key)")
+        #endif
     }
     
     func clear() {
@@ -99,7 +103,9 @@ class AdvancedCache: ObservableObject {
         Task {
             await diskCache.clear()
         }
+        #if DEBUG
         print("🧹 Cache cleared")
+        #endif
     }
     
     // MARK: - Cache Management
@@ -112,7 +118,9 @@ class AdvancedCache: ObservableObject {
         }
         
         if !itemsToEvict.isEmpty {
+            #if DEBUG
             print("🗑️ Evicted \(itemsToEvict.count) old cache items")
+            #endif
         }
     }
     
@@ -142,7 +150,9 @@ actor DiskCache {
             let data = try JSONEncoder().encode(value)
             try data.write(to: fileURL)
         } catch {
+            #if DEBUG
             print("❌ Failed to write cache for \(key): \(error)")
+            #endif
         }
     }
     
@@ -154,7 +164,9 @@ actor DiskCache {
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
+            #if DEBUG
             print("❌ Failed to read cache for \(key): \(error)")
+            #endif
             return nil
         }
     }
@@ -177,7 +189,9 @@ actor DiskCache {
             if let _: Data = get(key) {
                 // Note: This will be handled by the main AdvancedCache initialization
                 // We just ensure the data is available on disk
+                #if DEBUG
                 print("📁 Preloaded cache data for \(key)")
+                #endif
             }
         }
     }

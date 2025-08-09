@@ -225,7 +225,9 @@ extension DatabaseView {
         await MainActor.run {
             self.allDogs = dogs.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             self.isLoading = false
+            #if DEBUG
             print("✅ Loaded \(dogs.count) dogs from current list")
+            #endif
             
             // Use actual visit counts from persistent dogs
             self.dogVisitCounts = dogs.reduce(into: [:]) { result, dog in
@@ -244,12 +246,16 @@ extension DatabaseView {
             // Remove from local array
             self.allDogs.removeAll { $0.id == dog.id }
             self.isLoading = false
+            #if DEBUG
             print("✅ Permanently deleted dog: \(dog.name)")
+            #endif
         }
     }
     
     private func loadFullDogForEdit(_ dog: DogWithVisit) async {
+        #if DEBUG
         print("🔍 Loading full dog information for editing: \(dog.name)")
+        #endif
         
         await MainActor.run {
             self.isLoadingEdit = true
@@ -260,7 +266,9 @@ extension DatabaseView {
             self.dogToEdit = dog
             self.isLoadingEdit = false
             self.showingEditDog = true
+            #if DEBUG
             print("✅ Loaded dog information for editing: \(dog.name)")
+            #endif
         }
     }
     
@@ -280,13 +288,17 @@ extension DatabaseView {
                 self.exportData = jsonString
                 self.showingExportSheet = true
                 self.isExporting = false
+                #if DEBUG
                 print("✅ Exported \(allDogs.count) dogs from database")
+                #endif
             }
         } catch {
             await MainActor.run {
                 self.errorMessage = "Failed to export database: \(error.localizedDescription)"
                 self.isExporting = false
+                #if DEBUG
                 print("❌ Failed to export database: \(error)")
+                #endif
             }
         }
     }
@@ -306,12 +318,18 @@ extension DatabaseView {
             if !dogExists {
                 // Import the dog
                 // Skip adding for now - would need to implement addDogWithVisit properly
+                #if DEBUG
                 print("Would add dog: \(dog.name)")
+                #endif
                 importedCount += 1
+                #if DEBUG
                 print("✅ Imported dog: \(dog.name)")
+                #endif
             } else {
                 skippedCount += 1
+                #if DEBUG
                 print("⏭️ Skipped existing dog: \(dog.name)")
+                #endif
             }
         }
         
