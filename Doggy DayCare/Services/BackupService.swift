@@ -137,10 +137,12 @@ class BackupService {
         let fileAttributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
         let fileSize = fileAttributes[FileAttributeKey.size] as? Int64 ?? 0
         
+        #if DEBUG
         print("✅ File created successfully at: \(fileURL.path)")
         print("✅ File size: \(fileSize) bytes")
         print("✅ File type: CSV with UTF-8 BOM for Excel compatibility")
         print("✅ File permissions: \(fileAttributes[FileAttributeKey.posixPermissions] ?? "unknown")")
+        #endif
         
         if fileSize == 0 {
             throw NSError(domain: "BackupService", code: 3, userInfo: [NSLocalizedDescriptionKey: "Export file is empty"])
@@ -154,7 +156,9 @@ class BackupService {
             
             try FileManager.default.copyItem(at: fileURL, to: tempFileURL)
             
+            #if DEBUG
             print("✅ File copied to temp directory: \(tempFileURL.path)")
+            #endif
             return tempFileURL
         } else {
             // For automatic backups, return the original file URL

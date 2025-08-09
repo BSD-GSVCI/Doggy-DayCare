@@ -26,17 +26,21 @@ class CloudKitHistoryService: ObservableObject {
     // Record a snapshot for an arbitrary date using the provided dogs
     func recordSnapshot(for date: Date, dogs: [DogWithVisit]) async {
         let snapshotDate = Calendar.current.startOfDay(for: date)
+        #if DEBUG
         print("[CloudKitHistoryService] Recording snapshot for \(dogs.count) dogs: \(dogs.map { $0.name }) on \(snapshotDate)")
+        #endif
         // 1. Delete all existing records for the date
         await removeHistoryForDate(snapshotDate)
         // 2. Create new records for all dogs (force date = snapshotDate)
         let newRecords = dogs.map { dog in
             DogHistoryRecord(from: dog, date: snapshotDate)
         }
+        #if DEBUG
         print("[CloudKitHistoryService] Will write records:")
         for rec in newRecords {
             print("  - id: \(rec.id), dogId: \(rec.dogId), date: \(rec.date)")
         }
+        #endif
         // 3. Batch save all new records
         await batchSaveHistoryRecords(newRecords)
         // 4. Update cache and UI for the date to match the new snapshot
@@ -45,14 +49,18 @@ class CloudKitHistoryService: ObservableObject {
         self.historyRecords = (allOtherRecords + newRecords).sorted { $0.date > $1.date }
         // 5. Optionally, reload all history from CloudKit if you want to guarantee full sync
         await loadHistoryRecords()
+        #if DEBUG
         print("[CloudKitHistoryService] After load, records for \(snapshotDate):")
         let loaded = historyRecords.filter { $0.date == snapshotDate }
         for rec in loaded {
             print("  - id: \(rec.id), dogId: \(rec.dogId), date: \(rec.date)")
         }
+        #endif
         // 6. Update last sync time for the date
         lastSyncTimes[snapshotDate] = Date()
+        #if DEBUG
         print("[CloudKitHistoryService] Finished recording snapshot for \(newRecords.count) dogs on \(snapshotDate)")
+        #endif
     }
     
     private func batchSaveHistoryRecords(_ records: [DogHistoryRecord]) async {

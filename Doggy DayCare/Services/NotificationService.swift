@@ -9,10 +9,14 @@ class NotificationService: ObservableObject {
     func requestPermission() async -> Bool {
         do {
             let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])
+            #if DEBUG
             print("🔔 Notification permission granted: \(granted)")
+            #endif
             return granted
         } catch {
+            #if DEBUG
             print("❌ Failed to request notification permission: \(error)")
+            #endif
             return false
         }
     }
@@ -36,16 +40,22 @@ class NotificationService: ObservableObject {
         
         do {
             try await UNUserNotificationCenter.current().add(request)
+            #if DEBUG
             print("✅ Scheduled medication notification for \(dog.name) at \(scheduledMedication.notificationTime)")
+            #endif
         } catch {
+            #if DEBUG
             print("❌ Failed to schedule medication notification: \(error)")
+            #endif
         }
     }
     
     func cancelMedicationNotification(for dog: DogWithVisit, scheduledMedication: ScheduledMedication) {
         let identifier = "medication-\(dog.id.uuidString)-\(scheduledMedication.id.uuidString)"
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [identifier])
+        #if DEBUG
         print("✅ Cancelled medication notification for \(dog.name)")
+        #endif
     }
     
     func cancelAllMedicationNotifications(for dog: DogWithVisit) {
@@ -55,7 +65,9 @@ class NotificationService: ObservableObject {
                 .map { $0.identifier }
             
             UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: medicationIdentifiers)
+            #if DEBUG
             print("✅ Cancelled all medication notifications for \(dog.name)")
+            #endif
         }
     }
 } 
