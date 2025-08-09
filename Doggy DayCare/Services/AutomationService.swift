@@ -22,41 +22,55 @@ class AutomationService: ObservableObject {
     
     private func setupNotifications() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            #if DEBUG
             if granted {
                 print("✅ Notification permission granted")
             } else if let error = error {
                 print("❌ Error requesting notification permission: \(error.localizedDescription)")
             }
+            #endif
         }
     }
     
     // MARK: - Public Methods for Background Tasks
     
     func performAutomatedBackup() async {
+        #if DEBUG
         print("🔄 Starting automated backup process...")
+        #endif
         
         // Only perform automatic backups for owners and promoted owners, not staff members
         let authService = AuthenticationService.shared
         guard let currentUser = authService.currentUser else {
+            #if DEBUG
             print("❌ No current user found - skipping backup")
+            #endif
             return
         }
         
+        #if DEBUG
         print("👤 Current user: \(currentUser.name), isOwner: \(currentUser.isOwner), isOriginalOwner: \(currentUser.isOriginalOwner)")
+        #endif
         
         // Allow both original owners and promoted owners to perform backups
         guard currentUser.isOwner || currentUser.isOriginalOwner else {
+            #if DEBUG
             print("⏭️ Skipping automatic backup - user is not an owner or promoted owner")
+            #endif
             return
         }
         
         do {
+            #if DEBUG
             print("📥 Fetching dogs from CloudKit...")
+            #endif
             let cloudKitService = CloudKitService.shared
             // Use a separate fetch method that doesn't affect the UI sync status
             let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
             let allDogs = allCloudKitDogs.map { $0.toDogWithVisit() }
+            #if DEBUG
             print("📊 Found \(allDogs.count) total dogs in CloudKit")
+            #endif
             
             // Filter to only include visible dogs (same logic as ContentView)
             let visibleDogs = allDogs.filter { dog in
@@ -69,13 +83,17 @@ class AutomationService: ObservableObject {
                 return isDaycare || isBoarding || isDepartedToday
             }
             
+            #if DEBUG
             print("📊 Filtered to \(visibleDogs.count) visible dogs for backup")
+            #endif
             
             let dateFormatter = DateFormatter()
             dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm"
             let timestamp = dateFormatter.string(from: Date())
             
+            #if DEBUG
             print("💾 Creating backup file...")
+            #endif
             
             // Try to get the backup folder URL from UserDefaults
             var backupFolderURL: URL? = nil
@@ -85,23 +103,32 @@ class AutomationService: ObservableObject {
                     backupFolderURL = try URL(resolvingBookmarkData: bookmarkData, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
                     
                     if isStale {
+                        #if DEBUG
                         print("⚠️ Backup folder bookmark is stale, removing...")
+                        #endif
                         UserDefaults.standard.removeObject(forKey: "backup_folder_bookmark")
                         backupFolderURL = nil
                     } else {
+                        #if DEBUG
                         print("✅ Using backup folder: \(backupFolderURL?.path ?? "unknown")")
+                        #endif
                     }
                 } catch {
+                    #if DEBUG
                     print("❌ Failed to resolve backup folder bookmark: \(error)")
+                    #endif
                     UserDefaults.standard.removeObject(forKey: "backup_folder_bookmark")
                 }
             }
             
             // Add .csv extension to the filename
             let url = try await BackupService.shared.exportDogs(visibleDogs, filename: "backup_\(timestamp).csv", to: backupFolderURL)
+            #if DEBUG
             print("✅ Automated backup created successfully at: \(url.path) for user: \(currentUser.name)")
+            #endif
             
             // Additional debugging for file accessibility
+            #if DEBUG
             let fileManager = FileManager.default
             if fileManager.fileExists(atPath: url.path) {
                 let attributes = try fileManager.attributesOfItem(atPath: url.path)
@@ -122,6 +149,7 @@ class AutomationService: ObservableObject {
             } else {
                 print("❌ Backup file does not exist at expected path")
             }
+            #endif
             
             // Send notification about successful backup
             let content = UNMutableNotificationContent()
@@ -138,6 +166,7 @@ class AutomationService: ObservableObject {
             try await UNUserNotificationCenter.current().add(request)
             
         } catch {
+            #if DEBUG
             print("❌ Error performing automated backup: \(error.localizedDescription)")
             
             // Log specific error details for debugging
@@ -160,6 +189,7 @@ class AutomationService: ObservableObject {
                     print("❌ Other CloudKit error: \(cloudKitError.code)")
                 }
             }
+            #endif
             
             // Create timestamp for error notification
             let dateFormatter = DateFormatter()
@@ -181,7 +211,9 @@ class AutomationService: ObservableObject {
             do {
                 try await UNUserNotificationCenter.current().add(request)
             } catch {
+                #if DEBUG
                 print("❌ Failed to send backup failure notification: \(error.localizedDescription)")
+                #endif
             }
         }
     }
@@ -193,10 +225,14 @@ class AutomationService: ObservableObject {
             let allDogs = allCloudKitDogs.map { $0.toDogWithVisit() }
             
             let today = Date()
+            #if DEBUG
             print("Starting midnight transition for \(today.formatted())")
+            #endif
             
             // Record daily snapshot for history before making any changes
+            #if DEBUG
             print("📅 Recording daily snapshot for history...")
+            #endif
             
             // Get only visible dogs (same logic as ContentView)
             let visibleDogs = allDogs.filter { dog in
