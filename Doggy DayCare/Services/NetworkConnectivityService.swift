@@ -58,7 +58,9 @@ class NetworkConnectivityService: ObservableObject {
             connectionType = .unknown
         }
         
+        #if DEBUG
         print("🌐 Network status: \(isConnected ? "Connected" : "Disconnected") via \(connectionType.displayName)")
+        #endif
     }
     
     nonisolated func stopMonitoring() {

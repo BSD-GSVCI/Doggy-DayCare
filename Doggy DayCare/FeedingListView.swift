@@ -435,7 +435,9 @@ struct FeedingListView: View {
             .onLongPressGesture {
                 let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
                 impactFeedback.impactOccurred()
+                #if DEBUG
                 print("Long press detected on feeding record: \(record.type.rawValue) at \(record.timestamp.formatted(date: .omitted, time: .shortened))")
+                #endif
                 showingDeleteAlert = true
             }
             .alert("Delete Feeding Record", isPresented: $showingDeleteAlert) {

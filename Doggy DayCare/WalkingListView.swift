@@ -322,7 +322,9 @@ struct PottyInstanceView: View {
         .onLongPressGesture {
             let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
             impactFeedback.impactOccurred()
+            #if DEBUG
             print("Long press detected on potty record: \(record.type.rawValue) at \(record.timestamp.formatted(date: .omitted, time: .shortened))")
+            #endif
             showingDeleteAlert = true
         }
         .alert("Delete Potty Record", isPresented: $showingDeleteAlert) {

@@ -34,7 +34,9 @@ struct PottyRecord: Codable, Identifiable {
                 self = .nothing
             default:
                 // Fallback to pee for any unrecognized values
+                #if DEBUG
                 print("⚠️ Unknown PottyType value: \(rawValue), defaulting to pee")
+                #endif
                 self = .pee
             }
         }
