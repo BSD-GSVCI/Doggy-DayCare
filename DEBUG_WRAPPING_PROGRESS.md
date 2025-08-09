@@ -1,10 +1,13 @@
 # Debug Statement Wrapping Progress
 
-## Last Updated: Session 2 - In Progress
+## Last Updated: Session 2 - Completed
 **Purpose:** Track progress of wrapping debug print statements in `#if DEBUG` directives to improve release build performance.
 
-**Previous Commit:** 3064db1
-**Session 2 Progress:** Continued wrapping debug statements
+**Session 2 Summary:**
+- ✅ **CloudKitHistoryService.swift** - COMPLETED: Fixed double-wrapping issues, wrapped all remaining statements (57/57 total)
+- 🔄 **CloudKitService.swift** - PARTIAL: Wrapped ~70+ of 250+ statements systematically through error handling, record processing, cache operations, schema setup
+- 📊 **Progress**: 2 files completed, 1 large file partially complete, ready for next session
+- 🔗 **Commits**: 1c1c4fb (CloudKitHistoryService complete), 9f879c4 & f7e0afe (CloudKitService partial progress)
 
 ## ✅ COMPLETED FILES (All debug statements wrapped)
 
@@ -42,12 +45,20 @@
 ### Services
 - **Services/CloudKitHistoryService.swift** - 57/57 wrapped ✅ (Session 2 - Completed!)
 
+## 🔄 PARTIALLY COMPLETED FILES
+
+### Large Files (High Priority)  
+- **Services/CloudKitService.swift** - ~70/250+ wrapped ⚠️ (Session 2 - Partial Progress)
+  - Very large file with 250+ total print statements
+  - Wrapped statements in: error handling, record processing, cache operations, schema setup, database access
+  - Remaining ~180+ statements scattered throughout various functional areas
+  - Multiple commits made: 9f879c4, f7e0afe
+  - Ready for continuation in next session
+
 ## 📝 FILES REQUIRING ATTENTION (Not yet processed)
 
 ### Large Files (High Priority)
 - **DataManager.swift** - 187 print statements ❌
-- **Services/CloudKitService.swift** - 256 print statements (17 wrapped, 239 remaining) ❌
-- **Services/CloudKitHistoryService.swift** - 57 print statements (4 wrapped, 53 remaining) ❌
 
 ### Small Files (Low Priority)
 - **Services/BackupService.swift** - 5 print statements (2 wrapped, 3 remaining) ❌
