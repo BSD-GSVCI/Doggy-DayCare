@@ -119,12 +119,18 @@ class CloudKitHistoryService: ObservableObject {
                         successCount += 1
                     case .failure(let error):
                         failureCount += 1
+                        #if DEBUG
                         print("❌ Error saving record in batch: \(error)")
+                        #endif
                     }
                 }
+                #if DEBUG
                 print("✅ Batch \(batchIndex + 1)/\(batches.count): Saved \(successCount) records, \(failureCount) failed")
+                #endif
             } catch {
+                #if DEBUG
                 print("❌ Failed to save batch \(batchIndex + 1): \(error)")
+                #endif
             }
         }
     }
@@ -195,12 +201,18 @@ class CloudKitHistoryService: ObservableObject {
                             successCount += 1
                         case .failure(let error):
                             failureCount += 1
+                            #if DEBUG
                             print("❌ Error updating record in batch: \(error)")
+                            #endif
                         }
                     }
+                    #if DEBUG
                     print("✅ Batch \(batchIndex + 1)/\(batches.count): Updated \(successCount) records, \(failureCount) failed")
+                    #endif
                 } else {
+                    #if DEBUG
                     print("⚠️ No records to update in batch \(batchIndex + 1)")
+                    #endif
                 }
             } catch {
                 print("❌ Failed to update batch \(batchIndex + 1): \(error)")
@@ -227,12 +239,18 @@ class CloudKitHistoryService: ObservableObject {
                         successCount += 1
                     case .failure(let error):
                         failureCount += 1
+                        #if DEBUG
                         print("❌ Error deleting record in batch: \(error)")
+                        #endif
                     }
                 }
+                #if DEBUG
                 print("✅ Batch \(batchIndex + 1)/\(batches.count): Deleted \(successCount) records, \(failureCount) failed")
+                #endif
             } catch {
+                #if DEBUG
                 print("❌ Failed to delete batch \(batchIndex + 1): \(error)")
+                #endif
             }
         }
     }
@@ -242,7 +260,9 @@ class CloudKitHistoryService: ObservableObject {
         
         // Return cached data immediately if available
         if let cachedRecords = historyCache[startOfDay] {
+            #if DEBUG
             print("[CloudKitHistoryService] Returning cached data for \(startOfDay): \(cachedRecords.count) records")
+            #endif
             
             // Background incremental update
             Task {

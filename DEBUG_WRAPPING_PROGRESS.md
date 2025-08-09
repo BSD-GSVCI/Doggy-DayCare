@@ -35,11 +35,12 @@
 - **Services/VisitService.swift** - 9/9 wrapped ✅
 - **Services/BackupService.swift** - 5/5 wrapped ✅ (Session 2)
 - **Services/PerformanceMonitor.swift** - 5/5 wrapped ✅ (Session 2)
+- **Services/AuthenticationService.swift** - 51/51 wrapped ✅ (Session 2 - Completed!)
 
 ## 🔄 PARTIALLY COMPLETED FILES
 
 ### Services
-- **Services/AuthenticationService.swift** - 31/51 wrapped (20 remaining) ⚠️
+- **Services/CloudKitHistoryService.swift** - 13/57 wrapped (44 remaining) ⚠️
 
 ## 📝 FILES REQUIRING ATTENTION (Not yet processed)
 

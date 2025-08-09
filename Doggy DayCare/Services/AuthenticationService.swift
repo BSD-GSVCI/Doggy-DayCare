@@ -289,11 +289,15 @@ class AuthenticationService: ObservableObject {
         // Check if migration has already been completed
         let migrationCompletedKey = "password_migration_completed"
         if UserDefaults.standard.bool(forKey: migrationCompletedKey) {
+            #if DEBUG
             print("✅ Password migration already completed, skipping...")
+            #endif
             return
         }
         
+        #if DEBUG
         print("🔄 Starting password migration for existing users...")
+        #endif
         
         do {
             let allUsers = try await cloudKitService.fetchAllUsers()
@@ -302,7 +306,9 @@ class AuthenticationService: ObservableObject {
             for user in allUsers {
                 // Skip users that already have hashed passwords
                 if user.hashedPassword != nil {
+                    #if DEBUG
                     print("User \(user.name) already has hashed password, skipping...")
+                    #endif
                     continue
                 }
                 
@@ -323,11 +329,15 @@ class AuthenticationService: ObservableObject {
                 }
                 
                 if let password = password {
+                    #if DEBUG
                     print("Migrating password for user: \(user.name)")
+                    #endif
                     await migratePasswordToCloudKit(for: user, password: password)
                     migrationCount += 1
                 } else {
+                    #if DEBUG
                     print("No password found in UserDefaults for user: \(user.name)")
+                    #endif
                 }
             }
             
@@ -335,18 +345,26 @@ class AuthenticationService: ObservableObject {
             UserDefaults.standard.set(true, forKey: migrationCompletedKey)
             
             if migrationCount > 0 {
+                #if DEBUG
                 print("✅ Password migration completed for \(migrationCount) users")
+                #endif
             } else {
+                #if DEBUG
                 print("✅ Password migration completed (no users needed migration)")
+                #endif
             }
         } catch {
+            #if DEBUG
             print("❌ Error during password migration: \(error)")
+            #endif
         }
     }
     
     /// Manually trigger password migration (for testing purposes)
     func forcePasswordMigration() async {
+        #if DEBUG
         print("🔄 Force triggering password migration...")
+        #endif
         
         // Reset migration flag to force migration
         let migrationCompletedKey = "password_migration_completed"
@@ -361,14 +379,20 @@ class AuthenticationService: ObservableObject {
             var updatedUser = user
             updatedUser.hashedPassword = hashPassword(password)
             _ = try await cloudKitService.updateUser(updatedUser)
+            #if DEBUG
             print("✅ Migrated password to CloudKit for user: \(user.name)")
+            #endif
         } catch {
+            #if DEBUG
             print("❌ Failed to migrate password to CloudKit for user \(user.name): \(error)")
+            #endif
         }
     }
     
     func signOut() {
+        #if DEBUG
         print("Signing out user: \(currentUser?.name ?? "unknown")")
+        #endif
         Task {
             await MainActor.run {
                 withAnimation {
@@ -376,11 +400,15 @@ class AuthenticationService: ObservableObject {
                 }
             }
         }
+        #if DEBUG
         print("User signed out")
+        #endif
     }
     
     func resetLoginState() {
+        #if DEBUG
         print("Resetting login state for fresh login")
+        #endif
         // This will be called when the app needs to check owner existence again
     }
     
@@ -421,7 +449,9 @@ class AuthenticationService: ObservableObject {
             let owners = allUsers.filter { $0.isOwner }
             
             guard let firstOwner = owners.first else {
+                #if DEBUG
                 print("No owner account found when updating password")
+                #endif
                 return
             }
             
@@ -434,9 +464,13 @@ class AuthenticationService: ObservableObject {
             UserDefaults.standard.set(newPassword, forKey: ownerPasswordKey)
             temporaryPassword = nil
             
+            #if DEBUG
             print("✅ Owner password updated in CloudKit")
+            #endif
         } catch {
+            #if DEBUG
             print("Error updating owner password: \(error)")
+            #endif
         }
     }
     
@@ -445,7 +479,9 @@ class AuthenticationService: ObservableObject {
             // Find the promoted owner by email
             let allUsers = try await cloudKitService.fetchAllUsers()
             guard let promotedOwner = allUsers.first(where: { $0.email?.lowercased() == email.lowercased() && $0.isOwner && !$0.isOriginalOwner }) else {
+                #if DEBUG
                 print("Promoted owner with email \(email) not found")
+                #endif
                 return
             }
             
@@ -454,9 +490,13 @@ class AuthenticationService: ObservableObject {
             updatedOwner.hashedPassword = hashPassword(password)
             _ = try await cloudKitService.updateUser(updatedOwner)
             
+            #if DEBUG
             print("✅ Promoted owner password updated in CloudKit for \(email)")
+            #endif
         } catch {
+            #if DEBUG
             print("Error updating promoted owner password: \(error)")
+            #endif
         }
     }
 }
