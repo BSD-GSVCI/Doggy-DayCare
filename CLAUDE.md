@@ -86,6 +86,63 @@ xcodebuild clean -project "Doggy DayCare.xcodeproj" -scheme "Doggy DayCare"
 - Preserve existing functionality unless explicitly asked to change
 - Document significant changes
 
+### Debug Code Requirements (MANDATORY)
+**ALL debugging-related code must be wrapped in `#if DEBUG` directives:**
+
+```swift
+#if DEBUG
+print("Debug message here")
+// Other debug-only code
+#endif
+```
+
+**Critical Rules:**
+1. **ALWAYS wrap new debug print statements** in `#if DEBUG` directives
+2. **ALWAYS wrap debug-only code blocks** (logging, test helpers, dev tools)
+3. **NEVER wrap production functionality** just because it contains one debug statement
+4. **Separate debug code from production code** - extract debug statements when needed
+5. **This prevents debug code from impacting release builds** and avoids performance overhead
+
+**Examples:**
+
+✅ **Correct - Debug statement wrapped:**
+```swift
+func saveData() {
+    let result = performSave()
+    #if DEBUG
+    print("Save completed with result: \(result)")
+    #endif
+    return result
+}
+```
+
+❌ **Incorrect - Wrapping production functionality:**
+```swift
+#if DEBUG
+func saveData() {
+    let result = performSave()
+    print("Save completed with result: \(result)")
+    return result
+}
+#endif
+```
+
+✅ **Correct - Separate debug from production:**
+```swift
+func saveData() {
+    let result = performSave()
+    
+    #if DEBUG
+    print("Save completed with result: \(result)")
+    debugLogSaveOperation(result)
+    #endif
+    
+    return result
+}
+```
+
+**This is mandatory for all new code** - no exceptions. This prevents the current codebase-wide debug wrapping effort from being needed in the future.
+
 ## CloudKit Requirements
 - Requires Apple Developer account with CloudKit container
 - Uses public database for shared data across all users
