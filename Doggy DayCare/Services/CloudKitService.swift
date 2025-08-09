@@ -135,9 +135,15 @@ class CloudKitService: ObservableObject {
         self.privateDatabase = container.privateCloudDatabase
         
         // Debug information
+        #if DEBUG
         print("🔧 CloudKit container: \(container.containerIdentifier ?? "Unknown")")
+        #endif
+        #if DEBUG
         print("🔧 Public database: \(publicDatabase)")
+        #endif
+        #if DEBUG
         print("🔧 Private database: \(privateDatabase)")
+        #endif
     }
     
     // MARK: - Authentication
@@ -161,13 +167,17 @@ class CloudKitService: ObservableObject {
             if let existingUser = try await fetchUser(by: userRecordID.recordName) {
                 currentUser = existingUser
                 isAuthenticated = true
+                #if DEBUG
                 print("✅ User authenticated: \(existingUser.name)")
+                #endif
             } else if originalOwner == nil {
                 // Only allow creation if no original owner exists
                 guard let name = userRecord["name"] as? String, !name.trimmingCharacters(in: .whitespaces).isEmpty else {
                     errorMessage = "Your iCloud account does not have a name set. Please set your name in iCloud settings before using this app."
                     isAuthenticated = false
+                    #if DEBUG
                     print("❌ Cannot create user: iCloud name is missing.")
+                    #endif
                     return
                 }
                 // Create new original owner
@@ -183,16 +193,26 @@ class CloudKitService: ObservableObject {
                 let createdUser = try await createUser(newUser)
                 currentUser = createdUser
                 isAuthenticated = true
+                #if DEBUG
                 print("✅ New original owner created and authenticated: \(createdUser.name)")
+                #endif
             } else {
                 // Do not create a new user if an original owner already exists
                 errorMessage = "An original owner already exists for this business. Please contact the owner to be added as staff."
                 isAuthenticated = false
+                #if DEBUG
+                #if DEBUG
                 print("❌ Cannot create user: original owner already exists.")
+                #endif
+                #endif
             }
         } catch {
             errorMessage = "Authentication failed: \(error.localizedDescription)"
+            #if DEBUG
+            #if DEBUG
             print("❌ Authentication error: \(error)")
+            #endif
+            #endif
             throw error
         }
         isLoading = false
@@ -231,7 +251,11 @@ class CloudKitService: ObservableObject {
         record[UserFields.modificationCount] = 1
         
         let saved = try await publicDatabase.save(record)
+        #if DEBUG
+        #if DEBUG
         print("✅ User created: \(user.name)")
+        #endif
+        #endif
         return CloudKitUser(from: saved)
     }
     
@@ -267,7 +291,11 @@ class CloudKitService: ObservableObject {
         record[UserFields.modificationCount] = (record[UserFields.modificationCount] as? Int64 ?? 0) + 1
         
         let saved = try await publicDatabase.save(record)
+        #if DEBUG
+        #if DEBUG
         print("✅ User updated: \(user.name)")
+        #endif
+        #endif
         return CloudKitUser(from: saved)
     }
     
@@ -278,25 +306,37 @@ class CloudKitService: ObservableObject {
         let records = result.matchResults.compactMap { try? $0.1.get() }
         guard let record = records.first else { throw CloudKitError.recordNotFound }
         try await publicDatabase.deleteRecord(withID: record.recordID)
+        #if DEBUG
         print("✅ User deleted: \(user.name)")
+        #endif
     }
     
     func fetchUser(by id: String) async throws -> CloudKitUser? {
         do {
+            #if DEBUG
             print("🔍 Fetching user by ID: \(id)")
+            #endif
             let predicate = NSPredicate(format: "\(UserFields.id) == %@", id)
             let query = CKQuery(recordType: RecordTypes.user, predicate: predicate)
             
+            #if DEBUG
             print("🔍 User query: \(query)")
+            #endif
+            #if DEBUG
             print("🔍 User predicate: \(predicate)")
+            #endif
             
             let result = try await publicDatabase.records(matching: query)
             let records = result.matchResults.compactMap { try? $0.1.get() }
             
+            #if DEBUG
             print("🔍 Found \(records.count) user records")
+            #endif
             
             guard let record = records.first else { 
+                #if DEBUG
                 print("🔍 No user found with ID: \(id)")
+                #endif
                 return nil 
             }
             

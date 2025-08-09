@@ -25,7 +25,9 @@ class DataManager: ObservableObject {
     private var usePersistentDogs = true // Set to true to use new system
     
     private init() {
+        #if DEBUG
         print("📱 DataManager initialized")
+        #endif
     }
     
     // MARK: - Authentication
@@ -49,7 +51,9 @@ class DataManager: ObservableObject {
         }
         errorMessage = nil
         
+        #if DEBUG
         print("🔍 DataManager: Starting fetchDogs...")
+        #endif
         
         if usePersistentDogs {
             await fetchDogsWithPersistentSystem(shouldShowLoading: shouldShowLoading)
@@ -62,21 +66,29 @@ class DataManager: ObservableObject {
         do {
             // Fetch persistent dogs
             let persistentDogs = try await persistentDogService.fetchPersistentDogs()
+            #if DEBUG
             print("🔍 DataManager: Got \(persistentDogs.count) persistent dogs")
+            #endif
             
             // Fetch active visits
             let activeVisits = try await visitService.fetchActiveVisits()
+            #if DEBUG
             print("🔍 DataManager: Got \(activeVisits.count) active visits")
+            #endif
             
             // Combine persistent dogs with their active visits
             let dogsWithVisits = DogWithVisit.currentlyPresentFromPersistentDogsAndVisits(persistentDogs, activeVisits)
             
+            #if DEBUG
             print("🔍 DataManager: Created \(dogsWithVisits.count) dogs with visits")
+            #endif
             
+            #if DEBUG
             // Debug: Print each dog's details
             for dogWithVisit in dogsWithVisits {
                 print("🐕 Dog: \(dogWithVisit.name), Owner: \(dogWithVisit.ownerName ?? "none"), Present: \(dogWithVisit.isCurrentlyPresent), Arrival: \(dogWithVisit.arrivalDate)")
             }
+            #endif
             
             await MainActor.run {
                 let previousCount = self.dogs.count
@@ -89,6 +101,7 @@ class DataManager: ObservableObject {
                     let newDogIds = Set(dogsWithVisits.map { $0.id })
                     let missingDogs = previousDogIds.subtracting(newDogIds)
                     
+                    #if DEBUG
                     if missingDogs.count > 0 {
                         print("⚠️ WARNING: \(missingDogs.count) dogs disappeared after fetch")
                     }
@@ -96,12 +109,15 @@ class DataManager: ObservableObject {
                     if dogsWithVisits.count < Int(Double(previousCount) * 0.5) {
                         print("⚠️ CRITICAL: Dog count dropped from \(previousCount) to \(dogsWithVisits.count)")
                     }
+                    #endif
                 }
                 
                 if shouldShowLoading {
                     self.isLoading = false
                 }
+                #if DEBUG
                 print("✅ DataManager: Set \(dogsWithVisits.count) dogs in local array")
+                #endif
                 
                 // Update last sync time
                 self.lastSyncTime = Date()
@@ -124,15 +140,21 @@ class DataManager: ObservableObject {
     private func fetchDogsWithLegacySystem(shouldShowLoading: Bool) async {
         do {
             let cloudKitDogs = try await cloudKitService.fetchDogs()
+            #if DEBUG
             print("🔍 DataManager: Got \(cloudKitDogs.count) CloudKit dogs")
+            #endif
             
             let localDogs = cloudKitDogs.map { $0.toDogWithVisit() }
+            #if DEBUG
             print("🔍 DataManager: Converted to \(localDogs.count) local dogs")
+            #endif
             
+            #if DEBUG
             // Debug: Print each dog's details
             for dog in localDogs {
                 print("🐕 Dog: \(dog.name), Owner: \(dog.ownerName ?? "none"), Deleted: \(dog.isDeleted), Present: \(dog.isCurrentlyPresent), Arrival: \(dog.arrivalDate), Departure: \(dog.departureDate?.description ?? "nil")")
             }
+            #endif
             
             await MainActor.run {
                 let previousCount = self.dogs.count
@@ -145,6 +167,7 @@ class DataManager: ObservableObject {
                     let newDogIds = Set(localDogs.map { $0.id })
                     let missingDogs = previousDogIds.subtracting(newDogIds)
                     
+                    #if DEBUG
                     if missingDogs.count > 0 {
                         print("⚠️ WARNING: \(missingDogs.count) dogs disappeared after fetch")
                         // Could implement recovery logic here
@@ -154,12 +177,15 @@ class DataManager: ObservableObject {
                         print("⚠️ CRITICAL: Dog count dropped from \(previousCount) to \(localDogs.count)")
                         // Consider keeping previous data or alerting user
                     }
+                    #endif
                 }
                 
                 if shouldShowLoading {
                     self.isLoading = false
                 }
+                #if DEBUG
                 print("✅ DataManager: Set \(localDogs.count) dogs in local array")
+                #endif
                 
                 // Update last sync time
                 self.lastSyncTime = Date()
@@ -258,12 +284,16 @@ class DataManager: ObservableObject {
             )
             
             try await visitService.createVisit(visit)
+            #if DEBUG
             print("✅ Created future booking for \(name)")
+            #endif
             
             // Refresh data
             await fetchDogs()
         } catch {
+            #if DEBUG
             print("❌ Failed to create future booking: \(error)")
+            #endif
             errorMessage = "Failed to create future booking: \(error.localizedDescription)"
         }
         
@@ -334,12 +364,16 @@ class DataManager: ObservableObject {
                 try await persistentDogService.updatePersistentDog(updatedPersistentDog)
             }
             
+            #if DEBUG
             print("✅ Updated future booking for \(name)")
+            #endif
             
             // Refresh data
             await fetchDogs()
         } catch {
+            #if DEBUG
             print("❌ Failed to update future booking: \(error)")
+            #endif
             errorMessage = "Failed to update future booking: \(error.localizedDescription)"
         }
         
@@ -360,12 +394,16 @@ class DataManager: ObservableObject {
             visit.updatedAt = Date()
             
             try await visitService.updateVisit(visit)
+            #if DEBUG
             print("✅ Undid departure for \(dogWithVisit.name)")
+            #endif
             
             // Refresh data
             await fetchDogs()
         } catch {
+            #if DEBUG
             print("❌ Failed to undo departure: \(error)")
+            #endif
             errorMessage = "Failed to undo departure: \(error.localizedDescription)"
         }
         
@@ -384,12 +422,16 @@ class DataManager: ObservableObject {
             visit.updatedAt = Date()
             
             try await visitService.updateVisit(visit)
+            #if DEBUG
             print("✅ Updated departure time for \(dogWithVisit.name)")
+            #endif
             
             // Refresh data
             await fetchDogs()
         } catch {
+            #if DEBUG
             print("❌ Failed to update departure: \(error)")
+            #endif
             errorMessage = "Failed to update departure: \(error.localizedDescription)"
         }
         
@@ -408,12 +450,16 @@ class DataManager: ObservableObject {
             visit.updatedAt = Date()
             
             try await visitService.updateVisit(visit)
+            #if DEBUG
             print("✅ Updated arrival time for \(dogWithVisit.name)")
+            #endif
             
             // Refresh data
             await fetchDogs()
         } catch {
+            #if DEBUG
             print("❌ Failed to update arrival time: \(error)")
+            #endif
             errorMessage = "Failed to update arrival time: \(error.localizedDescription)"
         }
         
@@ -429,25 +475,35 @@ class DataManager: ObservableObject {
         }
         errorMessage = nil
         
+        #if DEBUG
         print("🔍 DataManager: Starting incremental fetchDogs...")
         print("🔍 DataManager: Last sync time: \(lastSyncTime)")
+        #endif
         
         do {
             let cloudKitDogs = try await cloudKitService.fetchDogsIncremental(since: lastSyncTime)
+            #if DEBUG
             print("🔍 DataManager: Got \(cloudKitDogs.count) incremental CloudKit dogs")
+            #endif
             
             if !cloudKitDogs.isEmpty {
                 let localDogs = cloudKitDogs.map { $0.toDogWithVisit() }
+                #if DEBUG
                 print("🔍 DataManager: Converted to \(localDogs.count) local dogs")
+                #endif
                 
                 // Update cache with only changed dogs
                 await updateDogsCache(with: localDogs)
                 
                 // Update last sync time
                 lastSyncTime = Date()
+                #if DEBUG
                 print("✅ DataManager: Updated cache with \(localDogs.count) changed dogs")
+                #endif
             } else {
+                #if DEBUG
                 print("✅ DataManager: No changes found, using existing cache")
+                #endif
             }
             
             if shouldShowLoading {
@@ -459,7 +515,9 @@ class DataManager: ObservableObject {
                 if shouldShowLoading {
                     self.isLoading = false
                 }
+                #if DEBUG
                 print("❌ DataManager: Failed to fetch dogs incrementally: \(error)")
+                #endif
             }
         }
     }
@@ -468,10 +526,14 @@ class DataManager: ObservableObject {
         do {
             let cloudKitDogs = try await cloudKitService.fetchDogs()
             let convertedDogs = cloudKitDogs.map { $0.toDogWithVisit() }
+            #if DEBUG
             print("✅ Fetched \(convertedDogs.count) total dogs from CloudKit")
+            #endif
             return convertedDogs
         } catch {
+            #if DEBUG
             print("❌ Failed to fetch all dogs: \(error)")
+            #endif
             return []
         }
     }
@@ -1548,34 +1610,22 @@ class DataManager: ObservableObject {
         print("🔍 DataManager: Starting fetchAllPersistentDogs (scalable version)...")
         
         do {
-            // Fetch all persistent dogs from the database
+            // Fetch all persistent dogs from the database (database view only needs this)
             let persistentDogs = try await persistentDogService.fetchPersistentDogs()
             print("🔍 DataManager: Got \(persistentDogs.count) persistent dogs")
             
-            // Fetch only active visits (much more scalable than fetching all visits)
-            let activeVisits = try await visitService.fetchActiveVisits()
-            print("🔍 DataManager: Got \(activeVisits.count) active visits")
-            
-            // Create DogWithVisit for each persistent dog
-            var dogsWithVisits: [DogWithVisit] = []
-            for persistentDog in persistentDogs {
-                // Find active visit for this dog (if any)
-                let activeVisit = activeVisits.first { $0.dogId == persistentDog.id }
-                
-                let dogWithVisit = DogWithVisit(persistentDog: persistentDog, currentVisit: activeVisit)
-                dogsWithVisits.append(dogWithVisit)
-                
-                let visitInfo = activeVisit?.arrivalDate.description ?? "No active visit"
-                print("🐕 Dog: \(persistentDog.name), VisitCount: \(persistentDog.visitCount), LastVisit: \(persistentDog.lastVisitDate?.description ?? "Never"), Active: \(visitInfo)")
+            // Create DogWithVisit for each persistent dog (no current visit needed for database view)
+            let dogsWithVisits = persistentDogs.map { persistentDog in
+                DogWithVisit(persistentDog: persistentDog, currentVisit: nil)
             }
             
-            print("🔍 DataManager: Created \(dogsWithVisits.count) dogs with persistent data (no all-visits fetch)")
+            print("🔍 DataManager: Created \(dogsWithVisits.count) dogs with persistent data only")
             
             await MainActor.run {
                 self.allDogs = dogsWithVisits.sorted { $0.name < $1.name }
                 self.allDogsCache = dogsWithVisits
                 self.lastAllDogsSyncTime = Date()
-                print("✅ DataManager: Set \(dogsWithVisits.count) dogs in allDogs array (scalable approach)")
+                print("✅ DataManager: Set \(dogsWithVisits.count) dogs in allDogs array (database view)")
             }
         } catch {
             print("❌ Failed to fetch all persistent dogs: \(error)")
@@ -1623,13 +1673,54 @@ class DataManager: ObservableObject {
     // MARK: - Optimized Import Methods
     
     func fetchDogsForImport() async -> [DogWithVisit] {
+        #if DEBUG
         print("🚀 DataManager: Starting optimized fetchDogsForImport...")
+        print("📊 DataManager: Current main page dogs count: \(dogs.count)")
+        print("📊 DataManager: Current allDogs count: \(allDogs.count)")
+        #endif
         
-        // Use the same method as database view to get all persistent dogs
+        // Get all persistent dogs
         await fetchAllPersistentDogs()
         
-        print("✅ DataManager: Got \(allDogs.count) dogs for import")
-        return allDogs
+        #if DEBUG
+        print("📊 DataManager: After fetchAllPersistentDogs - allDogs count: \(allDogs.count)")
+        
+        // Debug: Log some sample dog info
+        if !allDogs.isEmpty {
+            let firstDog = allDogs[0]
+            print("🐕 DataManager: Sample dog - Name: \(firstDog.name), ID: \(firstDog.id), VisitCount: \(firstDog.persistentDog.visitCount)")
+        }
+        #endif
+        
+        // Get IDs of dogs currently present on main page
+        let currentlyPresentDogs = dogs.filter { $0.isCurrentlyPresent }
+        let currentlyPresentIds = Set(currentlyPresentDogs.map { $0.id })
+        
+        #if DEBUG
+        print("📊 DataManager: Currently present dogs count: \(currentlyPresentIds.count)")
+        if !currentlyPresentDogs.isEmpty {
+            print("🐕 DataManager: Currently present dogs: \(currentlyPresentDogs.map { $0.name }.joined(separator: ", "))")
+        }
+        #endif
+        
+        // Filter out dogs that are already present on main page
+        let availableForImport = allDogs.filter { dog in
+            let isAvailable = !currentlyPresentIds.contains(dog.id)
+            #if DEBUG
+            if !isAvailable {
+                print("🚫 DataManager: Excluding \(dog.name) (already present)")
+            }
+            #endif
+            return isAvailable
+        }
+        
+        #if DEBUG
+        print("✅ DataManager: Got \(availableForImport.count) dogs available for import")
+        print("📋 DataManager: Available dogs: \(availableForImport.map { $0.name }.joined(separator: ", "))")
+        print("📊 DataManager: Summary - Total: \(allDogs.count), Present: \(currentlyPresentIds.count), Available: \(availableForImport.count)")
+        #endif
+        
+        return availableForImport
     }
     
     func fetchSpecificDogWithRecords(for dogID: String) async -> DogWithVisit? {

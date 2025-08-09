@@ -70,7 +70,9 @@ struct DogFormView: View {
     }
     
     init(dataManager: DataManager, dog: DogWithVisit? = nil, addToDatabaseOnly: Bool = false) {
+        #if DEBUG
         print("DogFormView init called")
+        #endif
         self.dataManager = dataManager
         self.dog = dog
         self.addToDatabaseOnly = addToDatabaseOnly
@@ -299,8 +301,10 @@ struct DogFormView: View {
                                     AddDailyMedicationSheet(
                                         onSave: { medication in
                                             medications.append(medication)
+                                            #if DEBUG
                                             print("✅ Added daily medication: \(medication.name)")
                                             print("📊 Total medications: \(medications.count)")
+                                            #endif
                                         }
                                     )
                                 }
@@ -315,13 +319,17 @@ struct DogFormView: View {
                                         availableMedications: medications,
                                         onSave: { scheduledMedication in
                                             scheduledMedications.append(scheduledMedication)
+                                            #if DEBUG
                                             print("✅ Added scheduled medication for: \(scheduledMedication.medicationId)")
                                             print("📊 Total scheduled medications: \(scheduledMedications.count)")
+                                            #endif
                                         },
                                         onAddMedication: { medication in
                                             medications.append(medication)
+                                            #if DEBUG
                                             print("✅ Added medication from scheduled sheet: \(medication.name)")
                                             print("📊 Total medications: \(medications.count)")
+                                            #endif
                                         }
                                     )
                                 }
@@ -367,7 +375,9 @@ struct DogFormView: View {
                 }
             }
             .onChange(of: vaccinations) {
+                #if DEBUG
                 print("Vaccinations changed: \(vaccinations.map { $0.name })")
+                #endif
             }
             .navigationTitle(dog == nil ? "Add Dog" : "Edit Dog")
             .navigationBarTitleDisplayMode(.inline)
@@ -525,13 +535,17 @@ struct DogFormView: View {
             )
         } else {
             // Create new dog using the new system
+            #if DEBUG
             print("🔄 DogFormView: Creating new dog with \(medications.count) medications and \(scheduledMedications.count) scheduled medications")
             print("📋 Medications: \(medications.map { $0.name })")
             print("📅 Scheduled Medications: \(scheduledMedications.map { $0.medicationId })")
             print("📅 Arrival Date: \(arrivalDate)")
+            #endif
             
             if addToDatabaseOnly {
+                #if DEBUG
                 print("📝 DogFormView: Adding dog to database only (will not appear on main page)")
+                #endif
                 await dataManager.addPersistentDogOnly(
                     name: name,
                     ownerName: ownerName.isEmpty ? nil : ownerName,
@@ -548,7 +562,9 @@ struct DogFormView: View {
                     isNeuteredOrSpayed: isNeuteredOrSpayed
                 )
             } else {
+                #if DEBUG
                 print("📝 DogFormView: Adding dog to main page and database")
+                #endif
                 await dataManager.addDogWithVisit(
                     name: name,
                     ownerName: ownerName.isEmpty ? nil : ownerName,
@@ -639,7 +655,9 @@ struct AddScheduledMedicationForNewDogSheet: View {
     
     private func deleteMedicationFromList(_ medication: Medication) {
         // Simple delete function to remove mistyped medications from the selection list
+        #if DEBUG
         print("🗑️ Long press detected - attempting to delete medication: \(medication.name)")
+        #endif
         // This will be handled by the parent view's medications array
     }
     
@@ -653,7 +671,9 @@ struct AddScheduledMedicationForNewDogSheet: View {
             Form {
                 Section {
                     Button("Add new medication") {
+                        #if DEBUG
                         print("🔘 Add new medication button tapped")
+                        #endif
                         showingAddMedication = true
                     }
                     .foregroundStyle(.blue)
@@ -724,11 +744,15 @@ struct AddScheduledMedicationForNewDogSheet: View {
                                 status: .pending,
                                 notes: notes.isEmpty ? nil : notes
                             )
+                            #if DEBUG
                             print("✅ Creating scheduled medication for: \(medication.name)")
+                            #endif
                             onSave(scheduledMedication)
                             dismiss()
                         } else {
+                            #if DEBUG
                             print("❌ No medication selected")
+                            #endif
                         }
                     }
                     .disabled(selectedMedication == nil)
@@ -759,7 +783,9 @@ struct AddScheduledMedicationForNewDogSheet: View {
                                     type: .scheduled,
                                     notes: newMedicationNotes.isEmpty ? nil : newMedicationNotes
                                 )
+                                #if DEBUG
                                 print("✅ Creating medication: \(medication.name)")
+                                #endif
                                 onAddMedication(medication)
                                 selectedMedication = medication
                                 showingAddMedication = false
@@ -901,7 +927,9 @@ struct ImportSingleDogView: View {
     private func loadImportedDogs() async {
         isLoading = true
         
+        #if DEBUG
         print("🚀 Import: Starting loadImportedDogs for DogWithVisit...")
+        #endif
         
         // For now, use the existing dogs from dataManager as a placeholder
         // This will need to be implemented properly with PersistentDog queries later
@@ -911,7 +939,9 @@ struct ImportSingleDogView: View {
         importedDogs = existingDogs.filter { !$0.isCurrentlyPresent }
             .sorted { $0.name < $1.name }
         
+        #if DEBUG
         print("✅ Import: Found \(importedDogs.count) dogs available for import")
+        #endif
         
         isLoading = false
     }
@@ -919,10 +949,14 @@ struct ImportSingleDogView: View {
     // MARK: - Lazy Loading for Import
     
     private func importDogWithFullRecords(_ dog: DogWithVisit) async -> DogWithVisit? {
+        #if DEBUG
         print("🔍 Import: Loading full records for \(dog.name)...")
+        #endif
         
         // For now, return the dog as-is since we're using DogWithVisit
+        #if DEBUG
         print("✅ Import: Successfully loaded full records for \(dog.name)")
+        #endif
         return dog
     }
 }

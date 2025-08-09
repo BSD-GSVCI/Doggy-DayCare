@@ -61,13 +61,17 @@ class VisitService: ObservableObject {
     
     private init() {
         self.publicDatabase = container.publicCloudDatabase
+        #if DEBUG
         print("🔧 VisitService initialized")
+        #endif
     }
     
     // MARK: - CRUD Operations
     
     func createVisit(_ visit: Visit) async throws {
+        #if DEBUG
         print("📝 Creating visit for dog: \(visit.dogId)")
+        #endif
         
         let record = CKRecord(recordType: RecordTypes.visit)
         
@@ -148,11 +152,15 @@ class VisitService: ObservableObject {
         record[VisitFields.scheduledMedicationNotificationTimes] = scheduledMedicationNotificationTimes
         
         try await publicDatabase.save(record)
+        #if DEBUG
         print("✅ Created visit for dog: \(visit.dogId)")
+        #endif
     }
     
     func updateVisit(_ visit: Visit) async throws {
+        #if DEBUG
         print("📝 Updating visit: \(visit.id)")
+        #endif
         
         let predicate = NSPredicate(format: "\(VisitFields.id) == %@", visit.id.uuidString)
         let query = CKQuery(recordType: RecordTypes.visit, predicate: predicate)
@@ -235,11 +243,15 @@ class VisitService: ObservableObject {
         record[VisitFields.scheduledMedicationNotificationTimes] = scheduledMedicationNotificationTimes
         
         try await publicDatabase.save(record)
+        #if DEBUG
         print("✅ Updated visit: \(visit.id)")
+        #endif
     }
     
     func fetchVisits(predicate: NSPredicate? = nil) async throws -> [Visit] {
+        #if DEBUG
         print("🔍 Fetching visits...")
+        #endif
         
         let finalPredicate = predicate ?? NSPredicate(value: true)
         let query = CKQuery(recordType: RecordTypes.visit, predicate: finalPredicate)
@@ -432,7 +444,9 @@ class VisitService: ObservableObject {
             visits.append(visit)
         }
         
+        #if DEBUG
         print("✅ Fetched \(visits.count) visits")
+        #endif
         return visits
     }
     
@@ -450,7 +464,8 @@ class VisitService: ObservableObject {
     func fetchActiveVisits() async throws -> [Visit] {
         let now = Date()
         
-        let predicate = NSPredicate(format: "\(VisitFields.arrivalDate) <= %@ AND \(VisitFields.departureDate) == nil AND \(VisitFields.isDeleted) != %@", 
+        // CloudKit doesn't support "== nil" comparisons, use absence check
+        let predicate = NSPredicate(format: "\(VisitFields.arrivalDate) <= %@ AND \(VisitFields.departureDate) == NULL AND \(VisitFields.isDeleted) != %@", 
                                    now as NSDate, NSNumber(value: true))
         return try await fetchVisits(predicate: predicate)
     }
@@ -541,7 +556,9 @@ class VisitService: ObservableObject {
     }
     
     func deleteVisit(_ visit: Visit) async throws {
+        #if DEBUG
         print("🗑️ Deleting visit: \(visit.id)")
+        #endif
         
         let predicate = NSPredicate(format: "\(VisitFields.id) == %@", visit.id.uuidString)
         let query = CKQuery(recordType: RecordTypes.visit, predicate: predicate)
@@ -553,7 +570,9 @@ class VisitService: ObservableObject {
         }
         
         try await publicDatabase.deleteRecord(withID: record.recordID)
+        #if DEBUG
         print("✅ Deleted visit: \(visit.id)")
+        #endif
     }
     
     // MARK: - Utility Methods

@@ -46,13 +46,17 @@ class PersistentDogService: ObservableObject {
     
     private init() {
         self.publicDatabase = container.publicCloudDatabase
+        #if DEBUG
         print("🔧 PersistentDogService initialized")
+        #endif
     }
     
     // MARK: - CRUD Operations
     
     func createPersistentDog(_ dog: PersistentDog) async throws {
+        #if DEBUG
         print("📝 Creating persistent dog: \(dog.name)")
+        #endif
         
         let record = CKRecord(recordType: RecordTypes.persistentDog)
         
@@ -87,11 +91,15 @@ class PersistentDogService: ObservableObject {
         record[PersistentDogFields.leptospirosisEndDate] = dog.vaccinations.first(where: { $0.name == "Leptospirosis" })?.endDate
         
         try await publicDatabase.save(record)
+        #if DEBUG
         print("✅ Created persistent dog: \(dog.name)")
+        #endif
     }
     
     func updatePersistentDog(_ dog: PersistentDog) async throws {
+        #if DEBUG
         print("📝 Updating persistent dog: \(dog.name)")
+        #endif
         
         let predicate = NSPredicate(format: "\(PersistentDogFields.id) == %@", dog.id.uuidString)
         let query = CKQuery(recordType: RecordTypes.persistentDog, predicate: predicate)
@@ -130,11 +138,15 @@ class PersistentDogService: ObservableObject {
         record[PersistentDogFields.leptospirosisEndDate] = dog.vaccinations.first(where: { $0.name == "Leptospirosis" })?.endDate
         
         try await publicDatabase.save(record)
+        #if DEBUG
         print("✅ Updated persistent dog: \(dog.name)")
+        #endif
     }
     
     func fetchPersistentDogs(predicate: NSPredicate? = nil) async throws -> [PersistentDog] {
+        #if DEBUG
         print("🔍 Fetching persistent dogs...")
+        #endif
         
         let finalPredicate = predicate ?? NSPredicate(value: true)
         let query = CKQuery(recordType: RecordTypes.persistentDog, predicate: finalPredicate)
@@ -216,12 +228,16 @@ class PersistentDogService: ObservableObject {
             persistentDogs.append(persistentDog)
         }
         
+        #if DEBUG
         print("✅ Fetched \(persistentDogs.count) persistent dogs")
+        #endif
         return persistentDogs
     }
     
     func deletePersistentDog(_ dog: PersistentDog) async throws {
+        #if DEBUG
         print("🗑️ Deleting persistent dog: \(dog.name)")
+        #endif
         
         let predicate = NSPredicate(format: "\(PersistentDogFields.id) == %@", dog.id.uuidString)
         let query = CKQuery(recordType: RecordTypes.persistentDog, predicate: predicate)
@@ -233,7 +249,9 @@ class PersistentDogService: ObservableObject {
         }
         
         try await publicDatabase.deleteRecord(withID: record.recordID)
+        #if DEBUG
         print("✅ Deleted persistent dog: \(dog.name)")
+        #endif
     }
     
     // MARK: - Utility Methods
