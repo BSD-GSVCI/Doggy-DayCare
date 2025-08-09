@@ -13,7 +13,9 @@ class AuthenticationService: ObservableObject {
     private let cloudKitService = CloudKitService.shared
     
     private init() {
+        #if DEBUG
         print("AuthenticationService initialized")
+        #endif
         // Always start with no user
         currentUser = nil
     }
@@ -36,7 +38,9 @@ class AuthenticationService: ObservableObject {
     // MARK: - Authentication
     
     func signIn(email: String? = nil, name: String? = nil, password: String? = nil) async throws {
+        #if DEBUG
         print("Attempting sign in with email: \(email ?? "nil"), name: \(name ?? "nil")")
+        #endif
         
         // First authenticate with CloudKit
         try await cloudKitService.authenticate()
@@ -50,17 +54,23 @@ class AuthenticationService: ObservableObject {
             let owners = allUsers.filter { $0.isOwner && $0.isActive }
             
             guard let cloudKitUser = owners.first(where: { $0.email?.lowercased() == lowercaseEmail }) else {
+                #if DEBUG
                 print("No user found with email: \(email)")
+                #endif
                 throw AuthError.userNotFound
             }
             
             // Use explicit string interpolation for user properties
             let userEmail = cloudKitUser.email.map { ", email: \($0)" } ?? ""
+            #if DEBUG
             print("Found user: \(cloudKitUser.name)\(userEmail), isOwner: \(cloudKitUser.isOwner), isActive: \(cloudKitUser.isActive)")
+            #endif
             
             // Owner login requires password
             guard let password = password else {
+                #if DEBUG
                 print("Password required for owner login")
+                #endif
                 throw AuthError.passwordRequired
             }
             

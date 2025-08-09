@@ -562,13 +562,17 @@ struct DogDetailView: View {
     // MARK: - Action Functions
     
     private func checkOut() async {
+        #if DEBUG
         print("🔄 Starting checkout process for dog: \(dog.name)")
         print("📅 Current departure date: \(dog.departureDate?.description ?? "nil")")
+        #endif
         
         // Update local cache and dismiss immediately for responsive UI
         await dataManager.checkoutDog(dog)
         
+        #if DEBUG
         print("✅ Checkout completed for dog: \(dog.name)")
+        #endif
         
         // Dismiss immediately after local cache update
         dismiss()

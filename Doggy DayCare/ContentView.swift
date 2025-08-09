@@ -10,7 +10,9 @@ import SwiftUI
 // Debug extension to help us understand toolbar content types
 extension View {
     func debugToolbarType<T: ToolbarContent>(_ content: T) -> some View {
+        #if DEBUG
         print("Toolbar content type: \(type(of: content))")
+        #endif
         return self.toolbar { content }
     }
 }
@@ -160,7 +162,9 @@ struct ContentView: View {
     
     private func loadBackupFolderBookmark() {
         guard let bookmarkData = UserDefaults.standard.data(forKey: "backup_folder_bookmark") else {
+            #if DEBUG
             print("No backup folder bookmark found")
+            #endif
             return
         }
         
@@ -169,15 +173,21 @@ struct ContentView: View {
             let url = try URL(resolvingBookmarkData: bookmarkData, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
             
             if isStale {
+                #if DEBUG
                 print("⚠️ Backup folder bookmark is stale, removing...")
+                #endif
                 UserDefaults.standard.removeObject(forKey: "backup_folder_bookmark")
                 return
             }
             
             backupFolderURL = url
+            #if DEBUG
             print("✅ Backup folder loaded from bookmark: \(url.path)")
+            #endif
         } catch {
+            #if DEBUG
             print("❌ Failed to resolve backup folder bookmark: \(error)")
+            #endif
             UserDefaults.standard.removeObject(forKey: "backup_folder_bookmark")
         }
     }
@@ -335,17 +345,23 @@ struct ContentView: View {
                                 Task {
                                     await MainActor.run {
                                         exportState = .alertShown
+                                        #if DEBUG
                                         print("🔄 Export started - alert shown")
+                                        #endif
                                     }
                                     
                                     // Record start time for minimum display duration
                                     let startTime = Date()
                                     
                                     do {
+                                        #if DEBUG
                                         print("Starting export...")
                                         print("Visible dogs count: \(visibleDogs.count)")
+                                        #endif
                                         let url = try await BackupService.shared.exportDogs(visibleDogs)
+                                        #if DEBUG
                                         print("Export completed, URL: \(url.absoluteString)")
+                                        #endif
                                         
                                         // Calculate how long the export took
                                         let exportDuration = Date().timeIntervalSince(startTime)
@@ -361,19 +377,27 @@ struct ContentView: View {
                                             exportURL = url
                                             isExportReady = true
                                             exportState = .sheetPending
+                                            #if DEBUG
                                             print("Export ready, transitioning to sheet")
+                                            #endif
                                         }
                                         
                                         await MainActor.run {
                                             exportState = .sheetShown
+                                            #if DEBUG
                                             print("Sheet should now be visible")
+                                            #endif
                                         }
                                     } catch {
                                         await MainActor.run {
                                             exportState = .idle
+                                            #if DEBUG
                                             print("❌ Export failed - back to idle")
+                                            #endif
                                         }
+                                        #if DEBUG
                                         print("Export error: \(error)")
+                                        #endif
                                     }
                                 }
                             } label: {
@@ -691,9 +715,13 @@ struct FolderPicker: UIViewControllerRepresentable {
                 do {
                     let bookmarkData = try url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
                     UserDefaults.standard.set(bookmarkData, forKey: "backup_folder_bookmark")
+                    #if DEBUG
                     print("✅ Backup folder selected and bookmark saved: \(url.path)")
+                    #endif
                 } catch {
+                    #if DEBUG
                     print("❌ Failed to save bookmark: \(error)")
+                    #endif
                 }
                 
                 // Stop accessing the security-scoped resource
@@ -733,6 +761,7 @@ struct ShareSheet: UIViewControllerRepresentable {
         
         // Set completion handler to log any issues
         controller.completionWithItemsHandler = { (activityType, completed, returnedItems, error) in
+            #if DEBUG
             if let error = error {
                 print("❌ ShareSheet error: \(error)")
             } else if completed {
@@ -740,6 +769,7 @@ struct ShareSheet: UIViewControllerRepresentable {
             } else {
                 print("⚠️ ShareSheet was cancelled")
             }
+            #endif
         }
         
         return controller

@@ -13,7 +13,9 @@ class AutomationService: ObservableObject {
     private let cloudKitHistoryService = CloudKitHistoryService.shared
     
     private init() {
+        #if DEBUG
         print("🚀 AutomationService initializing...")
+        #endif
         setupNotifications()
         setupTimers()
     }
