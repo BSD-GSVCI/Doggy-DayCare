@@ -1047,8 +1047,12 @@ class CloudKitService: ObservableObject {
         #endif
         let saved = try await publicDatabase.save(record)
         
+        #if DEBUG
         print("✅ Record saved successfully")
+        #endif
+        #if DEBUG
         print("📅 Saved record departure date: \(saved[DogFields.departureDate]?.description ?? "nil")")
+        #endif
         
         // Save individual records
         try await saveFeedingRecords(dog.feedingRecords, for: dog.id)
@@ -1064,7 +1068,9 @@ class CloudKitService: ObservableObject {
             newValue: dog.name
         )
         
+        #if DEBUG
         print("✅ Dog updated: \(dog.name)")
+        #endif
         return CloudKitDog(from: saved)
     }
     
@@ -1089,10 +1095,14 @@ class CloudKitService: ObservableObject {
                 
                 try await publicDatabase.save(ckRecord)
             }
+            #if DEBUG
             print("✅ Saved \(records.count) feeding records for dog: \(dogID)")
+            #endif
         } catch let error as CKError {
             if error.code == .unknownItem {
-                print("⚠️ FeedingRecord type doesn't exist yet for dog \(dogID) - records will be saved when schema is created")
+                #if DEBUG
+            print("⚠️ FeedingRecord type doesn't exist yet for dog \(dogID) - records will be saved when schema is created")
+            #endif
             } else {
                 throw error
             }
@@ -1117,10 +1127,14 @@ class CloudKitService: ObservableObject {
                 
                 try await publicDatabase.save(ckRecord)
             }
+            #if DEBUG
             print("✅ Saved \(records.count) medication records for dog: \(dogID)")
+            #endif
         } catch let error as CKError {
             if error.code == .unknownItem {
-                print("⚠️ MedicationRecord type doesn't exist yet for dog \(dogID) - records will be saved when schema is created")
+                #if DEBUG
+            print("⚠️ MedicationRecord type doesn't exist yet for dog \(dogID) - records will be saved when schema is created")
+            #endif
             } else {
                 throw error
             }
@@ -1146,10 +1160,14 @@ class CloudKitService: ObservableObject {
                 
                 try await publicDatabase.save(ckRecord)
             }
+            #if DEBUG
             print("✅ Saved \(records.count) potty records for dog: \(dogID)")
+            #endif
         } catch let error as CKError {
             if error.code == .unknownItem {
-                print("⚠️ PottyRecord type doesn't exist yet for dog \(dogID) - records will be saved when schema is created")
+                #if DEBUG
+            print("⚠️ PottyRecord type doesn't exist yet for dog \(dogID) - records will be saved when schema is created")
+            #endif
             } else {
                 throw error
             }
@@ -1198,7 +1216,9 @@ class CloudKitService: ObservableObject {
             return try await (feedingRecords, medicationRecords, pottyRecords)
         } catch let error as CKError {
             if error.code == .unknownItem {
-                print("⚠️ Some record types don't exist yet for dog \(dogID), returning empty arrays")
+                #if DEBUG
+            print("⚠️ Some record types don't exist yet for dog \(dogID), returning empty arrays")
+            #endif
                 return ([], [], [])
             } else {
                 throw error
@@ -1240,7 +1260,9 @@ class CloudKitService: ObservableObject {
             return feedingRecords
         } catch let error as CKError {
             if error.code == .unknownItem {
-                print("⚠️ FeedingRecord type doesn't exist yet for dog \(dogID)")
+                #if DEBUG
+            print("⚠️ FeedingRecord type doesn't exist yet for dog \(dogID)")
+            #endif
                 return []
             } else {
                 throw error
@@ -1279,7 +1301,9 @@ class CloudKitService: ObservableObject {
             return medicationRecords
         } catch let error as CKError {
             if error.code == .unknownItem {
-                print("⚠️ MedicationRecord type doesn't exist yet for dog \(dogID)")
+                #if DEBUG
+            print("⚠️ MedicationRecord type doesn't exist yet for dog \(dogID)")
+            #endif
                 return []
             } else {
                 throw error
@@ -1321,7 +1345,9 @@ class CloudKitService: ObservableObject {
             return pottyRecords
         } catch let error as CKError {
             if error.code == .unknownItem {
-                print("⚠️ PottyRecord type doesn't exist yet for dog \(dogID)")
+                #if DEBUG
+            print("⚠️ PottyRecord type doesn't exist yet for dog \(dogID)")
+            #endif
                 return []
             } else {
                 throw error
@@ -1355,7 +1381,9 @@ class CloudKitService: ObservableObject {
         record[DogChangeFields.modifiedBy] = currentUser.id
         
         try await publicDatabase.save(record)
+        #if DEBUG
         print("✅ Audit trail created for dog: \(dogID)")
+        #endif
     }
     
     func fetchDogChanges(for dogID: String) async throws -> [CloudKitDogChange] {
@@ -1375,11 +1403,15 @@ class CloudKitService: ObservableObject {
         // Check if schema setup has already been completed
         let schemaSetupKey = "cloudkit_schema_setup_completed"
         if UserDefaults.standard.bool(forKey: schemaSetupKey) {
+            #if DEBUG
             print("🔧 CloudKit schema already verified, skipping setup...")
+            #endif
             return
         }
         
+        #if DEBUG
         print("🔧 Setting up CloudKit schema...")
+        #endif
         
         // Create record types
         let recordTypes = [
@@ -1439,32 +1471,46 @@ class CloudKitService: ObservableObject {
                 }
                 
                 let savedRecord = try await publicDatabase.save(testRecord)
+                #if DEBUG
                 print("✅ Successfully created test \(recordType) record")
+                #endif
                 
                 // Clean up - delete the test record
                 try await publicDatabase.deleteRecord(withID: savedRecord.recordID)
+                #if DEBUG
                 print("✅ Successfully deleted test \(recordType) record")
+                #endif
                 
             } catch let error as CKError {
                 if error.code == .unknownItem {
-                    print("⚠️ \(recordType) record type doesn't exist yet - will be created when first used")
+                    #if DEBUG
+                print("⚠️ \(recordType) record type doesn't exist yet - will be created when first used")
+                #endif
                 } else {
-                    print("❌ Error testing \(recordType): \(error)")
+                    #if DEBUG
+            print("❌ Error testing \(recordType): \(error)")
+            #endif
                 }
             } catch {
-                print("❌ Unexpected error testing \(recordType): \(error)")
+                #if DEBUG
+            print("❌ Unexpected error testing \(recordType): \(error)")
+            #endif
             }
         }
         
         // Mark schema setup as completed
         UserDefaults.standard.set(true, forKey: schemaSetupKey)
+        #if DEBUG
         print("🔧 CloudKit schema setup completed and cached")
+        #endif
     }
     
     // MARK: - Schema Verification
     
     func testSchemaAccess() async {
+        #if DEBUG
         print("🧪 Testing CloudKit schema access...")
+        #endif
         
         // Test User record type
         do {
