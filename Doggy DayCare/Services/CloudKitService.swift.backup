@@ -603,27 +603,19 @@ class CloudKitService: ObservableObject {
             do {
                 let record = try matchResult.1.get()
                 records.append(record)
-                #if DEBUG
                 print("✅ Successfully processed record: \(record[DogFields.name] as? String ?? "Unknown")")
-                #endif
             } catch {
                 failedRecords.append((matchResult.0, error))
-                #if DEBUG
                 print("❌ Failed to fetch record \(matchResult.0.recordName): \(error)")
-                #endif
             }
         }
         
         if !failedRecords.isEmpty {
-            #if DEBUG
             print("⚠️ Failed to fetch \(failedRecords.count) records")
-            #endif
             // Could also implement retry logic here
         }
         
-        #if DEBUG
         print("🔍 Found \(records.count) total dog records in CloudKit")
-        #endif
         
         var dogs: [CloudKitDog] = []
         
@@ -632,9 +624,7 @@ class CloudKitService: ObservableObject {
         let totalBatches = (records.count + batchSize - 1) / batchSize
         var currentBatch = 0
         
-        #if DEBUG
         print("🔍 Processing \(records.count) dogs in \(totalBatches) batches...")
-        #endif
         
         for i in stride(from: 0, to: records.count, by: batchSize) {
             let batch = Array(records[i..<min(i + batchSize, records.count)])
@@ -644,24 +634,18 @@ class CloudKitService: ObservableObject {
             let progress = 0.1 + (Double(currentBatch) / Double(totalBatches)) * 0.8
             PerformanceMonitor.shared.updateProgress(progress)
             
-            #if DEBUG
             print("🔍 Processing batch \(currentBatch)/\(totalBatches) with \(batch.count) dogs...")
-            #endif
             
             // Process batch concurrently
             let batchDogs = await withTaskGroup(of: CloudKitDog?.self) { group in
                 for record in batch {
                     group.addTask {
-                        #if DEBUG
                         print("🔍 Processing dog record: \(record[DogFields.name] as? String ?? "Unknown")")
-                        #endif
                         var dog = CloudKitDog(from: record)
                         
                         // Skip deleted dogs
                         if dog.isDeleted {
-                            #if DEBUG
                             print("⏭️ Skipping deleted dog: \(dog.name)")
-                            #endif
                             return nil
                         }
                         
@@ -671,13 +655,9 @@ class CloudKitService: ObservableObject {
                             dog.feedingRecords = feeding
                             dog.medicationRecords = medication
                             dog.pottyRecords = potty
-                            #if DEBUG
                             print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty records for \(dog.name)")
-                            #endif
                         } catch {
-                            #if DEBUG
                             print("⚠️ Failed to load records for dog \(dog.name): \(error)")
-                            #endif
                             // Continue without records for now
                             dog.feedingRecords = []
                             dog.medicationRecords = []
@@ -711,25 +691,19 @@ class CloudKitService: ObservableObject {
         PerformanceMonitor.shared.completeOperation("fetchDogs")
         
         endPerformanceTimer("fetchDogs", startTime: startTime)
-        #if DEBUG
         print("✅ Fetched \(dogs.count) active dogs from CloudKit")
-        #endif
         return dogs
     }
     
     // MARK: - Background Operations (No Performance Monitoring)
     
     func fetchDogsForBackup() async throws -> [CloudKitDog] {
-        #if DEBUG
         print("🔍 Starting fetchDogsForBackup (background operation)...")
-        #endif
         
         // Check cache first
         let cachedDogs = getCachedDogs()
         if !cachedDogs.isEmpty {
-            #if DEBUG
             print("✅ Using cached dogs for backup (\(cachedDogs.count) dogs)")
-            #endif
             return cachedDogs
         }
         
@@ -740,9 +714,7 @@ class CloudKitService: ObservableObject {
         // Add sorting to get most recent first (requires CloudKit index on createdAt)
         query.sortDescriptors = [NSSortDescriptor(key: DogFields.createdAt, ascending: false)]
         
-        #if DEBUG
         print("🔍 Executing CloudKit query for backup: \(query)")
-        #endif
         let result = try await publicDatabase.records(matching: query)
         
         // Replace silent error handling with proper error logging
@@ -755,22 +727,16 @@ class CloudKitService: ObservableObject {
                 records.append(record)
             } catch {
                 failedRecords.append((matchResult.0, error))
-                #if DEBUG
                 print("❌ Failed to fetch record \(matchResult.0.recordName): \(error)")
-                #endif
             }
         }
         
         if !failedRecords.isEmpty {
-            #if DEBUG
             print("⚠️ Failed to fetch \(failedRecords.count) records")
-            #endif
             // Could also implement retry logic here
         }
         
-        #if DEBUG
         print("🔍 Found \(records.count) total dog records in CloudKit for backup")
-        #endif
         
         var dogs: [CloudKitDog] = []
         
@@ -786,16 +752,12 @@ class CloudKitService: ObservableObject {
             let batchDogs = await withTaskGroup(of: CloudKitDog?.self) { group in
                 for record in batch {
                     group.addTask {
-                        #if DEBUG
-            print("🔍 Processing dog record for backup: \(record[DogFields.name] as? String ?? "Unknown")")
-            #endif
+                        print("🔍 Processing dog record for backup: \(record[DogFields.name] as? String ?? "Unknown")")
                         var dog = CloudKitDog(from: record)
                         
                         // Skip deleted dogs
                         if dog.isDeleted {
-                            #if DEBUG
-                print("⏭️ Skipping deleted dog for backup: \(dog.name)")
-                #endif
+                            print("⏭️ Skipping deleted dog for backup: \(dog.name)")
                             return nil
                         }
                         
@@ -805,13 +767,9 @@ class CloudKitService: ObservableObject {
                             dog.feedingRecords = feeding
                             dog.medicationRecords = medication
                             dog.pottyRecords = potty
-                            #if DEBUG
-                print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty records for backup: \(dog.name)")
-                #endif
+                            print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty records for backup: \(dog.name)")
                         } catch {
-                            #if DEBUG
-                print("⚠️ Failed to load records for backup dog \(dog.name): \(error)")
-                #endif
+                            print("⚠️ Failed to load records for backup dog \(dog.name): \(error)")
                         }
                         
                         return dog
@@ -841,9 +799,7 @@ class CloudKitService: ObservableObject {
     }
     
     func fetchDogsIncremental(since lastSync: Date) async throws -> [CloudKitDog] {
-        #if DEBUG
         print("🔍 Starting incremental fetchDogs since \(lastSync)...")
-        #endif
         
         // Query only dogs modified since last sync
         let predicate = NSPredicate(format: "\(DogFields.updatedAt) > %@", lastSync as NSDate)
@@ -852,9 +808,7 @@ class CloudKitService: ObservableObject {
         // Add sorting to get most recent first
         query.sortDescriptors = [NSSortDescriptor(key: DogFields.updatedAt, ascending: false)]
         
-        #if DEBUG
         print("🔍 Executing incremental CloudKit query: \(query)")
-        #endif
         let result = try await publicDatabase.records(matching: query)
         
         // Replace silent error handling with proper error logging
@@ -867,22 +821,16 @@ class CloudKitService: ObservableObject {
                 records.append(record)
             } catch {
                 failedRecords.append((matchResult.0, error))
-                #if DEBUG
                 print("❌ Failed to fetch record \(matchResult.0.recordName): \(error)")
-                #endif
             }
         }
         
         if !failedRecords.isEmpty {
-            #if DEBUG
             print("⚠️ Failed to fetch \(failedRecords.count) records")
-            #endif
             // Could also implement retry logic here
         }
         
-        #if DEBUG
         print("🔍 Found \(records.count) changed dog records in CloudKit")
-        #endif
         
         var dogs: [CloudKitDog] = []
         
@@ -898,16 +846,12 @@ class CloudKitService: ObservableObject {
             let batchDogs = await withTaskGroup(of: CloudKitDog?.self) { group in
                 for record in batch {
                     group.addTask {
-                        #if DEBUG
-            print("🔍 Processing changed dog record: \(record[DogFields.name] as? String ?? "Unknown")")
-            #endif
+                        print("🔍 Processing changed dog record: \(record[DogFields.name] as? String ?? "Unknown")")
                         var dog = CloudKitDog(from: record)
                         
                         // Skip deleted dogs
                         if dog.isDeleted {
-                            #if DEBUG
                             print("⏭️ Skipping deleted dog: \(dog.name)")
-                            #endif
                             return nil
                         }
                         
@@ -917,13 +861,9 @@ class CloudKitService: ObservableObject {
                             dog.feedingRecords = feeding
                             dog.medicationRecords = medication
                             dog.pottyRecords = potty
-                            #if DEBUG
                             print("✅ Loaded \(feeding.count) feeding, \(medication.count) medication, \(potty.count) potty records for \(dog.name)")
-                            #endif
                         } catch {
-                            #if DEBUG
                             print("⚠️ Failed to load records for dog \(dog.name): \(error)")
-                            #endif
                         }
                         
                         return dog
@@ -945,19 +885,13 @@ class CloudKitService: ObservableObject {
         // Sort dogs by creation date locally
         dogs.sort { $0.createdAt > $1.createdAt }
         
-        #if DEBUG
         print("✅ Fetched \(dogs.count) changed dogs from CloudKit")
-        #endif
         return dogs
     }
     
     func updateDog(_ dog: CloudKitDog) async throws -> CloudKitDog {
-        #if DEBUG
         print("🔄 CloudKitService.updateDog called for: \(dog.name)")
-        #endif
-        #if DEBUG
         print("📅 CloudKit dog departure date: \(dog.departureDate?.description ?? "nil")")
-        #endif
         
         let predicate = NSPredicate(format: "\(DogFields.id) == %@", dog.id)
         let query = CKQuery(recordType: RecordTypes.dog, predicate: predicate)
@@ -966,15 +900,11 @@ class CloudKitService: ObservableObject {
         let records = result.matchResults.compactMap { try? $0.1.get() }
         
         guard let record = records.first else {
-            #if DEBUG
             print("❌ Dog record not found in CloudKit")
-            #endif
             throw CloudKitError.recordNotFound
         }
         
-        #if DEBUG
         print("📅 Original record departure date: \(record[DogFields.departureDate]?.description ?? "nil")")
-        #endif
         
         // Update fields
         record[DogFields.name] = dog.name
@@ -1030,21 +960,15 @@ class CloudKitService: ObservableObject {
         
         // Update audit fields - get current user from AuthenticationService
         guard let currentUser = AuthenticationService.shared.currentUser else {
-            #if DEBUG
             print("❌ No authenticated user found in AuthenticationService")
-            #endif
             throw CloudKitError.userNotAuthenticated
         }
         
-        #if DEBUG
         print("👤 Using authenticated user: \(currentUser.name) (ID: \(currentUser.id))")
-        #endif
         record[DogFields.modifiedBy] = currentUser.id
         record[DogFields.modificationCount] = (record[DogFields.modificationCount] as? Int64 ?? 0) + 1
         
-        #if DEBUG
         print("🔄 Saving record to CloudKit...")
-        #endif
         let saved = try await publicDatabase.save(record)
         
         print("✅ Record saved successfully")
@@ -1782,9 +1706,7 @@ class CloudKitService: ObservableObject {
         
         // Check if current user is the original owner
         guard let currentUser = AuthenticationService.shared.currentUser else {
-            #if DEBUG
             print("❌ No authenticated user found in AuthenticationService")
-            #endif
             throw CloudKitError.userNotAuthenticated
         }
         
@@ -1877,9 +1799,7 @@ class CloudKitService: ObservableObject {
         
         // Update audit fields if user is authenticated
         guard let currentUser = AuthenticationService.shared.currentUser else {
-            #if DEBUG
             print("❌ No authenticated user found in AuthenticationService")
-            #endif
             throw CloudKitError.userNotAuthenticated
         }
         
@@ -1929,9 +1849,7 @@ class CloudKitService: ObservableObject {
         
         // Update audit fields if user is authenticated
         guard let currentUser = AuthenticationService.shared.currentUser else {
-            #if DEBUG
             print("❌ No authenticated user found in AuthenticationService")
-            #endif
             throw CloudKitError.userNotAuthenticated
         }
         
@@ -1974,9 +1892,7 @@ class CloudKitService: ObservableObject {
         
         // Update audit fields if user is authenticated
         guard let currentUser = AuthenticationService.shared.currentUser else {
-            #if DEBUG
             print("❌ No authenticated user found in AuthenticationService")
-            #endif
             throw CloudKitError.userNotAuthenticated
         }
         
@@ -2014,9 +1930,7 @@ class CloudKitService: ObservableObject {
         
         // Update audit fields if user is authenticated
         guard let currentUser = AuthenticationService.shared.currentUser else {
-            #if DEBUG
             print("❌ No authenticated user found in AuthenticationService")
-            #endif
             throw CloudKitError.userNotAuthenticated
         }
         
@@ -2060,9 +1974,7 @@ class CloudKitService: ObservableObject {
         
         // Update audit fields if user is authenticated
         guard let currentUser = AuthenticationService.shared.currentUser else {
-            #if DEBUG
             print("❌ No authenticated user found in AuthenticationService")
-            #endif
             throw CloudKitError.userNotAuthenticated
         }
         
@@ -2297,22 +2209,16 @@ class CloudKitService: ObservableObject {
                 records.append(record)
             } catch {
                 failedRecords.append((matchResult.0, error))
-                #if DEBUG
                 print("❌ Failed to fetch record \(matchResult.0.recordName): \(error)")
-                #endif
             }
         }
         
         if !failedRecords.isEmpty {
-            #if DEBUG
             print("⚠️ Failed to fetch \(failedRecords.count) records")
-            #endif
             // Could also implement retry logic here
         }
         
-        #if DEBUG
         print("🔍 Found \(records.count) total dog records in CloudKit")
-        #endif
         
         var dogs: [CloudKitDog] = []
         
@@ -2355,22 +2261,16 @@ class CloudKitService: ObservableObject {
                 records.append(record)
             } catch {
                 failedRecords.append((matchResult.0, error))
-                #if DEBUG
                 print("❌ Failed to fetch record \(matchResult.0.recordName): \(error)")
-                #endif
             }
         }
         
         if !failedRecords.isEmpty {
-            #if DEBUG
             print("⚠️ Failed to fetch \(failedRecords.count) records")
-            #endif
             // Could also implement retry logic here
         }
         
-        #if DEBUG
         print("🔍 Found \(records.count) total dog records in CloudKit")
-        #endif
         
         var dogs: [CloudKitDog] = []
         
@@ -2616,9 +2516,7 @@ class CloudKitService: ObservableObject {
         query.sortDescriptors = [NSSortDescriptor(key: DogFields.updatedAt, ascending: false)]
         let result = try await publicDatabase.records(matching: query)
         let records = result.matchResults.compactMap { try? $0.1.get() }
-        #if DEBUG
         print("🔍 Found \(records.count) changed dog records in CloudKit")
-        #endif
         var dogs: [CloudKitDog] = []
         for record in records {
             let dog = CloudKitDog(from: record)
