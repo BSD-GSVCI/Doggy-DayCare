@@ -215,7 +215,9 @@ class CloudKitHistoryService: ObservableObject {
                     #endif
                 }
             } catch {
+                #if DEBUG
                 print("❌ Failed to update batch \(batchIndex + 1): \(error)")
+                #endif
             }
         }
     }
@@ -273,14 +275,18 @@ class CloudKitHistoryService: ObservableObject {
         }
         
         // No cache available, query CloudKit and cache the result
+        #if DEBUG
         print("[CloudKitHistoryService] No cache for \(startOfDay), querying CloudKit...")
+        #endif
         return await updateCacheForDate(startOfDay)
     }
     
     func updateCacheForDate(_ date: Date) async -> [DogHistoryRecord] {
         let startOfDay = Calendar.current.startOfDay(for: date)
         
+        #if DEBUG
         print("[CloudKitHistoryService] updateCacheForDate called for \(startOfDay)")
+        #endif
         
         // Load fresh data from CloudKit
         await loadHistoryRecords()
@@ -291,7 +297,9 @@ class CloudKitHistoryService: ObservableObject {
         
         // Update cache with fresh data
         historyCache[startOfDay] = records
+        #if DEBUG
         print("[CloudKitHistoryService] Updated cache for \(startOfDay): \(records.count) records, total cache entries: \(historyCache.count)")
+        #endif
         
         return records
     }
@@ -300,7 +308,9 @@ class CloudKitHistoryService: ObservableObject {
         let startOfDay = Calendar.current.startOfDay(for: date)
         let lastSync = lastSyncTimes[startOfDay] ?? Date.distantPast
         
+        #if DEBUG
         print("[CloudKitHistoryService] Incremental update for \(startOfDay), last sync: \(lastSync)")
+        #endif
         
         // Query only records modified since last sync
         let predicate = NSPredicate(format: "date >= %@ AND date < %@ AND updatedAt > %@", 
@@ -315,7 +325,9 @@ class CloudKitHistoryService: ObservableObject {
             let changedRecords = result.matchResults.compactMap { try? $0.1.get() }
             
             if !changedRecords.isEmpty {
+                #if DEBUG
                 print("[CloudKitHistoryService] Found \(changedRecords.count) changed records for \(startOfDay)")
+                #endif
                 
                 // Update cache with only changed records
                 await updateCacheWithChanges(for: startOfDay, changedRecords: changedRecords)
@@ -328,10 +340,14 @@ class CloudKitHistoryService: ObservableObject {
                 // Update last sync time
                 lastSyncTimes[startOfDay] = Date()
             } else {
+                #if DEBUG
                 print("[CloudKitHistoryService] No changes found for \(startOfDay)")
+                #endif
             }
         } catch {
+            #if DEBUG
             print("[CloudKitHistoryService] Incremental update failed: \(error)")
+            #endif
         }
     }
     
@@ -349,11 +365,15 @@ class CloudKitHistoryService: ObservableObject {
             if let index = currentRecords.firstIndex(where: { $0.id == newRecord.id }) {
                 // Update existing record
                 currentRecords[index] = newRecord
+                #if DEBUG
                 print("[CloudKitHistoryService] Updated record: \(newRecord.dogName)")
+                #endif
             } else {
                 // Add new record
                 currentRecords.append(newRecord)
+                #if DEBUG
                 print("[CloudKitHistoryService] Added new record: \(newRecord.dogName)")
+                #endif
             }
         }
         
@@ -366,13 +386,17 @@ class CloudKitHistoryService: ObservableObject {
         let updatedRecords = allOtherRecords + currentRecords
         self.historyRecords = updatedRecords.sorted { $0.date > $1.date }
         
+        #if DEBUG
         print("[CloudKitHistoryService] Cache updated for \(startOfDay): \(currentRecords.count) records")
+        #endif
     }
     
     private func silentUpdateCacheForDate(_ date: Date) async {
         let startOfDay = Calendar.current.startOfDay(for: date)
         
+        #if DEBUG
         print("[CloudKitHistoryService] Silent background update for \(startOfDay)")
+        #endif
         
         // Load fresh data from CloudKit without affecting loading state
         await loadHistoryRecordsSilently()
@@ -383,7 +407,9 @@ class CloudKitHistoryService: ObservableObject {
         
         // Update cache with fresh data
         historyCache[startOfDay] = records
+        #if DEBUG
         print("[CloudKitHistoryService] Silent cache update for \(startOfDay): \(records.count) records")
+        #endif
     }
     
     private func loadHistoryRecordsSilently() async {
@@ -415,7 +441,9 @@ class CloudKitHistoryService: ObservableObject {
                         case .success(let record):
                             records.append(record)
                         case .failure(let error):
+                            #if DEBUG
                             print("❌ Error loading record: \(error)")
+                            #endif
                         }
                     }
                     
@@ -434,7 +462,9 @@ class CloudKitHistoryService: ObservableObject {
                 allRecords.append(contentsOf: result.0)
                 continuationToken = result.1
                 
+                #if DEBUG
                 print("[CloudKitHistoryService] Silent load: \(result.0.count) records, total so far: \(allRecords.count)")
+                #endif
                 
             } while continuationToken != nil
             
@@ -450,12 +480,16 @@ class CloudKitHistoryService: ObservableObject {
                 // Simply update the records without clearing cache
                 // The cache is organized by date, so changes to one date shouldn't affect others
                 self.historyRecords = loadedRecords
+                #if DEBUG
                 print("[CloudKitHistoryService] Silent load completed: \(loadedRecords.count) records")
+                #endif
             }
         } catch {
             await MainActor.run {
                 self.errorMessage = "Failed to load history: \(error.localizedDescription)"
+                #if DEBUG
                 print("[CloudKitHistoryService] Silent load failed: \(error)")
+                #endif
             }
         }
     }
@@ -464,7 +498,9 @@ class CloudKitHistoryService: ObservableObject {
         let startOfDay = Calendar.current.startOfDay(for: date)
         
         // Force update cache for this date
+        #if DEBUG
         print("[CloudKitHistoryService] Force refreshing cache for \(startOfDay)")
+        #endif
         
         // Query CloudKit and update cache
         return await updateCacheForDate(startOfDay)
@@ -478,7 +514,9 @@ class CloudKitHistoryService: ObservableObject {
         
         let dates = Set(historyRecords.map { Calendar.current.startOfDay(for: $0.date) })
         let sortedDates = Array(dates).sorted(by: >)
+        #if DEBUG
         print("[CloudKitHistoryService] Available dates: \(sortedDates.count) dates - \(sortedDates.prefix(10).map { $0.formatted(date: .abbreviated, time: .omitted) })")
+        #endif
         return sortedDates
     }
     
@@ -522,7 +560,9 @@ class CloudKitHistoryService: ObservableObject {
     // MARK: - Cache Management
     
     func preloadHistoryData() async {
+        #if DEBUG
         print("[CloudKitHistoryService] Preloading history data...")
+        #endif
         
         // Load fresh data from CloudKit
         await loadHistoryRecords()
@@ -538,28 +578,38 @@ class CloudKitHistoryService: ObservableObject {
             }.sorted { $0.dogName.localizedCaseInsensitiveCompare($1.dogName) == .orderedAscending }
             
             historyCache[startOfDay] = records
+            #if DEBUG
             print("[CloudKitHistoryService] Pre-cached \(records.count) records for \(startOfDay)")
+            #endif
         }
         
+        #if DEBUG
         print("[CloudKitHistoryService] Preloaded data for \(dates.count) dates")
+        #endif
     }
     
     func clearCache() {
         historyCache.removeAll()
+        #if DEBUG
         print("[CloudKitHistoryService] Cache manually cleared")
+        #endif
     }
     
     func clearCacheForDate(_ date: Date) {
         let startOfDay = Calendar.current.startOfDay(for: date)
         historyCache.removeValue(forKey: startOfDay)
+        #if DEBUG
         print("[CloudKitHistoryService] Cache cleared for \(startOfDay)")
+        #endif
     }
     
     func debugCacheState() {
+        #if DEBUG
         print("[CloudKitHistoryService] Cache state: \(historyCache.count) entries")
         for (date, records) in historyCache {
             print("  - \(date): \(records.count) records")
         }
+        #endif
     }
     
     // MARK: - CloudKit Operations
@@ -595,7 +645,9 @@ class CloudKitHistoryService: ObservableObject {
                         case .success(let record):
                             records.append(record)
                         case .failure(let error):
+                            #if DEBUG
                             print("❌ Error loading record: \(error)")
+                            #endif
                         }
                     }
                     
@@ -614,7 +666,9 @@ class CloudKitHistoryService: ObservableObject {
                 allRecords.append(contentsOf: result.0)
                 continuationToken = result.1
                 
+                #if DEBUG
                 print("[CloudKitHistoryService] Loaded batch of \(result.0.count) records, total so far: \(allRecords.count)")
+                #endif
                 
             } while continuationToken != nil
             
@@ -631,13 +685,17 @@ class CloudKitHistoryService: ObservableObject {
                 // The cache is organized by date, so changes to one date shouldn't affect others
                 self.historyRecords = loadedRecords
                 self.isLoading = false
+                #if DEBUG
                 print("[CloudKitHistoryService] Loaded \(loadedRecords.count) history records from CloudKit")
+                #endif
             }
         } catch {
             await MainActor.run {
                 self.errorMessage = "Failed to load history: \(error.localizedDescription)"
                 self.isLoading = false
+                #if DEBUG
                 print("[CloudKitHistoryService] Failed to load history records: \(error)")
+                #endif
             }
         }
     }
@@ -657,9 +715,13 @@ class CloudKitHistoryService: ObservableObject {
                 try await publicDatabase.deleteRecord(withID: record.recordID)
             }
             
+            #if DEBUG
             print("🗑️ Removed \(records.count) history records for \(date)")
+            #endif
         } catch {
+            #if DEBUG
             print("❌ Failed to remove history records: \(error)")
+            #endif
         }
     }
     
@@ -679,12 +741,16 @@ class CloudKitHistoryService: ObservableObject {
                 try await publicDatabase.deleteRecord(withID: record.recordID)
             }
             
+            #if DEBUG
             print("🧹 Cleaned up \(records.count) old history records")
+            #endif
             
             // Reload local cache
             await loadHistoryRecords()
         } catch {
+            #if DEBUG
             print("❌ Failed to cleanup old records: \(error)")
+            #endif
         }
     }
     
@@ -693,26 +759,34 @@ class CloudKitHistoryService: ObservableObject {
     func debugHistoryData() async {
         await loadHistoryRecords()
         
+        #if DEBUG
         print("=== HISTORY DEBUG INFO ===")
         print("Total records loaded: \(historyRecords.count)")
+        #endif
         
         let dates = Set(historyRecords.map { Calendar.current.startOfDay(for: $0.date) })
         let sortedDates = Array(dates).sorted(by: >)
         
+        #if DEBUG
         print("Available dates: \(sortedDates.count)")
         for (index, date) in sortedDates.prefix(10).enumerated() {
             let recordsForDate = historyRecords.filter { Calendar.current.isDate($0.date, inSameDayAs: date) }
             print("  \(index + 1). \(date.formatted(date: .abbreviated, time: .omitted)): \(recordsForDate.count) dogs")
         }
+        #endif
         
         if let mostRecentDate = sortedDates.first {
             let recentRecords = historyRecords.filter { Calendar.current.isDate($0.date, inSameDayAs: mostRecentDate) }
+            #if DEBUG
             print("Most recent date (\(mostRecentDate.formatted(date: .abbreviated, time: .omitted))) has \(recentRecords.count) dogs:")
             for record in recentRecords.prefix(5) {
                 print("  - \(record.dogName) (Present: \(record.isCurrentlyPresent))")
             }
+            #endif
         }
+        #if DEBUG
         print("=========================")
+        #endif
     }
     
     func exportHistoryRecords() async -> String {
