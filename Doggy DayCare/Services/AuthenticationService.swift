@@ -197,9 +197,13 @@ class AuthenticationService: ObservableObject {
             }
             
             // Check if staff member is scheduled to work today
+            #if DEBUG
             print("🔍 AUTH DEBUG: Checking if \(cloudKitUser.name) can work today...")
+            #endif
             let canWork = cloudKitUser.canWorkToday
+            #if DEBUG
             print("🔍 AUTH DEBUG: canWorkToday result: \(canWork)")
+            #endif
             
             if !canWork {
                 // Determine the specific reason for access denial
@@ -210,20 +214,28 @@ class AuthenticationService: ObservableObject {
                 if let days = cloudKitUser.scheduledDays, !days.isEmpty {
                     if days.contains(todayInt64) {
                         // User is scheduled for today but outside working hours
+                        #if DEBUG
                         print("❌ AUTH ERROR: Staff member \(cloudKitUser.name) is outside working hours")
+                        #endif
                         throw AuthError.outsideWorkingHours
                     } else {
                         // User is not scheduled for today
+                        #if DEBUG
                         print("❌ AUTH ERROR: Staff member \(cloudKitUser.name) is not scheduled to work today")
+                        #endif
                         throw AuthError.notScheduledToday
                     }
                 } else {
                     // No schedule set
+                    #if DEBUG
                     print("❌ AUTH ERROR: Staff member \(cloudKitUser.name) has no schedule set")
+                    #endif
                     throw AuthError.noScheduleSet
                 }
             } else {
+                #if DEBUG
                 print("✅ AUTH DEBUG: \(cloudKitUser.name) is allowed to work")
+                #endif
             }
             
             // Update last login time (only if we have write permissions)
@@ -231,24 +243,36 @@ class AuthenticationService: ObservableObject {
                 var updatedUser = cloudKitUser
                 updatedUser.lastLogin = Date()
                 _ = try await cloudKitService.updateUser(updatedUser)
+                #if DEBUG
                 print("✅ Updated last login time for user: \(updatedUser.name)")
+                #endif
             } catch {
                 // If we can't update last login (e.g., no write permissions), 
                 // just log it but don't fail the login
+                #if DEBUG
                 print("⚠️ Could not update last login time (this is normal for non-owner users): \(error)")
+                #endif
             }
             
             // Set current user
             currentUser = cloudKitUser.toUser()
+            #if DEBUG
             print("Successfully signed in user: \(cloudKitUser.name)")
+            #endif
             
             // Update CloudKit user ID for cross-device compatibility
             do {
+                #if DEBUG
                 print("🔄 Attempting to update CloudKit user ID for staff login...")
+                #endif
                 try await cloudKitService.updateCurrentUserCloudKitID()
+                #if DEBUG
                 print("✅ Successfully updated CloudKit user ID for staff")
+                #endif
             } catch {
+                #if DEBUG
                 print("⚠️ Failed to update CloudKit user ID for staff: \(error)")
+                #endif
             }
             
             return

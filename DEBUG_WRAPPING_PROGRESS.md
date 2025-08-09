@@ -1,7 +1,10 @@
 # Debug Statement Wrapping Progress
 
-## Last Updated: Commit 3064db1
+## Last Updated: Session 2 - In Progress
 **Purpose:** Track progress of wrapping debug print statements in `#if DEBUG` directives to improve release build performance.
+
+**Previous Commit:** 3064db1
+**Session 2 Progress:** Continued wrapping debug statements
 
 ## ✅ COMPLETED FILES (All debug statements wrapped)
 
@@ -16,6 +19,10 @@
 - **Views/DatabaseView.swift** - 9/9 wrapped ✅
 - **Views/HistoryView.swift** - 2/2 wrapped ✅
 - **Views/ImportDatabaseView.swift** - 1/1 wrapped ✅
+- **MedicationsListView.swift** - 5/5 wrapped ✅ (Session 2)
+- **Views/FutureBookingFormView.swift** - 6/6 wrapped ✅ (Session 2)
+- **Views/MedicationManagementView.swift** - 2/2 wrapped ✅ (Session 2)
+- **Doggy_DayCareApp.swift** - 18/18 wrapped ✅ (Session 2)
 
 ### Models
 - **Dog.swift** - 1/1 wrapped ✅
@@ -26,11 +33,13 @@
 - **Services/AdvancedCache.swift** - 7/7 wrapped ✅
 - **Services/PersistentDogService.swift** - 9/9 wrapped ✅
 - **Services/VisitService.swift** - 9/9 wrapped ✅
+- **Services/BackupService.swift** - 5/5 wrapped ✅ (Session 2)
+- **Services/PerformanceMonitor.swift** - 5/5 wrapped ✅ (Session 2)
 
 ## 🔄 PARTIALLY COMPLETED FILES
 
 ### Services
-- **Services/AuthenticationService.swift** - 19/51 wrapped (32 remaining) ⚠️
+- **Services/AuthenticationService.swift** - 31/51 wrapped (20 remaining) ⚠️
 
 ## 📝 FILES REQUIRING ATTENTION (Not yet processed)
 
