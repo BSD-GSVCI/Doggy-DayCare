@@ -246,7 +246,9 @@ class AutomationService: ObservableObject {
             }
             
             await cloudKitHistoryService.recordDailySnapshot(dogs: visibleDogs)
+            #if DEBUG
             print("✅ Daily snapshot recorded for \(visibleDogs.count) visible dogs")
+            #endif
             
             for dog in allDogs {
                 var updatedDog = dog
@@ -254,7 +256,9 @@ class AutomationService: ObservableObject {
                 
                 // Check if this is a future booking that should transition to main page
                 if !dog.isArrivalTimeSet && Calendar.current.isDate(dog.arrivalDate, inSameDayAs: today) {
+                    #if DEBUG
                     print("Transitioning future booking '\(dog.name)' to main page (arrival date: \(dog.arrivalDate.formatted()))")
+                    #endif
                     // Keep the arrival date but mark that arrival time needs to be set
                     // The dog will now appear in the main page with a red background
                     needsUpdate = true
@@ -264,14 +268,20 @@ class AutomationService: ObservableObject {
                     if let boardingEndDate = dog.boardingEndDate {
                         // Note: Boarding dogs are now handled through shouldBeTreatedAsDaycare property
                         // They remain boarding dogs but are displayed as daycare when their end date arrives
+                        #if DEBUG
                         print("📅 Boarding dog '\(dog.name)' (end date: \(boardingEndDate.formatted()), today: \(today.formatted()))")
+                        #endif
                     } else {
+                        #if DEBUG
                         print("⚠️ Boarding dog '\(dog.name)' (no end date set)")
+                        #endif
                     }
                 } else if dog.shouldBeTreatedAsDaycare && dog.isCurrentlyPresent {
                     // Only clear departure time for daycare dogs that are currently present
                     if dog.departureDate != nil {
+                        #if DEBUG
                         print("🔄 Clearing departure time for daycare dog '\(dog.name)'")
+                        #endif
                         updatedDog.currentVisit?.departureDate = nil
                         updatedDog.currentVisit?.updatedAt = Date()
                         needsUpdate = true
@@ -288,9 +298,13 @@ class AutomationService: ObservableObject {
                 }
             }
             
+            #if DEBUG
             print("Midnight transition completed successfully")
+            #endif
         } catch {
+            #if DEBUG
             print("Error handling midnight transition: \(error.localizedDescription)")
+            #endif
         }
     }
     
@@ -318,9 +332,13 @@ class AutomationService: ObservableObject {
                 
                 do {
                     try BGTaskScheduler.shared.submit(backupRequest)
+                    #if DEBUG
                     print("✅ Backup background task scheduled for \(nextBackupTime)")
+                    #endif
                 } catch {
+                    #if DEBUG
                     print("❌ Failed to schedule backup background task: \(error)")
+                    #endif
                 }
             }
         }
@@ -337,9 +355,13 @@ class AutomationService: ObservableObject {
             
             do {
                 try BGTaskScheduler.shared.submit(midnightRequest)
+                #if DEBUG
                 print("✅ Midnight background task scheduled for \(nextMidnight)")
+                #endif
             } catch {
+                #if DEBUG
                 print("❌ Failed to schedule midnight background task: \(error)")
+                #endif
             }
         }
     }
@@ -384,7 +406,9 @@ class AutomationService: ObservableObject {
     }
     
     private func setupBackupTimers() {
+        #if DEBUG
         print("🕐 Setting up backup timers...")
+        #endif
         
         // Instead of creating multiple timers, use a single timer that checks the time
         backupTimer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
@@ -393,7 +417,9 @@ class AutomationService: ObservableObject {
             let hour = calendar.component(.hour, from: now)
             let minute = calendar.component(.minute, from: now)
             
+            #if DEBUG
             print("🕐 Current time: \(hour):\(minute)")
+            #endif
             
             // Check if current time matches any backup time (with a 1-minute window)
             let shouldBackup = (hour == 12 && minute == 0) ||  // 12 PM
@@ -401,14 +427,18 @@ class AutomationService: ObservableObject {
                              (hour == 23 && minute == 59)      // 11:59 PM
             
             if shouldBackup {
+                #if DEBUG
                 print("🔄 Backup time reached! Triggering automated backup...")
+                #endif
                 Task {
                     await self?.performAutomatedBackup()
                 }
             }
         }
         RunLoop.main.add(backupTimer!, forMode: .common)
+        #if DEBUG
         print("✅ Backup timers set up successfully")
+        #endif
     }
     
     private func setupMidnightTransition() {
@@ -429,12 +459,16 @@ class AutomationService: ObservableObject {
     // MARK: - Background App Refresh Support
     
     func applicationDidEnterBackground() {
+        #if DEBUG
         print("📱 App entered background - scheduling background tasks")
+        #endif
         scheduleBackgroundTasks()
     }
     
     func applicationWillEnterForeground() {
+        #if DEBUG
         print("📱 App entering foreground")
+        #endif
         // Background tasks will continue to work, but we can also use foreground timers
     }
     
@@ -463,7 +497,9 @@ class AutomationService: ObservableObject {
                 try await UNUserNotificationCenter.current().add(request)
             }
         } catch {
+            #if DEBUG
             print("Error checking daycare departures: \(error.localizedDescription)")
+            #endif
         }
     }
     
@@ -494,14 +530,18 @@ class AutomationService: ObservableObject {
                 try await UNUserNotificationCenter.current().add(request)
             }
         } catch {
+            #if DEBUG
             print("Error checking vaccination expiries: \(error.localizedDescription)")
+            #endif
         }
     }
     
     // MARK: - History Management
     
     func recordDailySnapshot() async {
+        #if DEBUG
         print("📅 Manually recording daily snapshot...")
+        #endif
         let dataManager = DataManager.shared
         
         // Get only visible dogs (same logic as ContentView)
@@ -516,12 +556,18 @@ class AutomationService: ObservableObject {
         }
         
         await cloudKitHistoryService.recordDailySnapshot(dogs: visibleDogs)
+        #if DEBUG
         print("✅ Daily snapshot recorded for \(visibleDogs.count) visible dogs")
+        #endif
     }
     
     func cleanupOldHistoryRecords() async {
+        #if DEBUG
         print("🧹 Cleaning up old history records...")
+        #endif
         await cloudKitHistoryService.cleanupOldRecords()
+        #if DEBUG
         print("✅ History cleanup completed")
+        #endif
     }
 } 
