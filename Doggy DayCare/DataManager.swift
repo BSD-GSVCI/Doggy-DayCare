@@ -757,32 +757,29 @@ class DataManager: ObservableObject {
         // Log the permanent delete action
         await logDogActivity(action: "PERMANENTLY_DELETE_DOG", dog: dog, extra: "Permanently deleting dog from database")
         
-        // Update persistent dog cache to remove this dog
-        await incrementallyUpdatePersistentDogCache(remove: dog.id)
-        
-        // Only remove from allDogs array (database view), NOT from main dogs list
-        await MainActor.run {
-            self.allDogs.removeAll { $0.id == dog.id }
-            
-            #if DEBUG
-            print("✅ Removed dog from database view and cache")
-            #endif
-        }
-        
-        // Permanently delete from CloudKit
+        // Permanently delete from CloudKit FIRST
         do {
-            // TODO: Replace with proper service call for PersistentDog
             try await persistentDogService.deletePersistentDog(dog.persistentDog)
             print("✅ Dog permanently deleted from CloudKit")
+            
+            // Only update cache and UI after successful CloudKit deletion
+            await incrementallyUpdatePersistentDogCache(remove: dog.id)
+            
+            // Remove from allDogs array (database view), NOT from main dogs list
+            await MainActor.run {
+                self.allDogs.removeAll { $0.id == dog.id }
+                
+                #if DEBUG
+                print("✅ Removed dog from database view and cache after successful CloudKit deletion")
+                #endif
+            }
         } catch {
             print("❌ Failed to permanently delete dog: \(error)")
             errorMessage = "Failed to permanently delete dog: \(error.localizedDescription)"
             
-            // Restore to database view if CloudKit update failed
-            await MainActor.run {
-                self.allDogs.append(dog)
-                print("🔄 Restored dog to database view due to CloudKit failure")
-            }
+            #if DEBUG
+            print("🔄 Dog was not removed from cache or UI due to CloudKit failure")
+            #endif
         }
         
         isLoading = false

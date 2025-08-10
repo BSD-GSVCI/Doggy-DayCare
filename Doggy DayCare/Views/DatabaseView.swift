@@ -240,14 +240,17 @@ extension DatabaseView {
         isLoading = true
         errorMessage = nil
         
-        await dataManager.deleteDog(dog)
+        await dataManager.permanentlyDeleteDog(dog)
         
         await MainActor.run {
-            // Remove from local array
-            self.allDogs.removeAll { $0.id == dog.id }
+            // DataManager already handles cache and allDogs array removal
+            // We just need to handle the error message if any
+            if let errorMsg = dataManager.errorMessage {
+                self.errorMessage = errorMsg
+            }
             self.isLoading = false
             #if DEBUG
-            print("✅ Permanently deleted dog: \(dog.name)")
+            print("✅ Permanent delete operation completed for: \(dog.name)")
             #endif
         }
     }

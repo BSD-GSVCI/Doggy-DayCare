@@ -5,7 +5,6 @@ struct DogRow: View {
     @Binding var selectedDogForOverlay: DogWithVisit?
     @EnvironmentObject var dataManager: DataManager
     @State private var showingDetail = false
-    @State private var showingDeleteAlert = false
     @State private var showingUndoAlert = false
     @State private var showingEditDeparture = false
     @State private var showingSetArrivalTime = false
@@ -250,16 +249,6 @@ struct DogRow: View {
                     }
                 }
             }
-        }
-        .alert("Delete Dog", isPresented: $showingDeleteAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                Task {
-                    await dataManager.deleteDog(dog)
-                }
-            }
-        } message: {
-            Text("Are you sure you want to delete \(dog.name)? This action cannot be undone.")
         }
     }
     
