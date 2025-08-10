@@ -62,14 +62,17 @@ class AutomationService: ObservableObject {
         
         do {
             #if DEBUG
-            print("📥 Fetching dogs from CloudKit...")
+            print("📥 Fetching dogs using new architecture...")
             #endif
-            let cloudKitService = CloudKitService.shared
-            // Use a separate fetch method that doesn't affect the UI sync status
-            let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
-            let allDogs = allCloudKitDogs.map { $0.toDogWithVisit() }
+            let dataManager = DataManager.shared
+            
+            // Fetch all persistent dogs and current visits using new architecture
+            await dataManager.fetchAllPersistentDogs()
+            await dataManager.fetchDogs() // Gets current visits
+            
+            let allDogs = dataManager.allDogs // All persistent dogs converted to DogWithVisit
             #if DEBUG
-            print("📊 Found \(allDogs.count) total dogs in CloudKit")
+            print("📊 Found \(allDogs.count) total dogs using new architecture")
             #endif
             
             // Filter to only include visible dogs (same logic as ContentView)
@@ -220,9 +223,12 @@ class AutomationService: ObservableObject {
     
     func handleMidnightTransition() async {
         do {
-            let cloudKitService = CloudKitService.shared
-            let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
-            let allDogs = allCloudKitDogs.map { $0.toDogWithVisit() }
+            let dataManager = DataManager.shared
+            
+            // Fetch using new architecture
+            await dataManager.fetchAllPersistentDogs()
+            await dataManager.fetchDogs()
+            let allDogs = dataManager.allDogs
             
             let today = Date()
             #if DEBUG
@@ -264,36 +270,33 @@ class AutomationService: ObservableObject {
                     needsUpdate = true
                 }
                 
+                // Boarding dogs with end dates are automatically handled by shouldBeTreatedAsDaycare computed property
+                // They remain boarding dogs but are displayed as daycare when their end date arrives
+                // No manual intervention needed - checked out dogs should stay checked out
                 if dog.isBoarding {
                     if let boardingEndDate = dog.boardingEndDate {
-                        // Note: Boarding dogs are now handled through shouldBeTreatedAsDaycare property
-                        // They remain boarding dogs but are displayed as daycare when their end date arrives
                         #if DEBUG
                         print("📅 Boarding dog '\(dog.name)' (end date: \(boardingEndDate.formatted()), today: \(today.formatted()))")
+                        print("    shouldBeTreatedAsDaycare: \(dog.shouldBeTreatedAsDaycare)")
+                        if dog.departureDate != nil {
+                            print("    Already checked out - will be removed from main page")
+                        }
                         #endif
                     } else {
                         #if DEBUG
                         print("⚠️ Boarding dog '\(dog.name)' (no end date set)")
                         #endif
                     }
-                } else if dog.shouldBeTreatedAsDaycare && dog.isCurrentlyPresent {
-                    // Only clear departure time for daycare dogs that are currently present
-                    if dog.departureDate != nil {
-                        #if DEBUG
-                        print("🔄 Clearing departure time for daycare dog '\(dog.name)'")
-                        #endif
-                        updatedDog.currentVisit?.departureDate = nil
-                        updatedDog.currentVisit?.updatedAt = Date()
-                        needsUpdate = true
-                    }
                 }
                 
                 if needsUpdate {
                     // Log automated updates
                     await DataManager.shared.logDogActivity(action: "AUTOMATED_UPDATE", dog: updatedDog, extra: "Automated midnight transition update")
-                    // Update via DataManager instead of direct CloudKit call
+                    // Update via DataManager to maintain cache consistency
                     if let visit = updatedDog.currentVisit {
-                        try await VisitService.shared.updateVisit(visit)
+                        try await dataManager.visitService.updateVisit(visit)
+                        // Update the visit cache
+                        await dataManager.incrementallyUpdateVisitCache(update: visit)
                     }
                 }
             }
@@ -476,9 +479,12 @@ class AutomationService: ObservableObject {
     
     private func checkDaycareDepartures() async {
         do {
-            let cloudKitService = CloudKitService.shared
-            let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
-            let allDogs = allCloudKitDogs.map { $0.toDogWithVisit() }
+            let dataManager = DataManager.shared
+            
+            // Use new architecture for fetching
+            await dataManager.fetchAllPersistentDogs()
+            await dataManager.fetchDogs()
+            let allDogs = dataManager.allDogs
             let daycareDogs = allDogs.filter { $0.shouldBeTreatedAsDaycare && $0.isCurrentlyPresent }
             
             if !daycareDogs.isEmpty {
@@ -505,9 +511,12 @@ class AutomationService: ObservableObject {
     
     private func checkVaccinationExpiries() async {
         do {
-            let cloudKitService = CloudKitService.shared
-            let allCloudKitDogs = try await cloudKitService.fetchDogsForBackup()
-            let allDogs = allCloudKitDogs.map { $0.toDogWithVisit() }
+            let dataManager = DataManager.shared
+            
+            // Use new architecture for fetching
+            await dataManager.fetchAllPersistentDogs()
+            await dataManager.fetchDogs()
+            let allDogs = dataManager.allDogs
             let expiredDogs = allDogs.filter { dog in
                 let today = Calendar.current.startOfDay(for: Date())
                 return dog.vaccinations.contains { vax in

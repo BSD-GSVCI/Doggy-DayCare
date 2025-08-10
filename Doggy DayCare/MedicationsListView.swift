@@ -167,17 +167,7 @@ struct DogMedicationRow: View {
     
     private func updateMedicationRecordNotes(_ record: MedicationRecord, newNote: String?) {
         Task {
-            if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
-                var updatedDog = dataManager.dogs[dogIndex]
-                if updatedDog.currentVisit != nil {
-                    // Find and update the medication record
-                    if let recordIndex = updatedDog.currentVisit!.medicationRecords.firstIndex(where: { $0.id == record.id }) {
-                        updatedDog.currentVisit!.medicationRecords[recordIndex].notes = newNote
-                        updatedDog.currentVisit!.updatedAt = Date()
-                        await dataManager.updateDog(updatedDog)
-                    }
-                }
-            }
+            await dataManager.updateMedicationRecordNotes(record, newNotes: newNote, in: dog)
         }
     }
     

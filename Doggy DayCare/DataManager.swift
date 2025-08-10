@@ -19,8 +19,6 @@ class DataManager: ObservableObject {
     private var lastSyncTime: Date = Date.distantPast
     private var lastAllDogsSyncTime: Date = Date.distantPast
     
-    // Feature flag for persistent dog system
-    private var usePersistentDogs = true // Set to true to use new system
     
     private init() {
         #if DEBUG
@@ -53,11 +51,7 @@ class DataManager: ObservableObject {
         print("🔍 DataManager: Starting fetchDogs...")
         #endif
         
-        if usePersistentDogs {
-            await fetchDogsWithPersistentSystem(shouldShowLoading: shouldShowLoading)
-        } else {
-            await fetchDogsWithLegacySystem(shouldShowLoading: shouldShowLoading)
-        }
+        await fetchDogsWithPersistentSystem(shouldShowLoading: shouldShowLoading)
     }
     
     private func fetchDogsWithPersistentSystem(shouldShowLoading: Bool) async {
@@ -168,73 +162,6 @@ class DataManager: ObservableObject {
         }
     }
     
-    private func fetchDogsWithLegacySystem(shouldShowLoading: Bool) async {
-        do {
-            let cloudKitDogs = try await cloudKitService.fetchDogs()
-            #if DEBUG
-            print("🔍 DataManager: Got \(cloudKitDogs.count) CloudKit dogs")
-            #endif
-            
-            let localDogs = cloudKitDogs.map { $0.toDogWithVisit() }
-            #if DEBUG
-            print("🔍 DataManager: Converted to \(localDogs.count) local dogs")
-            #endif
-            
-            #if DEBUG
-            // Debug: Print each dog's details
-            for dog in localDogs {
-                print("🐕 Dog: \(dog.name), Owner: \(dog.ownerName ?? "none"), Deleted: \(dog.isDeleted), Present: \(dog.isCurrentlyPresent), Arrival: \(dog.arrivalDate), Departure: \(dog.departureDate?.description ?? "nil")")
-            }
-            #endif
-            
-            await MainActor.run {
-                let previousCount = self.dogs.count
-                let previousDogIds = Set(self.dogs.map { $0.id })
-                
-                self.dogs = localDogs
-                
-                // Validation checks
-                if previousCount > 0 {
-                    let newDogIds = Set(localDogs.map { $0.id })
-                    let missingDogs = previousDogIds.subtracting(newDogIds)
-                    
-                    #if DEBUG
-                    if missingDogs.count > 0 {
-                        print("⚠️ WARNING: \(missingDogs.count) dogs disappeared after fetch")
-                        // Could implement recovery logic here
-                    }
-                    
-                    if localDogs.count < Int(Double(previousCount) * 0.5) {
-                        print("⚠️ CRITICAL: Dog count dropped from \(previousCount) to \(localDogs.count)")
-                        // Consider keeping previous data or alerting user
-                    }
-                    #endif
-                }
-                
-                if shouldShowLoading {
-                    self.isLoading = false
-                }
-                #if DEBUG
-                print("✅ DataManager: Set \(localDogs.count) dogs in local array")
-                #endif
-                
-                // Update last sync time
-                self.lastSyncTime = Date()
-                
-                // Record daily snapshot for history
-                Task {
-                    await self.recordDailySnapshotIfNeeded()
-                }
-            }
-        } catch {
-            await MainActor.run {
-                self.errorMessage = "Failed to fetch dogs: \(error.localizedDescription)"
-                if shouldShowLoading {
-                    self.isLoading = false
-                }
-            }
-        }
-    }
     
     
     // MARK: - Future Booking Methods
@@ -652,7 +579,6 @@ class DataManager: ObservableObject {
         }
     }
     
-    // Legacy method removed - used non-existent toCloudKitDog() method
     
     func updateDog(_ dog: DogWithVisit) async {
         print("🔄 DataManager.updateDog called for: \(dog.name)")
@@ -1074,20 +1000,45 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Update CloudKit with only the deletion
+        // Update Visit in CloudKit with new architecture
+        guard var currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ No current visit found for dog")
+            #endif
+            errorMessage = "No active visit for this dog"
+            isLoading = false
+            return
+        }
+        
+        // Remove from visit's feeding records
+        currentVisit.feedingRecords.removeAll { $0.id == record.id }
+        currentVisit.updatedAt = Date()
+        
         do {
-            try await cloudKitService.deleteFeedingRecord(record, for: dog.id.uuidString)
-            print("✅ Feeding record deleted from CloudKit for \(dog.name)")
+            try await visitService.updateVisit(currentVisit)
+            
+            // Update visit cache
+            await incrementallyUpdateVisitCache(update: currentVisit)
+            
+            #if DEBUG
+            print("✅ Feeding record deleted from Visit for \(dog.name)")
+            #endif
         } catch {
-            print("❌ Failed to delete feeding record from CloudKit: \(error)")
-            print("❌ Error details: \(error.localizedDescription)")
-            // Revert local cache if CloudKit update failed
+            #if DEBUG
+            print("❌ Failed to delete feeding record: \(error)")
+            #endif
+            
+            // Revert local cache if update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                     self.dogs[index].currentVisit?.feedingRecords.append(record)
-                    print("🔄 Reverted feeding record in local cache due to CloudKit failure")
+                    
+                    #if DEBUG
+                    print("🔄 Reverted feeding record in local cache due to failure")
+                    #endif
                 }
             }
+            errorMessage = "Failed to delete feeding record: \(error.localizedDescription)"
         }
         
         isLoading = false
@@ -1105,18 +1056,41 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Update CloudKit with only the deletion
+        // Update Visit in CloudKit with new architecture
+        guard var currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ No current visit found for dog")
+            #endif
+            errorMessage = "No active visit for this dog"
+            isLoading = false
+            return
+        }
+        
+        // Remove from visit's medication records
+        currentVisit.medicationRecords.removeAll { $0.id == record.id }
+        currentVisit.updatedAt = Date()
+        
         do {
-            try await cloudKitService.deleteMedicationRecord(record, for: dog.id.uuidString)
-            print("✅ Medication record deleted from CloudKit for \(dog.name)")
+            try await visitService.updateVisit(currentVisit)
+            
+            // Update visit cache
+            await incrementallyUpdateVisitCache(update: currentVisit)
+            
+            #if DEBUG
+            print("✅ Medication record deleted from Visit for \(dog.name)")
+            #endif
         } catch {
-            print("❌ Failed to delete medication record from CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
+            #if DEBUG
+            print("❌ Failed to delete medication record: \(error)")
+            #endif
+            
+            // Revert local cache if update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                     self.dogs[index].currentVisit?.medicationRecords.append(record)
                 }
             }
+            errorMessage = "Failed to delete medication record: \(error.localizedDescription)"
         }
         
         isLoading = false
@@ -1134,18 +1108,41 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Update CloudKit with only the deletion
+        // Update Visit in CloudKit with new architecture
+        guard var currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ No current visit found for dog")
+            #endif
+            errorMessage = "No active visit for this dog"
+            isLoading = false
+            return
+        }
+        
+        // Remove from visit's potty records
+        currentVisit.pottyRecords.removeAll { $0.id == record.id }
+        currentVisit.updatedAt = Date()
+        
         do {
-            try await cloudKitService.deletePottyRecord(record, for: dog.id.uuidString)
-            print("✅ Potty record deleted from CloudKit for \(dog.name)")
+            try await visitService.updateVisit(currentVisit)
+            
+            // Update visit cache
+            await incrementallyUpdateVisitCache(update: currentVisit)
+            
+            #if DEBUG
+            print("✅ Potty record deleted from Visit for \(dog.name)")
+            #endif
         } catch {
-            print("❌ Failed to delete potty record from CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
+            #if DEBUG
+            print("❌ Failed to delete potty record: \(error)")
+            #endif
+            
+            // Revert local cache if update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                     self.dogs[index].currentVisit?.pottyRecords.append(record)
                 }
             }
+            errorMessage = "Failed to delete potty record: \(error.localizedDescription)"
         }
         
         isLoading = false
@@ -1173,20 +1170,44 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Update CloudKit with only the new record
+        // Update Visit in CloudKit with new architecture
+        guard var currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ No current visit found for dog")
+            #endif
+            errorMessage = "No active visit for this dog"
+            isLoading = false
+            return
+        }
+        
+        // Add to visit's potty records
+        currentVisit.pottyRecords.append(newRecord)
+        currentVisit.updatedAt = Date()
+        
         do {
-            try await cloudKitService.addPottyRecord(newRecord, for: dog.id.uuidString)
-            print("✅ Potty record added to CloudKit for \(dog.name)")
+            try await visitService.updateVisit(currentVisit)
+            
+            // Update visit cache
+            await incrementallyUpdateVisitCache(update: currentVisit)
+            
+            #if DEBUG
+            print("✅ Potty record added to Visit for \(dog.name)")
+            #endif
+            
             // Update sync time for new record
             lastSyncTime = Date()
         } catch {
-            print("❌ Failed to add potty record to CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
+            #if DEBUG
+            print("❌ Failed to add potty record: \(error)")
+            #endif
+            
+            // Revert local cache if update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                     self.dogs[index].currentVisit?.pottyRecords.removeLast()
                 }
             }
+            errorMessage = "Failed to add potty record: \(error.localizedDescription)"
         }
         
         isLoading = false
@@ -1205,18 +1226,43 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Update CloudKit
-        do {
-            try await cloudKitService.updatePottyRecordNotes(record, newNotes: newNotes, for: dog.id.uuidString)
-            print("✅ Potty record notes updated in CloudKit for \(dog.name)")
-        } catch {
-            print("❌ Failed to update potty record notes in CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-                   let recordIndex = self.dogs[dogIndex].currentVisit?.pottyRecords.firstIndex(where: { $0.id == record.id }) {
-                    self.dogs[dogIndex].currentVisit?.pottyRecords[recordIndex].notes = record.notes
+        // Update Visit in CloudKit with new architecture
+        guard var currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ No current visit found for dog")
+            #endif
+            errorMessage = "No active visit for this dog"
+            isLoading = false
+            return
+        }
+        
+        // Update the specific record in visit's potty records
+        if let recordIndex = currentVisit.pottyRecords.firstIndex(where: { $0.id == record.id }) {
+            currentVisit.pottyRecords[recordIndex].notes = newNotes
+            currentVisit.updatedAt = Date()
+            
+            do {
+                try await visitService.updateVisit(currentVisit)
+                
+                // Update visit cache
+                await incrementallyUpdateVisitCache(update: currentVisit)
+                
+                #if DEBUG
+                print("✅ Potty record notes updated in Visit for \(dog.name)")
+                #endif
+            } catch {
+                #if DEBUG
+                print("❌ Failed to update potty record notes: \(error)")
+                #endif
+                
+                // Revert local cache if update failed
+                await MainActor.run {
+                    if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+                       let recordIndex = self.dogs[dogIndex].currentVisit?.pottyRecords.firstIndex(where: { $0.id == record.id }) {
+                        self.dogs[dogIndex].currentVisit?.pottyRecords[recordIndex].notes = record.notes
+                    }
                 }
+                errorMessage = "Failed to update potty record notes: \(error.localizedDescription)"
             }
         }
         
@@ -1243,20 +1289,44 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Update CloudKit with only the new record
+        // Update Visit in CloudKit with new architecture
+        guard var currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ No current visit found for dog")
+            #endif
+            errorMessage = "No active visit for this dog"
+            isLoading = false
+            return
+        }
+        
+        // Add to visit's feeding records
+        currentVisit.feedingRecords.append(newRecord)
+        currentVisit.updatedAt = Date()
+        
         do {
-            try await cloudKitService.addFeedingRecord(newRecord, for: dog.id.uuidString)
-            print("✅ Feeding record added to CloudKit for \(dog.name)")
+            try await visitService.updateVisit(currentVisit)
+            
+            // Update visit cache
+            await incrementallyUpdateVisitCache(update: currentVisit)
+            
+            #if DEBUG
+            print("✅ Feeding record added to Visit for \(dog.name)")
+            #endif
+            
             // Update sync time for new record
             lastSyncTime = Date()
         } catch {
-            print("❌ Failed to add feeding record to CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
+            #if DEBUG
+            print("❌ Failed to add feeding record: \(error)")
+            #endif
+            
+            // Revert local cache if update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                     self.dogs[index].currentVisit?.feedingRecords.removeLast()
                 }
             }
+            errorMessage = "Failed to add feeding record: \(error.localizedDescription)"
         }
         
         isLoading = false
@@ -1275,18 +1345,43 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Update CloudKit
-        do {
-            try await cloudKitService.updateFeedingRecordNotes(record, newNotes: newNotes, for: dog.id.uuidString)
-            print("✅ Feeding record notes updated in CloudKit for \(dog.name)")
-        } catch {
-            print("❌ Failed to update feeding record notes in CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-                   let recordIndex = self.dogs[dogIndex].currentVisit?.feedingRecords.firstIndex(where: { $0.id == record.id }) {
-                    self.dogs[dogIndex].currentVisit?.feedingRecords[recordIndex].notes = record.notes
+        // Update Visit in CloudKit with new architecture
+        guard var currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ No current visit found for dog")
+            #endif
+            errorMessage = "No active visit for this dog"
+            isLoading = false
+            return
+        }
+        
+        // Update the specific record in visit's feeding records
+        if let recordIndex = currentVisit.feedingRecords.firstIndex(where: { $0.id == record.id }) {
+            currentVisit.feedingRecords[recordIndex].notes = newNotes
+            currentVisit.updatedAt = Date()
+            
+            do {
+                try await visitService.updateVisit(currentVisit)
+                
+                // Update visit cache
+                await incrementallyUpdateVisitCache(update: currentVisit)
+                
+                #if DEBUG
+                print("✅ Feeding record notes updated in Visit for \(dog.name)")
+                #endif
+            } catch {
+                #if DEBUG
+                print("❌ Failed to update feeding record notes: \(error)")
+                #endif
+                
+                // Revert local cache if update failed
+                await MainActor.run {
+                    if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+                       let recordIndex = self.dogs[dogIndex].currentVisit?.feedingRecords.firstIndex(where: { $0.id == record.id }) {
+                        self.dogs[dogIndex].currentVisit?.feedingRecords[recordIndex].notes = record.notes
+                    }
                 }
+                errorMessage = "Failed to update feeding record notes: \(error.localizedDescription)"
             }
         }
         
@@ -1306,20 +1401,46 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Update CloudKit
-        do {
-            try await cloudKitService.updateFeedingRecordTimestamp(record, newTimestamp: newTimestamp, for: dog.id.uuidString)
-            print("✅ Feeding record timestamp updated in CloudKit for \(dog.name)")
-            // Update sync time for record update
-            lastSyncTime = Date()
-        } catch {
-            print("❌ Failed to update feeding record timestamp in CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-                   let recordIndex = self.dogs[dogIndex].currentVisit?.feedingRecords.firstIndex(where: { $0.id == record.id }) {
-                    self.dogs[dogIndex].currentVisit?.feedingRecords[recordIndex].timestamp = record.timestamp
+        // Update Visit in CloudKit with new architecture
+        guard var currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ No current visit found for dog")
+            #endif
+            errorMessage = "No active visit for this dog"
+            isLoading = false
+            return
+        }
+        
+        // Update the specific record in visit's feeding records
+        if let recordIndex = currentVisit.feedingRecords.firstIndex(where: { $0.id == record.id }) {
+            currentVisit.feedingRecords[recordIndex].timestamp = newTimestamp
+            currentVisit.updatedAt = Date()
+            
+            do {
+                try await visitService.updateVisit(currentVisit)
+                
+                // Update visit cache
+                await incrementallyUpdateVisitCache(update: currentVisit)
+                
+                #if DEBUG
+                print("✅ Feeding record timestamp updated in Visit for \(dog.name)")
+                #endif
+                
+                // Update sync time for record update
+                lastSyncTime = Date()
+            } catch {
+                #if DEBUG
+                print("❌ Failed to update feeding record timestamp: \(error)")
+                #endif
+                
+                // Revert local cache if update failed
+                await MainActor.run {
+                    if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+                       let recordIndex = self.dogs[dogIndex].currentVisit?.feedingRecords.firstIndex(where: { $0.id == record.id }) {
+                        self.dogs[dogIndex].currentVisit?.feedingRecords[recordIndex].timestamp = record.timestamp
+                    }
                 }
+                errorMessage = "Failed to update feeding record timestamp: \(error.localizedDescription)"
             }
         }
         
@@ -1339,20 +1460,46 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Update CloudKit
-        do {
-            try await cloudKitService.updatePottyRecordTimestamp(record, newTimestamp: newTimestamp, for: dog.id.uuidString)
-            print("✅ Potty record timestamp updated in CloudKit for \(dog.name)")
-            // Update sync time for record update
-            lastSyncTime = Date()
-        } catch {
-            print("❌ Failed to update potty record timestamp in CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-                   let recordIndex = self.dogs[dogIndex].currentVisit?.pottyRecords.firstIndex(where: { $0.id == record.id }) {
-                    self.dogs[dogIndex].currentVisit?.pottyRecords[recordIndex].timestamp = record.timestamp
+        // Update Visit in CloudKit with new architecture
+        guard var currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ No current visit found for dog")
+            #endif
+            errorMessage = "No active visit for this dog"
+            isLoading = false
+            return
+        }
+        
+        // Update the specific record in visit's potty records
+        if let recordIndex = currentVisit.pottyRecords.firstIndex(where: { $0.id == record.id }) {
+            currentVisit.pottyRecords[recordIndex].timestamp = newTimestamp
+            currentVisit.updatedAt = Date()
+            
+            do {
+                try await visitService.updateVisit(currentVisit)
+                
+                // Update visit cache
+                await incrementallyUpdateVisitCache(update: currentVisit)
+                
+                #if DEBUG
+                print("✅ Potty record timestamp updated in Visit for \(dog.name)")
+                #endif
+                
+                // Update sync time for record update
+                lastSyncTime = Date()
+            } catch {
+                #if DEBUG
+                print("❌ Failed to update potty record timestamp: \(error)")
+                #endif
+                
+                // Revert local cache if update failed
+                await MainActor.run {
+                    if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+                       let recordIndex = self.dogs[dogIndex].currentVisit?.pottyRecords.firstIndex(where: { $0.id == record.id }) {
+                        self.dogs[dogIndex].currentVisit?.pottyRecords[recordIndex].timestamp = record.timestamp
+                    }
                 }
+                errorMessage = "Failed to update potty record timestamp: \(error.localizedDescription)"
             }
         }
         
@@ -1378,20 +1525,44 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Update CloudKit with only the new record
+        // Update Visit in CloudKit with new architecture
+        guard var currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ No current visit found for dog")
+            #endif
+            errorMessage = "No active visit for this dog"
+            isLoading = false
+            return
+        }
+        
+        // Add to visit's medication records
+        currentVisit.medicationRecords.append(newRecord)
+        currentVisit.updatedAt = Date()
+        
         do {
-            try await cloudKitService.addMedicationRecord(newRecord, for: dog.id.uuidString)
-            print("✅ Medication record added to CloudKit for \(dog.name)")
+            try await visitService.updateVisit(currentVisit)
+            
+            // Update visit cache
+            await incrementallyUpdateVisitCache(update: currentVisit)
+            
+            #if DEBUG
+            print("✅ Medication record added to Visit for \(dog.name)")
+            #endif
+            
             // Update sync time for new record
             lastSyncTime = Date()
         } catch {
-            print("❌ Failed to add medication record to CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
+            #if DEBUG
+            print("❌ Failed to add medication record: \(error)")
+            #endif
+            
+            // Revert local cache if update failed
             await MainActor.run {
                 if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                     self.dogs[index].currentVisit?.medicationRecords.removeLast()
                 }
             }
+            errorMessage = "Failed to add medication record: \(error.localizedDescription)"
         }
         
         isLoading = false
@@ -1410,20 +1581,102 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Update CloudKit
-        do {
-            try await cloudKitService.updateMedicationRecordTimestamp(record, newTimestamp: newTimestamp, for: dog.id.uuidString)
-            print("✅ Medication record timestamp updated in CloudKit for \(dog.name)")
-            // Update sync time for record update
-            lastSyncTime = Date()
-        } catch {
-            print("❌ Failed to update medication record timestamp in CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
-                   let recordIndex = self.dogs[dogIndex].currentVisit?.medicationRecords.firstIndex(where: { $0.id == record.id }) {
-                    self.dogs[dogIndex].currentVisit?.medicationRecords[recordIndex].timestamp = record.timestamp
+        // Update Visit in CloudKit with new architecture
+        guard var currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ No current visit found for dog")
+            #endif
+            errorMessage = "No active visit for this dog"
+            isLoading = false
+            return
+        }
+        
+        // Update the specific record in visit's medication records
+        if let recordIndex = currentVisit.medicationRecords.firstIndex(where: { $0.id == record.id }) {
+            currentVisit.medicationRecords[recordIndex].timestamp = newTimestamp
+            currentVisit.updatedAt = Date()
+            
+            do {
+                try await visitService.updateVisit(currentVisit)
+                
+                // Update visit cache
+                await incrementallyUpdateVisitCache(update: currentVisit)
+                
+                #if DEBUG
+                print("✅ Medication record timestamp updated in Visit for \(dog.name)")
+                #endif
+                
+                // Update sync time for record update
+                lastSyncTime = Date()
+            } catch {
+                #if DEBUG
+                print("❌ Failed to update medication record timestamp: \(error)")
+                #endif
+                
+                // Revert local cache if update failed
+                await MainActor.run {
+                    if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+                       let recordIndex = self.dogs[dogIndex].currentVisit?.medicationRecords.firstIndex(where: { $0.id == record.id }) {
+                        self.dogs[dogIndex].currentVisit?.medicationRecords[recordIndex].timestamp = record.timestamp
+                    }
                 }
+                errorMessage = "Failed to update medication record timestamp: \(error.localizedDescription)"
+            }
+        }
+        
+        isLoading = false
+    }
+    
+    func updateMedicationRecordNotes(_ record: MedicationRecord, newNotes: String?, in dog: DogWithVisit) async {
+        isLoading = true
+        errorMessage = nil
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+               let recordIndex = self.dogs[dogIndex].currentVisit?.medicationRecords.firstIndex(where: { $0.id == record.id }) {
+                self.dogs[dogIndex].currentVisit?.medicationRecords[recordIndex].notes = newNotes
+                self.dogs[dogIndex].currentVisit?.updatedAt = Date()
+            }
+        }
+        
+        // Update Visit in CloudKit with new architecture
+        guard var currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ No current visit found for dog")
+            #endif
+            errorMessage = "No active visit for this dog"
+            isLoading = false
+            return
+        }
+        
+        // Update the specific record in visit's medication records
+        if let recordIndex = currentVisit.medicationRecords.firstIndex(where: { $0.id == record.id }) {
+            currentVisit.medicationRecords[recordIndex].notes = newNotes
+            currentVisit.updatedAt = Date()
+            
+            do {
+                try await visitService.updateVisit(currentVisit)
+                
+                // Update visit cache
+                await incrementallyUpdateVisitCache(update: currentVisit)
+                
+                #if DEBUG
+                print("✅ Medication record notes updated in Visit for \(dog.name)")
+                #endif
+            } catch {
+                #if DEBUG
+                print("❌ Failed to update medication record notes: \(error)")
+                #endif
+                
+                // Revert local cache if update failed
+                await MainActor.run {
+                    if let dogIndex = self.dogs.firstIndex(where: { $0.id == dog.id }),
+                       let recordIndex = self.dogs[dogIndex].currentVisit?.medicationRecords.firstIndex(where: { $0.id == record.id }) {
+                        self.dogs[dogIndex].currentVisit?.medicationRecords[recordIndex].notes = record.notes
+                    }
+                }
+                errorMessage = "Failed to update medication record notes: \(error.localizedDescription)"
             }
         }
         
@@ -1491,7 +1744,7 @@ class DataManager: ObservableObject {
     private func updateDogsCache(with changedDogs: [DogWithVisit]) async {
         print("🔄 DataManager: Updating cache with \(changedDogs.count) changed dogs")
         
-        // TODO: Replace with proper cache update - removed toCloudKitDog() calls
+        // Update dogs cache with the changed dogs
         
         // Update local dogs array with changed dogs
         for changedDog in changedDogs {
@@ -1595,17 +1848,13 @@ class DataManager: ObservableObject {
             }
         }
         
-        // Capture value before detached task
-        let usesPersistentDogs = self.usePersistentDogs
-        
         // Handle CloudKit operations in background without blocking UI
         Task.detached {
             do {
-                if usesPersistentDogs {
-                    // Use new persistent dog system
-                    if var currentVisit = dog.currentVisit {
-                        currentVisit.departureDate = departureDate
-                        currentVisit.updatedAt = departureDate
+                // Use new persistent dog system
+                if var currentVisit = dog.currentVisit {
+                    currentVisit.departureDate = departureDate
+                    currentVisit.updatedAt = departureDate
                         
                         try await self.visitService.updateVisit(currentVisit)
                         
@@ -1642,17 +1891,6 @@ class DataManager: ObservableObject {
         #endif
     }
     
-    @available(*, deprecated, message: "Use extendBoarding(for:newEndDate:) instead - this method uses deprecated CloudKit architecture")
-    func extendBoardingOptimized(for dog: DogWithVisit, newEndDate: Date) async {
-        // Redirect to the new method
-        await extendBoarding(for: dog, newEndDate: newEndDate)
-    }
-    
-    @available(*, deprecated, message: "Use convertToBoarding(for:endDate:) instead - this method uses deprecated CloudKit architecture")
-    func boardDogOptimized(_ dog: DogWithVisit, endDate: Date) async {
-        // Redirect to the new method
-        await convertToBoarding(for: dog, endDate: endDate)
-    }
 
     // Duplicate method removed - using the one at line 350
 
@@ -2371,7 +2609,6 @@ extension CloudKitUser {
     }
 }
 
-// Legacy Dog extension removed - no longer needed with new PersistentDog + Visit architecture
 
 extension User {
     func toCloudKitUser() -> CloudKitUser {

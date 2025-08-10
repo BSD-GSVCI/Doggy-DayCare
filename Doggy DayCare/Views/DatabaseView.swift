@@ -277,8 +277,11 @@ extension DatabaseView {
         errorMessage = nil
         
         do {
-            // Get all dogs from current list
-            let allDogs = dataManager.dogs
+            // Fetch all persistent dogs using new architecture
+            await dataManager.fetchAllPersistentDogs()
+            
+            // Get all dogs from database (not just currently present ones)
+            let allDogs = dataManager.allDogs
             
             // Create export data
             let exportData = try JSONEncoder().encode(allDogs)
@@ -289,7 +292,7 @@ extension DatabaseView {
                 self.showingExportSheet = true
                 self.isExporting = false
                 #if DEBUG
-                print("✅ Exported \(allDogs.count) dogs from database")
+                print("✅ Exported \(allDogs.count) dogs from database using new architecture")
                 #endif
             }
         } catch {
@@ -309,26 +312,63 @@ extension DatabaseView {
         
         var importedCount = 0
         var skippedCount = 0
+        var errorCount = 0
         
-        for dog in importedDogs {
+        // Fetch all existing dogs using new architecture
+        await dataManager.fetchAllPersistentDogs()
+        let existingDogs = dataManager.allDogs
+        
+        for importedDog in importedDogs {
             // Check if dog already exists (by ID)
-            let existingDogs = dataManager.dogs
-            let dogExists = existingDogs.contains { $0.id == dog.id }
+            let dogExists = existingDogs.contains { $0.id == importedDog.id }
             
             if !dogExists {
-                // Import the dog
-                // Skip adding for now - would need to implement addDogWithVisit properly
-                #if DEBUG
-                print("Would add dog: \(dog.name)")
-                #endif
-                importedCount += 1
-                #if DEBUG
-                print("✅ Imported dog: \(dog.name)")
-                #endif
+                do {
+                    // Create PersistentDog from imported data
+                    let persistentDog = PersistentDog(
+                        id: importedDog.persistentDog.id,
+                        name: importedDog.name,
+                        ownerName: importedDog.ownerName,
+                        ownerPhoneNumber: importedDog.ownerPhoneNumber,
+                        age: importedDog.age,
+                        gender: importedDog.gender,
+                        isNeuteredOrSpayed: importedDog.isNeuteredOrSpayed,
+                        vaccinations: importedDog.vaccinations,
+                        needsWalking: importedDog.needsWalking,
+                        walkingNotes: importedDog.walkingNotes,
+                        isDaycareFed: importedDog.isDaycareFed,
+                        notes: importedDog.notes,
+                        specialInstructions: importedDog.specialInstructions,
+                        allergiesAndFeedingInstructions: importedDog.allergiesAndFeedingInstructions,
+                        profilePictureData: importedDog.profilePictureData,
+                        visitCount: importedDog.persistentDog.visitCount,
+                        lastVisitDate: importedDog.persistentDog.lastVisitDate,
+                        createdAt: importedDog.persistentDog.createdAt,
+                        updatedAt: Date(),
+                        createdBy: importedDog.persistentDog.createdBy,
+                        lastModifiedBy: AuthenticationService.shared.currentUser?.name
+                    )
+                    
+                    // Add to database using new architecture
+                    try await dataManager.persistentDogService.createPersistentDog(persistentDog)
+                    
+                    // Update the persistent dog cache
+                    await dataManager.incrementallyUpdatePersistentDogCache(add: persistentDog)
+                    
+                    importedCount += 1
+                    #if DEBUG
+                    print("✅ Imported dog: \(importedDog.name)")
+                    #endif
+                } catch {
+                    errorCount += 1
+                    #if DEBUG
+                    print("❌ Failed to import dog \(importedDog.name): \(error)")
+                    #endif
+                }
             } else {
                 skippedCount += 1
                 #if DEBUG
-                print("⏭️ Skipped existing dog: \(dog.name)")
+                print("⏭️ Skipped existing dog: \(importedDog.name)")
                 #endif
             }
         }
@@ -337,11 +377,22 @@ extension DatabaseView {
             self.isImporting = false
             self.showingImportSheet = false
             
+            var message = ""
             if importedCount > 0 {
-                self.errorMessage = "Successfully imported \(importedCount) dogs. Skipped \(skippedCount) existing dogs."
-            } else {
-                self.errorMessage = "No new dogs imported. All \(skippedCount) dogs already exist in database."
+                message += "Successfully imported \(importedCount) dog\(importedCount == 1 ? "" : "s"). "
             }
+            if skippedCount > 0 {
+                message += "Skipped \(skippedCount) existing dog\(skippedCount == 1 ? "" : "s"). "
+            }
+            if errorCount > 0 {
+                message += "Failed to import \(errorCount) dog\(errorCount == 1 ? "" : "s"). "
+            }
+            
+            if message.isEmpty {
+                message = "No dogs were processed."
+            }
+            
+            self.errorMessage = message
             
             // Refresh the database view
             Task {
