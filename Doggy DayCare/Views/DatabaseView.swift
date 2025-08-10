@@ -312,7 +312,6 @@ extension DatabaseView {
         
         var importedCount = 0
         var skippedCount = 0
-        var errorCount = 0
         
         // Fetch all existing dogs using new architecture
         await dataManager.fetchAllPersistentDogs()
@@ -323,48 +322,27 @@ extension DatabaseView {
             let dogExists = existingDogs.contains { $0.id == importedDog.id }
             
             if !dogExists {
-                do {
-                    // Create PersistentDog from imported data
-                    let persistentDog = PersistentDog(
-                        id: importedDog.persistentDog.id,
-                        name: importedDog.name,
-                        ownerName: importedDog.ownerName,
-                        ownerPhoneNumber: importedDog.ownerPhoneNumber,
-                        age: importedDog.age,
-                        gender: importedDog.gender,
-                        isNeuteredOrSpayed: importedDog.isNeuteredOrSpayed,
-                        vaccinations: importedDog.vaccinations,
-                        needsWalking: importedDog.needsWalking,
-                        walkingNotes: importedDog.walkingNotes,
-                        isDaycareFed: importedDog.isDaycareFed,
-                        notes: importedDog.notes,
-                        specialInstructions: importedDog.specialInstructions,
-                        allergiesAndFeedingInstructions: importedDog.allergiesAndFeedingInstructions,
-                        profilePictureData: importedDog.profilePictureData,
-                        visitCount: importedDog.persistentDog.visitCount,
-                        lastVisitDate: importedDog.persistentDog.lastVisitDate,
-                        createdAt: importedDog.persistentDog.createdAt,
-                        updatedAt: Date(),
-                        createdBy: importedDog.persistentDog.createdBy,
-                        lastModifiedBy: AuthenticationService.shared.currentUser?.name
-                    )
-                    
-                    // Add to database using new architecture
-                    try await dataManager.persistentDogService.createPersistentDog(persistentDog)
-                    
-                    // Update the persistent dog cache
-                    await dataManager.incrementallyUpdatePersistentDogCache(add: persistentDog)
-                    
-                    importedCount += 1
-                    #if DEBUG
-                    print("✅ Imported dog: \(importedDog.name)")
-                    #endif
-                } catch {
-                    errorCount += 1
-                    #if DEBUG
-                    print("❌ Failed to import dog \(importedDog.name): \(error)")
-                    #endif
-                }
+                // Add to database using DataManager's public API
+                await dataManager.addPersistentDogOnly(
+                    name: importedDog.name,
+                    ownerName: importedDog.ownerName,
+                    ownerPhoneNumber: importedDog.ownerPhoneNumber,
+                    needsWalking: importedDog.needsWalking,
+                    walkingNotes: importedDog.walkingNotes,
+                    notes: importedDog.notes,
+                    specialInstructions: importedDog.specialInstructions,
+                    allergiesAndFeedingInstructions: importedDog.allergiesAndFeedingInstructions,
+                    profilePictureData: importedDog.profilePictureData,
+                    age: importedDog.age,
+                    gender: importedDog.gender ?? .male,
+                    vaccinations: importedDog.vaccinations,
+                    isNeuteredOrSpayed: importedDog.isNeuteredOrSpayed ?? false
+                )
+                
+                importedCount += 1
+                #if DEBUG
+                print("✅ Imported dog: \(importedDog.name)")
+                #endif
             } else {
                 skippedCount += 1
                 #if DEBUG
@@ -383,9 +361,6 @@ extension DatabaseView {
             }
             if skippedCount > 0 {
                 message += "Skipped \(skippedCount) existing dog\(skippedCount == 1 ? "" : "s"). "
-            }
-            if errorCount > 0 {
-                message += "Failed to import \(errorCount) dog\(errorCount == 1 ? "" : "s"). "
             }
             
             if message.isEmpty {

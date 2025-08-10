@@ -7,18 +7,20 @@ Doggy DayCare is a professional iOS app for managing a dog daycare facility. It 
 
 ## Development Commands
 
+**IMPORTANT: Do NOT build the project via command line to check for compilation errors. The user will compile in Xcode and provide error details if needed.**
+
 ### Build and Run
 ```bash
 # Open in Xcode
 open "Doggy DayCare.xcodeproj"
 
-# Build from command line
+# Build from command line (ONLY if user explicitly requests)
 xcodebuild -project "Doggy DayCare.xcodeproj" -scheme "Doggy DayCare" build
 
-# Run tests
+# Run tests (ONLY if user explicitly requests)
 xcodebuild test -project "Doggy DayCare.xcodeproj" -scheme "Doggy DayCare" -destination 'platform=iOS Simulator,name=iPhone 15'
 
-# Clean build
+# Clean build (ONLY if user explicitly requests)
 xcodebuild clean -project "Doggy DayCare.xcodeproj" -scheme "Doggy DayCare"
 ```
 
@@ -217,6 +219,22 @@ func saveData() {
 **Removed Features**:
 - `DeleteLogView.swift`: Debugging tool no longer needed
 - Migration infrastructure: Temporary migration code removed
+
+## Commit Message Format
+When creating git commits, use simple, clean commit messages with bullet points:
+- Do NOT include "Generated with Claude Code" footer
+- Do NOT include "Co-Authored-By: Claude" footer  
+- Use bullet points to describe changes
+- Keep commit titles concise and descriptive
+
+Example format:
+```
+Fix caching issues and update architecture
+
+- Fixed activity records system to use Visit architecture
+- Updated AutomationService to use new PersistentDog + Visit architecture
+- Removed problematic midnight departure date clearing
+```
 
 ## Important Files
 - `ContentView.swift`: Main dashboard

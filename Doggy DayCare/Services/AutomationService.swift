@@ -222,93 +222,83 @@ class AutomationService: ObservableObject {
     }
     
     func handleMidnightTransition() async {
-        do {
-            let dataManager = DataManager.shared
+        let dataManager = DataManager.shared
+        
+        // Fetch using new architecture
+        await dataManager.fetchAllPersistentDogs()
+        await dataManager.fetchDogs()
+        let allDogs = dataManager.allDogs
+        
+        let today = Date()
+        #if DEBUG
+        print("Starting midnight transition for \(today.formatted())")
+        #endif
+        
+        // Record daily snapshot for history before making any changes
+        #if DEBUG
+        print("📅 Recording daily snapshot for history...")
+        #endif
+        
+        // Get only visible dogs (same logic as ContentView)
+        let visibleDogs = allDogs.filter { dog in
+            // Include dogs that are currently present (daycare and boarding)
+            let isCurrentlyPresent = dog.isCurrentlyPresent
+            let isDaycare = isCurrentlyPresent && dog.shouldBeTreatedAsDaycare
+            let isBoarding = isCurrentlyPresent && !dog.shouldBeTreatedAsDaycare
+            let isDepartedToday = dog.departureDate != nil && Calendar.current.isDateInToday(dog.departureDate!)
             
-            // Fetch using new architecture
-            await dataManager.fetchAllPersistentDogs()
-            await dataManager.fetchDogs()
-            let allDogs = dataManager.allDogs
-            
-            let today = Date()
-            #if DEBUG
-            print("Starting midnight transition for \(today.formatted())")
-            #endif
-            
-            // Record daily snapshot for history before making any changes
-            #if DEBUG
-            print("📅 Recording daily snapshot for history...")
-            #endif
-            
-            // Get only visible dogs (same logic as ContentView)
-            let visibleDogs = allDogs.filter { dog in
-                // Include dogs that are currently present (daycare and boarding)
-                let isCurrentlyPresent = dog.isCurrentlyPresent
-                let isDaycare = isCurrentlyPresent && dog.shouldBeTreatedAsDaycare
-                let isBoarding = isCurrentlyPresent && !dog.shouldBeTreatedAsDaycare
-                let isDepartedToday = dog.departureDate != nil && Calendar.current.isDateInToday(dog.departureDate!)
-                
-                return isDaycare || isBoarding || isDepartedToday
-            }
-            
-            await cloudKitHistoryService.recordDailySnapshot(dogs: visibleDogs)
-            #if DEBUG
-            print("✅ Daily snapshot recorded for \(visibleDogs.count) visible dogs")
-            #endif
-            
-            for dog in allDogs {
-                var updatedDog = dog
-                var needsUpdate = false
-                
-                // Check if this is a future booking that should transition to main page
-                if !dog.isArrivalTimeSet && Calendar.current.isDate(dog.arrivalDate, inSameDayAs: today) {
-                    #if DEBUG
-                    print("Transitioning future booking '\(dog.name)' to main page (arrival date: \(dog.arrivalDate.formatted()))")
-                    #endif
-                    // Keep the arrival date but mark that arrival time needs to be set
-                    // The dog will now appear in the main page with a red background
-                    needsUpdate = true
-                }
-                
-                // Boarding dogs with end dates are automatically handled by shouldBeTreatedAsDaycare computed property
-                // They remain boarding dogs but are displayed as daycare when their end date arrives
-                // No manual intervention needed - checked out dogs should stay checked out
-                if dog.isBoarding {
-                    if let boardingEndDate = dog.boardingEndDate {
-                        #if DEBUG
-                        print("📅 Boarding dog '\(dog.name)' (end date: \(boardingEndDate.formatted()), today: \(today.formatted()))")
-                        print("    shouldBeTreatedAsDaycare: \(dog.shouldBeTreatedAsDaycare)")
-                        if dog.departureDate != nil {
-                            print("    Already checked out - will be removed from main page")
-                        }
-                        #endif
-                    } else {
-                        #if DEBUG
-                        print("⚠️ Boarding dog '\(dog.name)' (no end date set)")
-                        #endif
-                    }
-                }
-                
-                if needsUpdate {
-                    // Log automated updates
-                    await DataManager.shared.logDogActivity(action: "AUTOMATED_UPDATE", dog: updatedDog, extra: "Automated midnight transition update")
-                    // Update via DataManager to maintain cache consistency
-                    if let visit = updatedDog.currentVisit {
-                        try await dataManager.visitService.updateVisit(visit)
-                        // Update the visit cache
-                        await dataManager.incrementallyUpdateVisitCache(update: visit)
-                    }
-                }
-            }
-            
-            #if DEBUG
-            print("Midnight transition completed successfully")
-            #endif
-        } catch {
-            #if DEBUG
-            print("Error handling midnight transition: \(error.localizedDescription)")
-            #endif
+            return isDaycare || isBoarding || isDepartedToday
         }
+        
+        await cloudKitHistoryService.recordDailySnapshot(dogs: visibleDogs)
+        #if DEBUG
+        print("✅ Daily snapshot recorded for \(visibleDogs.count) visible dogs")
+        #endif
+            
+        for dog in allDogs {
+            let updatedDog = dog
+            var needsUpdate = false
+            
+            // Check if this is a future booking that should transition to main page
+            if !dog.isArrivalTimeSet && Calendar.current.isDate(dog.arrivalDate, inSameDayAs: today) {
+                #if DEBUG
+                print("Transitioning future booking '\(dog.name)' to main page (arrival date: \(dog.arrivalDate.formatted()))")
+                #endif
+                // Keep the arrival date but mark that arrival time needs to be set
+                // The dog will now appear in the main page with a red background
+                needsUpdate = true
+            }
+            
+            // Boarding dogs with end dates are automatically handled by shouldBeTreatedAsDaycare computed property
+            // They remain boarding dogs but are displayed as daycare when their end date arrives
+            // No manual intervention needed - checked out dogs should stay checked out
+            if dog.isBoarding {
+                if let boardingEndDate = dog.boardingEndDate {
+                    #if DEBUG
+                    print("📅 Boarding dog '\(dog.name)' (end date: \(boardingEndDate.formatted()), today: \(today.formatted()))")
+                    print("    shouldBeTreatedAsDaycare: \(dog.shouldBeTreatedAsDaycare)")
+                    if dog.departureDate != nil {
+                        print("    Already checked out - will be removed from main page")
+                    }
+                    #endif
+                } else {
+                    #if DEBUG
+                    print("⚠️ Boarding dog '\(dog.name)' (no end date set)")
+                    #endif
+                }
+            }
+            
+            if needsUpdate {
+                // Log automated updates
+                await DataManager.shared.logDogActivity(action: "AUTOMATED_UPDATE", dog: updatedDog, extra: "Automated midnight transition update")
+                // Update via DataManager's public API to maintain cache consistency
+                await dataManager.updateDog(updatedDog)
+            }
+        }
+            
+        #if DEBUG
+        print("Midnight transition completed successfully")
+        #endif
     }
     
     func scheduleBackgroundTasks() {

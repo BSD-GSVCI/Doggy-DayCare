@@ -1827,10 +1827,8 @@ class DataManager: ObservableObject {
     // MARK: - Optimized Dog Operations
     
     func checkoutDog(_ dog: DogWithVisit) async {
-        #if DEBUG
         isLoading = true
         errorMessage = nil
-        #endif
         
         print("🔄 Starting optimized checkout for dog: \(dog.name)")
         
@@ -1855,19 +1853,18 @@ class DataManager: ObservableObject {
                 if var currentVisit = dog.currentVisit {
                     currentVisit.departureDate = departureDate
                     currentVisit.updatedAt = departureDate
-                        
-                        try await self.visitService.updateVisit(currentVisit)
-                        
-                        #if DEBUG
-                        print("✅ Visit updated in CloudKit for \(dog.name)")
-                        #endif
-                        
-                        // Update visit cache (mark as departed)
-                        await self.incrementallyUpdateVisitCache(update: currentVisit)
-                        
-                        // Update persistent dog statistics
-                        await self.updatePersistentDogStatistics(dogId: dog.id, lastVisitDate: departureDate)
-                    }
+                    
+                    try await self.visitService.updateVisit(currentVisit)
+                    
+                    #if DEBUG
+                    print("✅ Visit updated in CloudKit for \(dog.name)")
+                    #endif
+                    
+                    // Update visit cache (mark as departed)
+                    await self.incrementallyUpdateVisitCache(update: currentVisit)
+                    
+                    // Update persistent dog statistics
+                    await self.updatePersistentDogStatistics(dogId: dog.id, lastVisitDate: departureDate)
                 } else {
                     // Use legacy system
                     try await self.cloudKitService.checkoutDog(dog.id.uuidString)
@@ -1886,9 +1883,7 @@ class DataManager: ObservableObject {
             }
         }
         
-        #if DEBUG
         isLoading = false
-        #endif
     }
     
 
