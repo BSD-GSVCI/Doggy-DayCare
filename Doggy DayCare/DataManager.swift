@@ -62,17 +62,50 @@ class DataManager: ObservableObject {
     
     private func fetchDogsWithPersistentSystem(shouldShowLoading: Bool) async {
         do {
-            // Fetch persistent dogs
-            let persistentDogs = try await persistentDogService.fetchPersistentDogs()
-            #if DEBUG
-            print("🔍 DataManager: Got \(persistentDogs.count) persistent dogs")
-            #endif
+            // Try to use cached data first for active visits
+            var activeVisits: [Visit] = []
             
-            // Fetch active visits
-            let activeVisits = try await visitService.fetchActiveVisits()
-            #if DEBUG
-            print("🔍 DataManager: Got \(activeVisits.count) active visits")
-            #endif
+            if let cachedVisits: [Visit] = await AdvancedCache.shared.get("active_visits_cache") {
+                #if DEBUG
+                print("💾 Using cached active visits (\(cachedVisits.count) visits)")
+                #endif
+                activeVisits = cachedVisits
+            } else {
+                #if DEBUG
+                print("🔄 Cache miss - fetching active visits from service...")
+                #endif
+                // Fetch active visits from service
+                activeVisits = try await visitService.fetchActiveVisits()
+                
+                // Cache the active visits (30 minute expiration - shorter than persistent dogs since visits change more frequently)
+                AdvancedCache.shared.set(activeVisits, for: "active_visits_cache", expirationInterval: 1800)
+                
+                #if DEBUG
+                print("🔍 DataManager: Got \(activeVisits.count) active visits from service and cached them")
+                #endif
+            }
+            
+            // Get persistent dogs (using the already cached method)
+            var persistentDogs: [PersistentDog] = []
+            
+            if let cachedDogs: [PersistentDog] = await AdvancedCache.shared.get("persistent_dogs_cache") {
+                #if DEBUG
+                print("💾 Using cached persistent dogs (\(cachedDogs.count) dogs)")
+                #endif
+                persistentDogs = cachedDogs
+            } else {
+                #if DEBUG
+                print("🔄 Cache miss - fetching persistent dogs from service...")
+                #endif
+                persistentDogs = try await persistentDogService.fetchPersistentDogs()
+                
+                // Cache the persistent dogs (1 hour expiration)
+                AdvancedCache.shared.set(persistentDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
+                
+                #if DEBUG
+                print("🔍 DataManager: Got \(persistentDogs.count) persistent dogs from service and cached them")
+                #endif
+            }
             
             // Combine persistent dogs with their active visits
             let dogsWithVisits = DogWithVisit.currentlyPresentFromPersistentDogsAndVisits(persistentDogs, activeVisits)
@@ -466,58 +499,17 @@ class DataManager: ObservableObject {
     
     
     func fetchDogsIncremental() async {
-        // Don't show loading indicator for background refreshes
-        let shouldShowLoading = !isLoading
-        if shouldShowLoading {
-            isLoading = true
-        }
-        errorMessage = nil
+        // DEPRECATED: This method used the old CloudKit Dog architecture
+        // Now just redirects to the standard fetchDogs() which has smart caching
+        // The caching system automatically handles incremental updates
         
         #if DEBUG
-        print("🔍 DataManager: Starting incremental fetchDogs...")
-        print("🔍 DataManager: Last sync time: \(lastSyncTime)")
+        print("🔍 DataManager: fetchDogsIncremental called - redirecting to fetchDogs with caching")
         #endif
         
-        do {
-            let cloudKitDogs = try await cloudKitService.fetchDogsIncremental(since: lastSyncTime)
-            #if DEBUG
-            print("🔍 DataManager: Got \(cloudKitDogs.count) incremental CloudKit dogs")
-            #endif
-            
-            if !cloudKitDogs.isEmpty {
-                let localDogs = cloudKitDogs.map { $0.toDogWithVisit() }
-                #if DEBUG
-                print("🔍 DataManager: Converted to \(localDogs.count) local dogs")
-                #endif
-                
-                // Update cache with only changed dogs
-                await updateDogsCache(with: localDogs)
-                
-                // Update last sync time
-                lastSyncTime = Date()
-                #if DEBUG
-                print("✅ DataManager: Updated cache with \(localDogs.count) changed dogs")
-                #endif
-            } else {
-                #if DEBUG
-                print("✅ DataManager: No changes found, using existing cache")
-                #endif
-            }
-            
-            if shouldShowLoading {
-                self.isLoading = false
-            }
-        } catch {
-            await MainActor.run {
-                self.errorMessage = "Failed to fetch dogs incrementally: \(error.localizedDescription)"
-                if shouldShowLoading {
-                    self.isLoading = false
-                }
-                #if DEBUG
-                print("❌ DataManager: Failed to fetch dogs incrementally: \(error)")
-                #endif
-            }
-        }
+        // Just use the standard fetch which now has smart caching
+        // It will use cached data if available and only fetch when needed
+        await fetchDogs()
     }
     
     func getAllDogs() async -> [DogWithVisit] {
@@ -541,9 +533,7 @@ class DataManager: ObservableObject {
     
     func forceRefreshDatabaseCache() {
         // Clear AdvancedCache and reset sync time for PersistentDogs
-        Task {
-            await AdvancedCache.shared.remove("persistent_dogs_cache")
-        }
+        AdvancedCache.shared.remove("persistent_dogs_cache")
         lastAllDogsSyncTime = Date.distantPast
         
         #if DEBUG
@@ -552,7 +542,67 @@ class DataManager: ObservableObject {
     }
     
     
-    // MARK: - Smart Incremental Cache Updates for PersistentDogs
+    // MARK: - Smart Incremental Cache Updates for PersistentDogs and Visits
+    
+    /// Incrementally add a new visit to the active visits cache
+    private func incrementallyUpdateVisitCache(add visit: Visit) async {
+        // Get current cached visits
+        if var cachedVisits: [Visit] = await AdvancedCache.shared.get("active_visits_cache") {
+            // Add if not already present
+            if !cachedVisits.contains(where: { $0.id == visit.id }) {
+                cachedVisits.append(visit)
+                AdvancedCache.shared.set(cachedVisits, for: "active_visits_cache", expirationInterval: 1800)
+                
+                #if DEBUG
+                print("✅ Incrementally added visit to cache for dog: \(visit.dogId)")
+                #endif
+            }
+        }
+    }
+    
+    /// Incrementally update an existing visit in the cache
+    private func incrementallyUpdateVisitCache(update visit: Visit) async {
+        // Get current cached visits
+        if var cachedVisits: [Visit] = await AdvancedCache.shared.get("active_visits_cache") {
+            // Update if exists
+            if let index = cachedVisits.firstIndex(where: { $0.id == visit.id }) {
+                cachedVisits[index] = visit
+                AdvancedCache.shared.set(cachedVisits, for: "active_visits_cache", expirationInterval: 1800)
+                
+                #if DEBUG
+                print("✅ Incrementally updated visit in cache for dog: \(visit.dogId)")
+                #endif
+            }
+        }
+    }
+    
+    /// Incrementally remove a visit from the cache (when dog is checked out)
+    private func incrementallyUpdateVisitCache(remove visitId: UUID) async {
+        // Get current cached visits
+        if var cachedVisits: [Visit] = await AdvancedCache.shared.get("active_visits_cache") {
+            // Remove if exists
+            if let index = cachedVisits.firstIndex(where: { $0.id == visitId }) {
+                let removedVisit = cachedVisits.remove(at: index)
+                AdvancedCache.shared.set(cachedVisits, for: "active_visits_cache", expirationInterval: 1800)
+                
+                #if DEBUG
+                print("✅ Incrementally removed visit from cache for dog: \(removedVisit.dogId)")
+                #endif
+            }
+        }
+    }
+    
+    /// Force refresh both caches (for pull-to-refresh)
+    func forceRefreshMainPageCache() {
+        // Clear both caches
+        AdvancedCache.shared.remove("active_visits_cache")
+        AdvancedCache.shared.remove("persistent_dogs_cache")
+        lastSyncTime = Date.distantPast
+        
+        #if DEBUG
+        print("🔄 Main page caches cleared - will fetch fresh data on next access")
+        #endif
+    }
     
     /// Incrementally add a new persistent dog to the cache
     private func incrementallyUpdatePersistentDogCache(add persistentDog: PersistentDog) async {
@@ -561,7 +611,7 @@ class DataManager: ObservableObject {
             // Add if not already present
             if !cachedDogs.contains(where: { $0.id == persistentDog.id }) {
                 cachedDogs.append(persistentDog)
-                await AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
+                AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
                 
                 #if DEBUG
                 print("✅ Incrementally added persistent dog to cache: \(persistentDog.name)")
@@ -577,7 +627,7 @@ class DataManager: ObservableObject {
             // Update if exists
             if let index = cachedDogs.firstIndex(where: { $0.id == persistentDog.id }) {
                 cachedDogs[index] = persistentDog
-                await AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
+                AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
                 
                 #if DEBUG
                 print("✅ Incrementally updated persistent dog in cache: \(persistentDog.name)")
@@ -593,7 +643,7 @@ class DataManager: ObservableObject {
             // Remove if exists
             if let index = cachedDogs.firstIndex(where: { $0.id == dogId }) {
                 let removedDog = cachedDogs.remove(at: index)
-                await AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
+                AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
                 
                 #if DEBUG
                 print("✅ Incrementally removed persistent dog from cache: \(removedDog.name)")
@@ -836,10 +886,56 @@ class DataManager: ObservableObject {
                 }
             }
             
+            // Update visit cache with the modified visit
+            await incrementallyUpdateVisitCache(update: updatedVisit)
+            
             print("✅ Successfully extended boarding for \(dog.name)")
         } catch {
             print("❌ Failed to extend boarding: \(error)")
             errorMessage = "Failed to extend boarding: \(error.localizedDescription)"
+        }
+    }
+    
+    func convertToBoarding(for dog: DogWithVisit, endDate: Date) async {
+        #if DEBUG
+        print("🔄 Converting dog to boarding: \(dog.name) until \(endDate)")
+        #endif
+        
+        // Update the visit to boarding
+        guard let currentVisit = dog.currentVisit else {
+            #if DEBUG
+            print("❌ Cannot convert to boarding - no current visit found")
+            #endif
+            return
+        }
+        
+        var updatedVisit = currentVisit
+        updatedVisit.isBoarding = true
+        updatedVisit.boardingEndDate = endDate
+        updatedVisit.updatedAt = Date()
+        
+        do {
+            try await visitService.updateVisit(updatedVisit)
+            
+            // Update local cache
+            await MainActor.run {
+                if let index = dogs.firstIndex(where: { $0.id == dog.id }) {
+                    let updatedDogWithVisit = DogWithVisit(persistentDog: dog.persistentDog, currentVisit: updatedVisit)
+                    dogs[index] = updatedDogWithVisit
+                }
+            }
+            
+            // Update visit cache with the modified visit
+            await incrementallyUpdateVisitCache(update: updatedVisit)
+            
+            #if DEBUG
+            print("✅ Successfully converted to boarding for \(dog.name)")
+            #endif
+        } catch {
+            #if DEBUG
+            print("❌ Failed to convert to boarding: \(error)")
+            #endif
+            errorMessage = "Failed to convert to boarding: \(error.localizedDescription)"
         }
     }
     
@@ -1347,10 +1443,15 @@ class DataManager: ObservableObject {
     // MARK: - Data Refresh
     
     func refreshData() async {
-        print("🔄 DataManager: Manual refresh requested")
+        #if DEBUG
+        print("🔄 DataManager: Manual refresh requested - clearing caches")
+        #endif
         
-        // Use incremental sync instead of full sync
-        await fetchDogsIncremental()
+        // Clear caches to force fresh data
+        forceRefreshMainPageCache()
+        
+        // Fetch fresh data (will populate caches)
+        await fetchDogs()
         await fetchUsers()
     }
     
@@ -1507,7 +1608,13 @@ class DataManager: ObservableObject {
                         currentVisit.updatedAt = departureDate
                         
                         try await self.visitService.updateVisit(currentVisit)
+                        
+                        #if DEBUG
                         print("✅ Visit updated in CloudKit for \(dog.name)")
+                        #endif
+                        
+                        // Update visit cache (mark as departed)
+                        await self.incrementallyUpdateVisitCache(update: currentVisit)
                         
                         // Update persistent dog statistics
                         await self.updatePersistentDogStatistics(dogId: dog.id, lastVisitDate: departureDate)
@@ -1535,74 +1642,16 @@ class DataManager: ObservableObject {
         #endif
     }
     
+    @available(*, deprecated, message: "Use extendBoarding(for:newEndDate:) instead - this method uses deprecated CloudKit architecture")
     func extendBoardingOptimized(for dog: DogWithVisit, newEndDate: Date) async {
-        isLoading = true
-        errorMessage = nil
-        
-        print("🔄 Starting optimized extend boarding for dog: \(dog.name)")
-        
-        // Update local cache immediately for responsive UI
-        await MainActor.run {
-            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].currentVisit?.boardingEndDate = newEndDate
-                self.dogs[index].currentVisit?.updatedAt = Date()
-                print("✅ Updated local cache for extend boarding")
-            }
-        }
-        
-        // Update CloudKit with only the extended boarding
-        do {
-            try await cloudKitService.extendBoardingOptimized(dog.id.uuidString, newEndDate: newEndDate)
-            print("✅ Extend boarding completed in CloudKit for \(dog.name)")
-        } catch {
-            print("❌ Failed to extend boarding in CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].currentVisit?.boardingEndDate = dog.boardingEndDate
-                    // Sync timestamp from CloudKit update
-                    print("🔄 Reverted extend boarding in local cache due to CloudKit failure")
-                }
-            }
-        }
-        
-        isLoading = false
+        // Redirect to the new method
+        await extendBoarding(for: dog, newEndDate: newEndDate)
     }
     
+    @available(*, deprecated, message: "Use convertToBoarding(for:endDate:) instead - this method uses deprecated CloudKit architecture")
     func boardDogOptimized(_ dog: DogWithVisit, endDate: Date) async {
-        isLoading = true
-        errorMessage = nil
-        
-        print("🔄 Starting optimized board conversion for dog: \(dog.name)")
-        
-        // Update local cache immediately for responsive UI
-        await MainActor.run {
-            if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                self.dogs[index].currentVisit?.isBoarding = true
-                self.dogs[index].currentVisit?.boardingEndDate = endDate
-                self.dogs[index].currentVisit?.updatedAt = Date()
-                print("✅ Updated local cache for board conversion")
-            }
-        }
-        
-        // Update CloudKit with only the board conversion
-        do {
-            try await cloudKitService.boardDogOptimized(dog.id.uuidString, endDate: endDate)
-            print("✅ Board conversion completed in CloudKit for \(dog.name)")
-        } catch {
-            print("❌ Failed to convert to boarding in CloudKit: \(error)")
-            // Revert local cache if CloudKit update failed
-            await MainActor.run {
-                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].currentVisit?.isBoarding = dog.isBoarding
-                    self.dogs[index].currentVisit?.boardingEndDate = dog.boardingEndDate
-                    // Sync timestamp from CloudKit update
-                    print("🔄 Reverted board conversion in local cache due to CloudKit failure")
-                }
-            }
-        }
-        
-        isLoading = false
+        // Redirect to the new method
+        await convertToBoarding(for: dog, endDate: endDate)
     }
 
     // Duplicate method removed - using the one at line 350
@@ -1648,7 +1697,7 @@ class DataManager: ObservableObject {
             #endif
             
             // Cache the persistent dogs (1 hour expiration)
-            await AdvancedCache.shared.set(persistentDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
+            AdvancedCache.shared.set(persistentDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
             
             // Create DogWithVisit for each persistent dog
             let dogsWithVisits = persistentDogs.map { persistentDog in
@@ -2022,6 +2071,9 @@ Call Stack: \(callStack)
             
             // Update persistent dog cache with new dog
             await incrementallyUpdatePersistentDogCache(add: persistentDog)
+            
+            // Update active visits cache with new visit
+            await incrementallyUpdateVisitCache(add: visit)
             
             // Refresh dogs list
             await fetchDogs()

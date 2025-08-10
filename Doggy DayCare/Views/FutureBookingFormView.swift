@@ -83,9 +83,9 @@ struct FutureBookingFormView: View {
             CameraPicker(image: $profileImage)
         }
         .sheet(isPresented: $showingImportDatabase) {
-            // TODO: Replace with PersistentDogImportView
-            Text("Import feature is being updated for the new data model")
-                .padding()
+            CheckInDogPickerView(dataManager: dataManager) { selectedDog in
+                loadDogFromDatabase(selectedDog)
+            }
         }
         .sheet(isPresented: $showingAddMedication) {
             AddDailyMedicationSheet(
@@ -130,14 +130,14 @@ extension FutureBookingFormView {
                 HStack {
                     Image(systemName: "arrow.down.doc")
                         .foregroundStyle(.blue)
-                    Text("Import from Database")
+                    Text("Select Dog from Database")
                         .foregroundStyle(.blue)
                 }
             }
         } header: {
-            Text("Quick Import")
+            Text("Quick Select")
         } footer: {
-            Text("Import saved dog entries to avoid re-entering information")
+            Text("Select saved dog entries to avoid re-entering information")
         }
     }
     
@@ -323,22 +323,26 @@ extension FutureBookingFormView {
 
 // MARK: - Functions
 extension FutureBookingFormView {
-    private func loadDogFromImport(_ importedDog: DogWithVisit) {
-        name = importedDog.name
-        ownerName = importedDog.ownerName ?? ""
-        medications = importedDog.medications
-        scheduledMedications = importedDog.scheduledMedications
-        allergiesAndFeedingInstructions = importedDog.allergiesAndFeedingInstructions ?? ""
-        needsWalking = importedDog.needsWalking
-        walkingNotes = importedDog.walkingNotes ?? ""
-        isDaycareFed = importedDog.isDaycareFed
-        notes = importedDog.notes ?? ""
-        profileImage = importedDog.profilePictureData.flatMap { UIImage(data: $0) }
-        age = importedDog.age
-        gender = importedDog.gender ?? .unknown
-        vaccinations = importedDog.vaccinations
-        isNeuteredOrSpayed = importedDog.isNeuteredOrSpayed ?? false
-        ownerPhoneNumber = importedDog.ownerPhoneNumber ?? ""
+    private func loadDogFromDatabase(_ selectedDog: DogWithVisit) {
+        name = selectedDog.name
+        ownerName = selectedDog.ownerName ?? ""
+        medications = selectedDog.medications
+        scheduledMedications = selectedDog.scheduledMedications
+        allergiesAndFeedingInstructions = selectedDog.allergiesAndFeedingInstructions ?? ""
+        needsWalking = selectedDog.needsWalking
+        walkingNotes = selectedDog.walkingNotes ?? ""
+        isDaycareFed = selectedDog.isDaycareFed
+        notes = selectedDog.notes ?? ""
+        profileImage = selectedDog.profilePictureData.flatMap { UIImage(data: $0) }
+        age = selectedDog.age
+        gender = selectedDog.gender ?? .unknown
+        vaccinations = selectedDog.vaccinations
+        isNeuteredOrSpayed = selectedDog.isNeuteredOrSpayed ?? false
+        ownerPhoneNumber = selectedDog.ownerPhoneNumber ?? ""
+        
+        #if DEBUG
+        print("✅ Loaded dog from database for future booking: \(selectedDog.name)")
+        #endif
     }
     
     private func addFutureBooking() async {

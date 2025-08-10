@@ -692,7 +692,7 @@ struct BoardDogView: View {
     
     private func convertToBoarding() async {
         isLoading = true
-        await dataManager.boardDogOptimized(dog, endDate: endDate)
+        await dataManager.convertToBoarding(for: dog, endDate: endDate)
         isLoading = false
         dismiss()
     }
@@ -757,7 +757,7 @@ struct ExtendStayView: View {
     
     private func extendStay() async {
         isLoading = true
-        await dataManager.extendBoardingOptimized(for: dog, newEndDate: endDate)
+        await dataManager.extendBoarding(for: dog, newEndDate: endDate)
         isLoading = false
         dismiss()
     }

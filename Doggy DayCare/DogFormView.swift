@@ -58,14 +58,14 @@ struct DogFormView: View {
                 HStack {
                     Image(systemName: "arrow.down.doc")
                         .foregroundStyle(.blue)
-                    Text("Import from Database")
+                    Text("Select Dog from Database")
                         .foregroundStyle(.blue)
                 }
             }
         } header: {
-            Text("Quick Import")
+            Text("Quick Select")
         } footer: {
-            Text("Import saved dog entries to avoid re-entering information")
+            Text("Select saved dog entries to avoid re-entering information")
         }
     }
     
@@ -422,8 +422,8 @@ struct DogFormView: View {
             CameraPicker(image: $profileImage)
         }
         .sheet(isPresented: $showingImportDatabase) {
-            ImportSingleDogView(dataManager: dataManager) { importedDog in
-                loadDogFromImport(importedDog)
+            CheckInDogPickerView(dataManager: dataManager) { selectedDog in
+                loadDogFromImport(selectedDog)
             }
         }
         .alert("Duplicate Dog Found", isPresented: $showingDuplicateAlert) {
@@ -813,15 +813,15 @@ struct AddScheduledMedicationForNewDogSheet: View {
 
 // MARK: - Import from Database (for adding new dogs)
 
-struct ImportSingleDogView: View {
+struct CheckInDogPickerView: View {
     @Environment(\.dismiss) private var dismiss
     let dataManager: DataManager
     @State private var searchText = ""
     @State private var isLoading = false
-    @State private var importedDogs: [DogWithVisit] = []
+    @State private var availableDogsForCheckIn: [DogWithVisit] = []
     @State private var zoomedDog: DogWithVisit?
     
-    let onImport: (DogWithVisit) -> Void
+    let onSelect: (DogWithVisit) -> Void
     
     var body: some View {
         NavigationStack {
@@ -829,14 +829,14 @@ struct ImportSingleDogView: View {
                 if isLoading {
                     ProgressView("Loading database...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if importedDogs.isEmpty {
+                } else if availableDogsForCheckIn.isEmpty {
                     ContentUnavailableView {
                         Label("No Saved Dogs", systemImage: "database")
                     } description: {
                         Text("No previously saved dog entries found in the database.")
                     }
                 } else {
-                    Text("Total Dogs: \(importedDogs.count)")
+                    Text("Available for Check-In: \(availableDogsForCheckIn.count)")
                         .font(.headline)
                         .foregroundColor(.accentColor)
                         .padding(.top, 4)
@@ -846,7 +846,7 @@ struct ImportSingleDogView: View {
                             ImportedDogRow(dog: dog, onZoom: {
                                 zoomedDog = dog
                             }) {
-                                onImport(dog)
+                                onSelect(dog)
                                 dismiss()
                             }
                         }
@@ -854,7 +854,7 @@ struct ImportSingleDogView: View {
                     .searchable(text: $searchText, prompt: "Search dogs")
                 }
             }
-            .navigationTitle("Import from Database")
+            .navigationTitle("Select Dog from Database")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -868,7 +868,7 @@ struct ImportSingleDogView: View {
                         Task {
                             // Clear cache and reload
                             dataManager.clearImportCache()
-                            await loadImportedDogs()
+                            await loadAvailableDogsForCheckIn()
                         }
                     }
                     .disabled(isLoading)
@@ -909,38 +909,45 @@ struct ImportSingleDogView: View {
             }
         }
         .task {
-            await loadImportedDogs()
+            await loadAvailableDogsForCheckIn()
         }
     }
     
     private var filteredDogs: [DogWithVisit] {
         if searchText.isEmpty {
-            return importedDogs
+            return availableDogsForCheckIn
         } else {
-            return importedDogs.filter { dog in
+            return availableDogsForCheckIn.filter { dog in
                 dog.name.localizedCaseInsensitiveContains(searchText) ||
                 (dog.ownerName?.localizedCaseInsensitiveContains(searchText) ?? false)
             }
         }
     }
     
-    private func loadImportedDogs() async {
+    private func loadAvailableDogsForCheckIn() async {
         isLoading = true
         
         #if DEBUG
-        print("🚀 Import: Starting loadImportedDogs for DogWithVisit...")
+        print("🚀 CheckInPicker: Loading available dogs for check-in...")
         #endif
         
-        // For now, use the existing dogs from dataManager as a placeholder
-        // This will need to be implemented properly with PersistentDog queries later
-        let existingDogs = dataManager.dogs
+        // First ensure we have all persistent dogs loaded
+        await dataManager.fetchAllPersistentDogs()
         
-        // Filter to only show dogs that are not currently present (departed dogs)
-        importedDogs = existingDogs.filter { !$0.isCurrentlyPresent }
-            .sorted { $0.name < $1.name }
+        // Get all persistent dogs from database
+        let allPersistentDogs = dataManager.allDogs
+        
+        // Get currently present dogs from main page
+        let currentlyPresentDogs = dataManager.dogs
+        let currentlyPresentDogIds = Set(currentlyPresentDogs.map { $0.id })
+        
+        // Filter to only show dogs that are NOT currently present (available for check-in)
+        availableDogsForCheckIn = allPersistentDogs.filter { dog in
+            !currentlyPresentDogIds.contains(dog.id)
+        }.sorted { $0.name < $1.name }
         
         #if DEBUG
-        print("✅ Import: Found \(importedDogs.count) dogs available for import")
+        print("✅ CheckInPicker: Found \(availableDogsForCheckIn.count) dogs available for check-in (out of \(allPersistentDogs.count) total)")
         #endif
         
         isLoading = false
