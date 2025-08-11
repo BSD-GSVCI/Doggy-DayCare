@@ -338,6 +338,126 @@ class DataManager: ObservableObject {
         isLoading = false
     }
     
+    func updatePersistentDogInfo(
+        dogId: UUID,
+        name: String,
+        ownerName: String?,
+        ownerPhoneNumber: String?,
+        needsWalking: Bool,
+        walkingNotes: String?,
+        notes: String?,
+        specialInstructions: String?,
+        allergiesAndFeedingInstructions: String?,
+        profilePictureData: Data?,
+        age: Int?,
+        gender: DogGender?,
+        vaccinations: [VaccinationItem],
+        isNeuteredOrSpayed: Bool?
+    ) async {
+        #if DEBUG
+        print("🔄 DataManager: updatePersistentDogInfo called for dog ID: \(dogId)")
+        #endif
+        
+        do {
+            // Fetch the existing persistent dog
+            guard let persistentDog = try await persistentDogService.fetchPersistentDog(by: dogId) else {
+                #if DEBUG
+                print("❌ DataManager: Could not find persistent dog with ID: \(dogId)")
+                #endif
+                errorMessage = "Could not find dog in database"
+                return
+            }
+            
+            // Update the persistent dog info
+            var updatedPersistentDog = persistentDog
+            updatedPersistentDog.name = name
+            updatedPersistentDog.ownerName = ownerName
+            updatedPersistentDog.ownerPhoneNumber = ownerPhoneNumber
+            updatedPersistentDog.needsWalking = needsWalking
+            updatedPersistentDog.walkingNotes = walkingNotes
+            updatedPersistentDog.notes = notes
+            updatedPersistentDog.specialInstructions = specialInstructions
+            updatedPersistentDog.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions
+            updatedPersistentDog.profilePictureData = profilePictureData
+            updatedPersistentDog.age = age
+            updatedPersistentDog.gender = gender
+            updatedPersistentDog.vaccinations = vaccinations
+            updatedPersistentDog.isNeuteredOrSpayed = isNeuteredOrSpayed
+            updatedPersistentDog.updatedAt = Date()
+            
+            try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            
+            #if DEBUG
+            print("✅ DataManager: Updated persistent dog info for: \(updatedPersistentDog.name)")
+            #endif
+            
+            // Update cache for database page consistency
+            await incrementallyUpdatePersistentDogCache(update: updatedPersistentDog)
+            
+        } catch {
+            #if DEBUG
+            print("❌ DataManager: Failed to update persistent dog info: \(error)")
+            #endif
+            errorMessage = "Failed to update dog information: \(error.localizedDescription)"
+        }
+    }
+    
+    func addFutureVisitForExistingDog(
+        dogId: UUID,
+        arrivalDate: Date,
+        isBoarding: Bool,
+        boardingEndDate: Date?,
+        isDaycareFed: Bool,
+        medications: [Medication],
+        scheduledMedications: [ScheduledMedication]
+    ) async {
+        #if DEBUG
+        print("🔄 DataManager: addFutureVisitForExistingDog called for dog ID: \(dogId)")
+        #endif
+        
+        do {
+            // Fetch the existing persistent dog to verify it exists
+            guard let persistentDog = try await persistentDogService.fetchPersistentDog(by: dogId) else {
+                #if DEBUG
+                print("❌ DataManager: Could not find persistent dog with ID: \(dogId)")
+                #endif
+                errorMessage = "Could not find dog in database"
+                return
+            }
+            
+            #if DEBUG
+            print("✅ DataManager: Found existing persistent dog: \(persistentDog.name)")
+            #endif
+            
+            // Create the future visit (no departure date = future booking)
+            let visit = Visit(
+                dogId: persistentDog.id,
+                arrivalDate: arrivalDate,
+                departureDate: nil,
+                isBoarding: isBoarding,
+                boardingEndDate: boardingEndDate,
+                medications: medications,
+                scheduledMedications: scheduledMedications
+            )
+            
+            try await visitService.createVisit(visit)
+            
+            #if DEBUG
+            print("✅ DataManager: Created future visit for existing dog: \(persistentDog.name)")
+            #endif
+            
+            // Update cache and refresh data
+            await incrementallyUpdateVisitCache(add: visit)
+            await fetchDogs()
+            
+        } catch {
+            #if DEBUG
+            print("❌ DataManager: Failed to create future visit: \(error)")
+            #endif
+            errorMessage = "Failed to create future booking: \(error.localizedDescription)"
+        }
+    }
+    
     // MARK: - Adapter Methods for DogWithVisit
     
     func undoDepartureOptimized(for dogWithVisit: DogWithVisit) async {

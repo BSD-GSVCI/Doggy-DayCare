@@ -35,6 +35,9 @@ struct FutureBookingFormView: View {
     @State private var showingAddMedication = false
     @State private var showingAddScheduledMedication = false
     
+    // Track if we're using an existing PersistentDog (from database import)
+    @State private var existingPersistentDogId: UUID? = nil
+    
     var body: some View {
         NavigationStack {
             Form {
@@ -324,6 +327,9 @@ extension FutureBookingFormView {
 // MARK: - Functions
 extension FutureBookingFormView {
     private func loadDogFromDatabase(_ selectedDog: DogWithVisit) {
+        // IMPORTANT: Track that we're using an existing PersistentDog
+        existingPersistentDogId = selectedDog.persistentDog.id
+        
         name = selectedDog.name
         ownerName = selectedDog.ownerName ?? ""
         medications = selectedDog.medications
@@ -342,6 +348,7 @@ extension FutureBookingFormView {
         
         #if DEBUG
         print("✅ Loaded dog from database for future booking: \(selectedDog.name)")
+        print("📋 Tracking existing PersistentDog ID: \(selectedDog.persistentDog.id)")
         #endif
     }
     
@@ -350,29 +357,68 @@ extension FutureBookingFormView {
         
         let profilePictureData = profileImage?.jpegData(compressionQuality: 0.8)
         
-        // For future bookings, we need to create a Visit for a future date
-        // The persistent dog info needs to be created/updated
-        await dataManager.addFutureBooking(
-            name: name,
-            ownerName: ownerName.isEmpty ? nil : ownerName,
-            ownerPhoneNumber: ownerPhoneNumber.isEmpty ? nil : ownerPhoneNumber,
-            arrivalDate: arrivalDate,
-            isBoarding: isBoarding,
-            boardingEndDate: isBoarding ? boardingEndDate : nil,
-            isDaycareFed: isDaycareFed,
-            needsWalking: needsWalking,
-            walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
-            notes: notes.isEmpty ? nil : notes,
-            specialInstructions: nil,
-            allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
-            profilePictureData: profilePictureData,
-            age: age,
-            gender: gender,
-            vaccinations: vaccinations,
-            isNeuteredOrSpayed: isNeuteredOrSpayed,
-            medications: medications,
-            scheduledMedications: scheduledMedications
-        )
+        // Check if we're updating an existing dog's persistent info
+        if let existingDogId = existingPersistentDogId {
+            #if DEBUG
+            print("📝 FutureBookingForm: Updating existing dog persistent info and creating future visit")
+            #endif
+            
+            // First update the persistent dog info in the database
+            await dataManager.updatePersistentDogInfo(
+                dogId: existingDogId,
+                name: name,
+                ownerName: ownerName.isEmpty ? nil : ownerName,
+                ownerPhoneNumber: ownerPhoneNumber.isEmpty ? nil : ownerPhoneNumber,
+                needsWalking: needsWalking,
+                walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
+                notes: notes.isEmpty ? nil : notes,
+                specialInstructions: nil,
+                allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
+                profilePictureData: profilePictureData,
+                age: age,
+                gender: gender,
+                vaccinations: vaccinations,
+                isNeuteredOrSpayed: isNeuteredOrSpayed
+            )
+            
+            // Then create a future visit for this existing dog
+            await dataManager.addFutureVisitForExistingDog(
+                dogId: existingDogId,
+                arrivalDate: arrivalDate,
+                isBoarding: isBoarding,
+                boardingEndDate: isBoarding ? boardingEndDate : nil,
+                isDaycareFed: isDaycareFed,
+                medications: medications,
+                scheduledMedications: scheduledMedications
+            )
+        } else {
+            #if DEBUG
+            print("📝 FutureBookingForm: Creating new dog and future booking")
+            #endif
+            
+            // For new dogs, use the existing method
+            await dataManager.addFutureBooking(
+                name: name,
+                ownerName: ownerName.isEmpty ? nil : ownerName,
+                ownerPhoneNumber: ownerPhoneNumber.isEmpty ? nil : ownerPhoneNumber,
+                arrivalDate: arrivalDate,
+                isBoarding: isBoarding,
+                boardingEndDate: isBoarding ? boardingEndDate : nil,
+                isDaycareFed: isDaycareFed,
+                needsWalking: needsWalking,
+                walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
+                notes: notes.isEmpty ? nil : notes,
+                specialInstructions: nil,
+                allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
+                profilePictureData: profilePictureData,
+                age: age,
+                gender: gender,
+                vaccinations: vaccinations,
+                isNeuteredOrSpayed: isNeuteredOrSpayed,
+                medications: medications,
+                scheduledMedications: scheduledMedications
+            )
+        }
         
         isLoading = false
         dismiss()
