@@ -143,6 +143,16 @@ class PersistentDogService: ObservableObject {
         #endif
     }
     
+    func fetchPersistentDog(by id: UUID) async throws -> PersistentDog? {
+        #if DEBUG
+        print("🔍 Fetching persistent dog by ID: \(id)")
+        #endif
+        
+        let predicate = NSPredicate(format: "%K == %@", PersistentDogFields.id, id.uuidString)
+        let dogs = try await fetchPersistentDogs(predicate: predicate)
+        return dogs.first
+    }
+    
     func fetchPersistentDogs(predicate: NSPredicate? = nil) async throws -> [PersistentDog] {
         #if DEBUG
         print("🔍 Fetching persistent dogs...")

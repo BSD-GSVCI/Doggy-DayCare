@@ -8,6 +8,8 @@ struct DogRow: View {
     @State private var showingUndoAlert = false
     @State private var showingEditDeparture = false
     @State private var showingSetArrivalTime = false
+    @State private var showingValidationAlert = false
+    @State private var validationMessage = ""
     @State private var newDepartureDate = Date()
     @State private var newArrivalTime = Date()
     
@@ -167,6 +169,11 @@ struct DogRow: View {
         } message: {
             Text("Are you sure you want to undo the departure for \(dog.name)?")
         }
+        .alert("Invalid Time", isPresented: $showingValidationAlert) {
+            Button("OK") { }
+        } message: {
+            Text(validationMessage)
+        }
         .sheet(isPresented: $showingEditDeparture) {
             NavigationStack {
                 VStack(spacing: 20) {
@@ -178,7 +185,7 @@ struct DogRow: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     
-                    DatePicker("Departure Time", selection: $newDepartureDate, displayedComponents: [.date, .hourAndMinute])
+                    DatePicker("Departure Time", selection: $newDepartureDate, displayedComponents: [.hourAndMinute])
                         .datePickerStyle(.wheel)
                         .labelsHidden()
                     
@@ -257,6 +264,14 @@ struct DogRow: View {
     }
     
     private func updateDepartureTime() async {
+        // Validate locally first to show immediate alert
+        let now = Date()
+        if newDepartureDate > now {
+            validationMessage = "Departure time cannot be in the future. Please choose a time earlier than now."
+            showingValidationAlert = true
+            return
+        }
+        
         await dataManager.editDepartureOptimized(for: dog, newDate: newDepartureDate)
     }
     

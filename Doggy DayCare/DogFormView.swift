@@ -39,6 +39,9 @@ struct DogFormView: View {
     @State private var isNeuteredOrSpayed: Bool = false
     @State private var ownerPhoneNumber: String = ""
     
+    // Track if we're using an existing PersistentDog (from database import)
+    @State private var existingPersistentDogId: UUID? = nil
+    
     // Medication state for new dog creation
     @State private var medications: [Medication] = []
     @State private var scheduledMedications: [ScheduledMedication] = []
@@ -465,6 +468,9 @@ struct DogFormView: View {
         // Reset the bypass flag
         bypassDuplicateCheck = false
         
+        // IMPORTANT: Track that we're using an existing PersistentDog
+        existingPersistentDogId = importedDog.persistentDog.id
+        
         // Load the imported data
         name = importedDog.name
         ownerName = importedDog.ownerName ?? ""
@@ -562,30 +568,47 @@ struct DogFormView: View {
                     isNeuteredOrSpayed: isNeuteredOrSpayed
                 )
             } else {
-                #if DEBUG
-                print("📝 DogFormView: Adding dog to main page and database")
-                #endif
-                await dataManager.addDogWithVisit(
-                    name: name,
-                    ownerName: ownerName.isEmpty ? nil : ownerName,
-                    ownerPhoneNumber: ownerPhoneNumber.isEmpty ? nil : ownerPhoneNumber,
-                    arrivalDate: arrivalDate,
-                    isBoarding: isBoarding,
-                    boardingEndDate: isBoarding ? boardingEndDate : nil,
-                    isDaycareFed: isDaycareFed,
-                    needsWalking: needsWalking,
-                    walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
-                    notes: notes?.isEmpty == true ? nil : notes,
-                    specialInstructions: specialInstructions?.isEmpty == true ? nil : specialInstructions,
-                    allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
-                    profilePictureData: profilePictureData,
-                    age: age,
-                    gender: gender,
-                    vaccinations: vaccinations,
-                    isNeuteredOrSpayed: isNeuteredOrSpayed,
-                    medications: medications,
-                    scheduledMedications: scheduledMedications
-                )
+                // Check if we're using an existing dog from database
+                if let existingDogId = existingPersistentDogId {
+                    // Using an existing PersistentDog from database - just create a visit
+                    #if DEBUG
+                    print("📝 DogFormView: Creating new visit for existing dog ID: \(existingDogId)")
+                    #endif
+                    await dataManager.addVisitForExistingDog(
+                        dogId: existingDogId,
+                        arrivalDate: arrivalDate,
+                        isBoarding: isBoarding,
+                        boardingEndDate: isBoarding ? boardingEndDate : nil,
+                        medications: medications,
+                        scheduledMedications: scheduledMedications
+                    )
+                } else {
+                    // Creating a completely new dog
+                    #if DEBUG
+                    print("📝 DogFormView: Adding new dog to main page and database")
+                    #endif
+                    await dataManager.addDogWithVisit(
+                        name: name,
+                        ownerName: ownerName.isEmpty ? nil : ownerName,
+                        ownerPhoneNumber: ownerPhoneNumber.isEmpty ? nil : ownerPhoneNumber,
+                        arrivalDate: arrivalDate,
+                        isBoarding: isBoarding,
+                        boardingEndDate: isBoarding ? boardingEndDate : nil,
+                        isDaycareFed: isDaycareFed,
+                        needsWalking: needsWalking,
+                        walkingNotes: walkingNotes.isEmpty ? nil : walkingNotes,
+                        notes: notes?.isEmpty == true ? nil : notes,
+                        specialInstructions: specialInstructions?.isEmpty == true ? nil : specialInstructions,
+                        allergiesAndFeedingInstructions: allergiesAndFeedingInstructions.isEmpty ? nil : allergiesAndFeedingInstructions,
+                        profilePictureData: profilePictureData,
+                        age: age,
+                        gender: gender,
+                        vaccinations: vaccinations,
+                        isNeuteredOrSpayed: isNeuteredOrSpayed,
+                        medications: medications,
+                        scheduledMedications: scheduledMedications
+                    )
+                }
             }
         }
         

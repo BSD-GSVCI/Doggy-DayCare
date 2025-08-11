@@ -346,23 +346,55 @@ class DataManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        do {
-            // Clear the departure date to make the dog present again
-            visit.departureDate = nil
-            visit.updatedAt = Date()
-            
-            try await visitService.updateVisit(visit)
-            #if DEBUG
-            print("✅ Undid departure for \(dogWithVisit.name)")
-            #endif
-            
-            // Refresh data
-            await fetchDogs()
-        } catch {
-            #if DEBUG
-            print("❌ Failed to undo departure: \(error)")
-            #endif
-            errorMessage = "Failed to undo departure: \(error.localizedDescription)"
+        #if DEBUG
+        print("🔄 Starting optimized undo departure for dog: \(dogWithVisit.name)")
+        #endif
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dogWithVisit.id }) {
+                self.dogs[index].currentVisit?.departureDate = nil
+                self.dogs[index].currentVisit?.updatedAt = Date()
+                #if DEBUG
+                print("✅ Updated local cache for undo departure")
+                #endif
+            }
+        }
+        
+        // Handle CloudKit operations in background without blocking UI
+        Task {
+            do {
+                // Clear the departure date to make the dog present again
+                visit.departureDate = nil
+                visit.updatedAt = Date()
+                
+                try await visitService.updateVisit(visit)
+                #if DEBUG
+                print("✅ Updated visit in CloudKit for undo departure: \(dogWithVisit.name)")
+                #endif
+                
+                // Decrement visit count since the visit is no longer complete
+                await decrementPersistentDogVisitCount(dogId: dogWithVisit.id)
+                
+                // Update visit cache
+                await incrementallyUpdateVisitCache(update: visit)
+            } catch {
+                #if DEBUG
+                print("❌ Failed to undo departure in CloudKit: \(error)")
+                #endif
+                // Revert local cache if CloudKit update failed
+                await MainActor.run {
+                    if let index = self.dogs.firstIndex(where: { $0.id == dogWithVisit.id }) {
+                        self.dogs[index].currentVisit?.departureDate = Date() // Revert to some departure date
+                        #if DEBUG
+                        print("🔄 Reverted undo departure in local cache due to CloudKit failure")
+                        #endif
+                    }
+                }
+                await MainActor.run {
+                    self.errorMessage = "Failed to undo departure: \(error.localizedDescription)"
+                }
+            }
         }
         
         isLoading = false
@@ -371,36 +403,57 @@ class DataManager: ObservableObject {
     func editDepartureOptimized(for dogWithVisit: DogWithVisit, newDate: Date) async {
         guard var visit = dogWithVisit.currentVisit else { return }
         
-        // Validate that departure time is not in the future
-        let now = Date()
-        if newDate > now {
-            errorMessage = "Departure time cannot be set to a future date"
-            return
-        }
+        // Validation is now handled in the UI layer for better UX
         
         isLoading = true
         errorMessage = nil
         
-        do {
-            // Update the departure date
-            visit.departureDate = newDate
-            visit.updatedAt = Date()
-            
-            try await visitService.updateVisit(visit)
-            #if DEBUG
-            print("✅ Updated departure time for \(dogWithVisit.name)")
-            #endif
-            
-            // Update local cache with the modified visit
-            await incrementallyUpdateVisitCache(update: visit)
-            
-            // Refresh data
-            await fetchDogs()
-        } catch {
-            #if DEBUG
-            print("❌ Failed to update departure: \(error)")
-            #endif
-            errorMessage = "Failed to update departure: \(error.localizedDescription)"
+        #if DEBUG
+        print("🔄 Starting optimized departure edit for dog: \(dogWithVisit.name)")
+        #endif
+        
+        // Update local cache immediately for responsive UI
+        await MainActor.run {
+            if let index = self.dogs.firstIndex(where: { $0.id == dogWithVisit.id }) {
+                self.dogs[index].currentVisit?.departureDate = newDate
+                self.dogs[index].currentVisit?.updatedAt = Date()
+                #if DEBUG
+                print("✅ Updated local cache for departure edit")
+                #endif
+            }
+        }
+        
+        // Handle CloudKit operations in background without blocking UI
+        Task {
+            do {
+                // Update the departure date
+                visit.departureDate = newDate
+                visit.updatedAt = Date()
+                
+                try await visitService.updateVisit(visit)
+                #if DEBUG
+                print("✅ Updated departure time in CloudKit for \(dogWithVisit.name)")
+                #endif
+                
+                // Update visit cache (mark as departed)
+                await incrementallyUpdateVisitCache(update: visit)
+            } catch {
+                #if DEBUG
+                print("❌ Failed to update departure in CloudKit: \(error)")
+                #endif
+                // Revert local cache if CloudKit update failed
+                await MainActor.run {
+                    if let index = self.dogs.firstIndex(where: { $0.id == dogWithVisit.id }) {
+                        self.dogs[index].currentVisit?.departureDate = visit.departureDate
+                        #if DEBUG
+                        print("🔄 Reverted departure edit in local cache due to CloudKit failure")
+                        #endif
+                    }
+                }
+                await MainActor.run {
+                    self.errorMessage = "Failed to update departure: \(error.localizedDescription)"
+                }
+            }
         }
         
         isLoading = false
@@ -606,18 +659,31 @@ class DataManager: ObservableObject {
         
         // Handle CloudKit operations in background without blocking UI
         Task.detached {
-            print("🔄 Calling CloudKit update in background...")
-            // TODO: Replace with proper service call
-            print("✅ CloudKit update successful")
-            
-            // Update cache with the changed dog
-            await self.updateDogsCache(with: [dog])
-            
-            // Update persistent dog cache if this dog was updated
-            await self.incrementallyUpdatePersistentDogCache(update: dog.persistentDog)
-            
-            await MainActor.run {
-                self.lastSyncTime = Date() // Update sync time for dog update
+            do {
+                #if DEBUG
+                print("🔄 Updating persistent dog in CloudKit: \(dog.name)")
+                #endif
+                
+                // Update persistent dog information
+                try await self.persistentDogService.updatePersistentDog(dog.persistentDog)
+                
+                #if DEBUG
+                print("✅ Updated persistent dog in CloudKit for \(dog.name)")
+                #endif
+                
+                // Update persistent dog cache
+                await self.incrementallyUpdatePersistentDogCache(update: dog.persistentDog)
+                
+                await MainActor.run {
+                    self.lastSyncTime = Date() // Update sync time for dog update
+                }
+            } catch {
+                #if DEBUG
+                print("❌ Failed to update persistent dog in CloudKit: \(error)")
+                #endif
+                await MainActor.run {
+                    self.errorMessage = "Failed to update dog: \(error.localizedDescription)"
+                }
             }
         }
     }
@@ -1826,8 +1892,50 @@ class DataManager: ObservableObject {
             
             try await persistentDogService.updatePersistentDog(persistentDog)
             print("✅ Updated persistent dog statistics: visitCount=\(persistentDog.visitCount), lastVisitDate=\(lastVisitDate)")
+            
+            // Update persistent dog cache for database view consistency
+            await incrementallyUpdatePersistentDogCache(update: persistentDog)
         } catch {
             print("❌ Failed to update persistent dog statistics: \(error)")
+        }
+    }
+    
+    /// Decrement visit count when undoing a checkout (since the visit is no longer complete)
+    private func decrementPersistentDogVisitCount(dogId: UUID) async {
+        do {
+            // Fetch current persistent dog
+            let predicate = NSPredicate(format: "id == %@", dogId.uuidString)
+            let persistentDogs = try await persistentDogService.fetchPersistentDogs(predicate: predicate)
+            
+            guard var persistentDog = persistentDogs.first else {
+                #if DEBUG
+                print("❌ Could not find persistent dog with ID: \(dogId) for visit count decrement")
+                #endif
+                return
+            }
+            
+            // Only decrement if count is greater than 0
+            if persistentDog.visitCount > 0 {
+                persistentDog.visitCount -= 1
+                persistentDog.updatedAt = Date()
+                
+                try await persistentDogService.updatePersistentDog(persistentDog)
+                
+                #if DEBUG
+                print("✅ Decremented persistent dog visit count: visitCount=\(persistentDog.visitCount)")
+                #endif
+                
+                // Update persistent dog cache
+                await incrementallyUpdatePersistentDogCache(update: persistentDog)
+            } else {
+                #if DEBUG
+                print("⚠️ Visit count is already 0, cannot decrement further")
+                #endif
+            }
+        } catch {
+            #if DEBUG
+            print("❌ Failed to decrement persistent dog visit count: \(error)")
+            #endif
         }
     }
     
@@ -1849,7 +1957,9 @@ class DataManager: ObservableObject {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                 self.dogs[index].currentVisit?.departureDate = departureDate
                 self.dogs[index].currentVisit?.updatedAt = departureDate
+                #if DEBUG
                 print("✅ Updated local cache for checkout")
+                #endif
             }
         }
         
