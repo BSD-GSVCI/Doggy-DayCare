@@ -371,6 +371,13 @@ class DataManager: ObservableObject {
     func editDepartureOptimized(for dogWithVisit: DogWithVisit, newDate: Date) async {
         guard var visit = dogWithVisit.currentVisit else { return }
         
+        // Validate that departure time is not in the future
+        let now = Date()
+        if newDate > now {
+            errorMessage = "Departure time cannot be set to a future date"
+            return
+        }
+        
         isLoading = true
         errorMessage = nil
         
@@ -383,6 +390,9 @@ class DataManager: ObservableObject {
             #if DEBUG
             print("✅ Updated departure time for \(dogWithVisit.name)")
             #endif
+            
+            // Update local cache with the modified visit
+            await incrementallyUpdateVisitCache(update: visit)
             
             // Refresh data
             await fetchDogs()
@@ -473,17 +483,17 @@ class DataManager: ObservableObject {
     
     /// Incrementally add a new visit to the active visits cache
     private func incrementallyUpdateVisitCache(add visit: Visit) async {
-        // Get current cached visits
-        if var cachedVisits: [Visit] = await AdvancedCache.shared.get("active_visits_cache") {
-            // Add if not already present
-            if !cachedVisits.contains(where: { $0.id == visit.id }) {
-                cachedVisits.append(visit)
-                AdvancedCache.shared.set(cachedVisits, for: "active_visits_cache", expirationInterval: 1800)
-                
-                #if DEBUG
-                print("✅ Incrementally added visit to cache for dog: \(visit.dogId)")
-                #endif
-            }
+        // Get current cached visits or create empty array if cache doesn't exist
+        var cachedVisits: [Visit] = await AdvancedCache.shared.get("active_visits_cache") ?? []
+        
+        // Add if not already present
+        if !cachedVisits.contains(where: { $0.id == visit.id }) {
+            cachedVisits.append(visit)
+            AdvancedCache.shared.set(cachedVisits, for: "active_visits_cache", expirationInterval: 1800)
+            
+            #if DEBUG
+            print("✅ Incrementally added visit to cache for dog: \(visit.dogId) (cache had \(cachedVisits.count - 1) visits)")
+            #endif
         }
     }
     
@@ -533,17 +543,17 @@ class DataManager: ObservableObject {
     
     /// Incrementally add a new persistent dog to the cache
     private func incrementallyUpdatePersistentDogCache(add persistentDog: PersistentDog) async {
-        // Get current cached dogs
-        if var cachedDogs: [PersistentDog] = await AdvancedCache.shared.get("persistent_dogs_cache") {
-            // Add if not already present
-            if !cachedDogs.contains(where: { $0.id == persistentDog.id }) {
-                cachedDogs.append(persistentDog)
-                AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
-                
-                #if DEBUG
-                print("✅ Incrementally added persistent dog to cache: \(persistentDog.name)")
-                #endif
-            }
+        // Get current cached dogs or create empty array if cache doesn't exist
+        var cachedDogs: [PersistentDog] = await AdvancedCache.shared.get("persistent_dogs_cache") ?? []
+        
+        // Add if not already present
+        if !cachedDogs.contains(where: { $0.id == persistentDog.id }) {
+            cachedDogs.append(persistentDog)
+            AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
+            
+            #if DEBUG
+            print("✅ Incrementally added persistent dog to cache: \(persistentDog.name) (cache had \(cachedDogs.count - 1) dogs)")
+            #endif
         }
     }
     
@@ -2234,6 +2244,62 @@ Call Stack: \(callStack)
     }
     
     // MARK: - New DogWithVisit Methods
+    
+    func addVisitForExistingDog(
+        dogId: UUID,
+        arrivalDate: Date,
+        isBoarding: Bool,
+        boardingEndDate: Date?,
+        medications: [Medication],
+        scheduledMedications: [ScheduledMedication]
+    ) async {
+        print("🔄 DataManager: addVisitForExistingDog called for dog ID: \(dogId)")
+        
+        do {
+            // Fetch the existing persistent dog
+            guard let persistentDog = try await persistentDogService.fetchPersistentDog(by: dogId) else {
+                print("❌ DataManager: Could not find persistent dog with ID: \(dogId)")
+                errorMessage = "Could not find dog in database"
+                return
+            }
+            
+            print("✅ DataManager: Found existing persistent dog: \(persistentDog.name)")
+            
+            // Create visit for the existing dog
+            let visit = Visit(
+                dogId: persistentDog.id,
+                arrivalDate: arrivalDate,
+                departureDate: nil,
+                isBoarding: isBoarding,
+                boardingEndDate: boardingEndDate,
+                medications: medications,
+                scheduledMedications: scheduledMedications
+            )
+            
+            try await visitService.createVisit(visit)
+            
+            #if DEBUG
+            print("✅ DataManager: Created visit for existing dog: \(persistentDog.name)")
+            #endif
+            
+            // Update visit count on the persistent dog
+            var updatedPersistentDog = persistentDog
+            updatedPersistentDog.visitCount += 1
+            updatedPersistentDog.lastVisitDate = arrivalDate
+            try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            
+            // Update caches
+            await incrementallyUpdatePersistentDogCache(update: updatedPersistentDog)
+            await incrementallyUpdateVisitCache(add: visit)
+            
+            // Refresh dogs list
+            await fetchDogs()
+            
+        } catch {
+            print("❌ DataManager: Failed to add visit for existing dog: \(error)")
+            errorMessage = "Failed to check in dog: \(error.localizedDescription)"
+        }
+    }
     
     func addDogWithVisit(
         name: String,

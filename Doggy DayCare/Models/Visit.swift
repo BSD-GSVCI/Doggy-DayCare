@@ -110,26 +110,24 @@ struct Visit: Codable, Identifiable {
         }
         
         let duration = departureDate.timeIntervalSince(arrivalDate)
-        let hours = Int(duration / 3600)
-        let minutes = Int((duration.truncatingRemainder(dividingBy: 3600)) / 60)
         
-        if hours > 0 {
-            return "\(hours)h \(minutes)m"
-        } else {
-            return "\(minutes)m"
-        }
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.month, .day, .hour, .minute]
+        formatter.maximumUnitCount = 4
+        formatter.unitsStyle = .abbreviated
+        
+        return formatter.string(from: duration) ?? "0m"
     }
     
     var formattedCurrentStayDuration: String {
         let duration = Date().timeIntervalSince(arrivalDate)
-        let hours = Int(duration / 3600)
-        let minutes = Int((duration.truncatingRemainder(dividingBy: 3600)) / 60)
         
-        if hours > 0 {
-            return "\(hours)h \(minutes)m"
-        } else {
-            return "\(minutes)m"
-        }
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.month, .day, .hour, .minute]
+        formatter.maximumUnitCount = 4
+        formatter.unitsStyle = .abbreviated
+        
+        return formatter.string(from: duration) ?? "0m"
     }
     
     // MARK: - Record Management

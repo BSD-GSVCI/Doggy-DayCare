@@ -90,66 +90,76 @@ class VisitService: ObservableObject {
         record[VisitFields.createdBy] = visit.createdBy
         record[VisitFields.lastModifiedBy] = visit.lastModifiedBy
         
-        // Set feeding records as individual arrays
-        let feedingTimestamps = visit.feedingRecords.map { $0.timestamp }
-        let feedingTypes = visit.feedingRecords.map { $0.type.rawValue }
-        let feedingNotes = visit.feedingRecords.map { $0.notes ?? "" }
-        let feedingRecordedBy = visit.feedingRecords.map { $0.recordedBy ?? "" }
-        let feedingIds = visit.feedingRecords.map { $0.id.uuidString }
+        // Set feeding records as individual arrays (only if not empty to avoid CloudKit errors)
+        if !visit.feedingRecords.isEmpty {
+            let feedingTimestamps = visit.feedingRecords.map { $0.timestamp }
+            let feedingTypes = visit.feedingRecords.map { $0.type.rawValue }
+            let feedingNotes = visit.feedingRecords.map { $0.notes ?? "" }
+            let feedingRecordedBy = visit.feedingRecords.map { $0.recordedBy ?? "" }
+            let feedingIds = visit.feedingRecords.map { $0.id.uuidString }
+            
+            record[VisitFields.feedingTimestamps] = feedingTimestamps
+            record[VisitFields.feedingTypes] = feedingTypes
+            record[VisitFields.feedingNotes] = feedingNotes
+            record[VisitFields.feedingRecordedBy] = feedingRecordedBy
+            record[VisitFields.feedingIds] = feedingIds
+        }
         
-        record[VisitFields.feedingTimestamps] = feedingTimestamps
-        record[VisitFields.feedingTypes] = feedingTypes
-        record[VisitFields.feedingNotes] = feedingNotes
-        record[VisitFields.feedingRecordedBy] = feedingRecordedBy
-        record[VisitFields.feedingIds] = feedingIds
+        // Set potty records as individual arrays (only if not empty to avoid CloudKit errors)
+        if !visit.pottyRecords.isEmpty {
+            let pottyTimestamps = visit.pottyRecords.map { $0.timestamp }
+            let pottyTypes = visit.pottyRecords.map { $0.type.rawValue }
+            let pottyNotes = visit.pottyRecords.map { $0.notes ?? "" }
+            let pottyRecordedBy = visit.pottyRecords.map { $0.recordedBy ?? "" }
+            let pottyIds = visit.pottyRecords.map { $0.id.uuidString }
+            
+            record[VisitFields.pottyTimestamps] = pottyTimestamps
+            record[VisitFields.pottyTypes] = pottyTypes
+            record[VisitFields.pottyNotes] = pottyNotes
+            record[VisitFields.pottyRecordedBy] = pottyRecordedBy
+            record[VisitFields.pottyIds] = pottyIds
+        }
         
-        // Set potty records as individual arrays
-        let pottyTimestamps = visit.pottyRecords.map { $0.timestamp }
-        let pottyTypes = visit.pottyRecords.map { $0.type.rawValue }
-        let pottyNotes = visit.pottyRecords.map { $0.notes ?? "" }
-        let pottyRecordedBy = visit.pottyRecords.map { $0.recordedBy ?? "" }
-        let pottyIds = visit.pottyRecords.map { $0.id.uuidString }
+        // Set medication records as individual arrays (only if not empty to avoid CloudKit errors)
+        if !visit.medicationRecords.isEmpty {
+            let medicationRecordTimestamps = visit.medicationRecords.map { $0.timestamp }
+            let medicationRecordNotes = visit.medicationRecords.map { $0.notes ?? "" }
+            let medicationRecordRecordedBy = visit.medicationRecords.map { $0.recordedBy ?? "" }
+            let medicationRecordIds = visit.medicationRecords.map { $0.id.uuidString }
+            
+            record[VisitFields.medicationRecordTimestamps] = medicationRecordTimestamps
+            record[VisitFields.medicationRecordNotes] = medicationRecordNotes
+            record[VisitFields.medicationRecordRecordedBy] = medicationRecordRecordedBy
+            record[VisitFields.medicationRecordIds] = medicationRecordIds
+        }
         
-        record[VisitFields.pottyTimestamps] = pottyTimestamps
-        record[VisitFields.pottyTypes] = pottyTypes
-        record[VisitFields.pottyNotes] = pottyNotes
-        record[VisitFields.pottyRecordedBy] = pottyRecordedBy
-        record[VisitFields.pottyIds] = pottyIds
+        // Set medications as individual arrays (only if not empty to avoid CloudKit errors)
+        if !visit.medications.isEmpty {
+            let medicationNames = visit.medications.map { $0.name }
+            let medicationTypes = visit.medications.map { $0.type.rawValue }
+            let medicationNotes = visit.medications.map { $0.notes ?? "" }
+            let medicationIds = visit.medications.map { $0.id.uuidString }
+            
+            record[VisitFields.medicationNames] = medicationNames
+            record[VisitFields.medicationTypes] = medicationTypes
+            record[VisitFields.medicationNotes] = medicationNotes
+            record[VisitFields.medicationIds] = medicationIds
+        }
         
-        // Set medication records as individual arrays
-        let medicationRecordTimestamps = visit.medicationRecords.map { $0.timestamp }
-        let medicationRecordNotes = visit.medicationRecords.map { $0.notes ?? "" }
-        let medicationRecordRecordedBy = visit.medicationRecords.map { $0.recordedBy ?? "" }
-        let medicationRecordIds = visit.medicationRecords.map { $0.id.uuidString }
-        
-        record[VisitFields.medicationRecordTimestamps] = medicationRecordTimestamps
-        record[VisitFields.medicationRecordNotes] = medicationRecordNotes
-        record[VisitFields.medicationRecordRecordedBy] = medicationRecordRecordedBy
-        record[VisitFields.medicationRecordIds] = medicationRecordIds
-        
-        // Set medications as individual arrays (matching CloudKit schema)
-        let medicationNames = visit.medications.map { $0.name }
-        let medicationTypes = visit.medications.map { $0.type.rawValue }
-        let medicationNotes = visit.medications.map { $0.notes ?? "" }
-        let medicationIds = visit.medications.map { $0.id.uuidString }
-        
-        record[VisitFields.medicationNames] = medicationNames
-        record[VisitFields.medicationTypes] = medicationTypes
-        record[VisitFields.medicationNotes] = medicationNotes
-        record[VisitFields.medicationIds] = medicationIds
-        
-        // Set scheduled medications as individual arrays
-        let scheduledMedicationDates = visit.scheduledMedications.map { $0.scheduledDate }
-        let scheduledMedicationStatuses = visit.scheduledMedications.map { $0.status.rawValue }
-        let scheduledMedicationNotes = visit.scheduledMedications.map { $0.notes ?? "" }
-        let scheduledMedicationIds = visit.scheduledMedications.map { $0.medicationId.uuidString }
-        let scheduledMedicationNotificationTimes = visit.scheduledMedications.map { $0.notificationTime }
-        
-        record[VisitFields.scheduledMedicationDates] = scheduledMedicationDates
-        record[VisitFields.scheduledMedicationStatuses] = scheduledMedicationStatuses
-        record[VisitFields.scheduledMedicationNotes] = scheduledMedicationNotes
-        record[VisitFields.scheduledMedicationIds] = scheduledMedicationIds
-        record[VisitFields.scheduledMedicationNotificationTimes] = scheduledMedicationNotificationTimes
+        // Set scheduled medications as individual arrays (only if not empty to avoid CloudKit errors)
+        if !visit.scheduledMedications.isEmpty {
+            let scheduledMedicationDates = visit.scheduledMedications.map { $0.scheduledDate }
+            let scheduledMedicationStatuses = visit.scheduledMedications.map { $0.status.rawValue }
+            let scheduledMedicationNotes = visit.scheduledMedications.map { $0.notes ?? "" }
+            let scheduledMedicationIds = visit.scheduledMedications.map { $0.medicationId.uuidString }
+            let scheduledMedicationNotificationTimes = visit.scheduledMedications.map { $0.notificationTime }
+            
+            record[VisitFields.scheduledMedicationDates] = scheduledMedicationDates
+            record[VisitFields.scheduledMedicationStatuses] = scheduledMedicationStatuses
+            record[VisitFields.scheduledMedicationNotes] = scheduledMedicationNotes
+            record[VisitFields.scheduledMedicationIds] = scheduledMedicationIds
+            record[VisitFields.scheduledMedicationNotificationTimes] = scheduledMedicationNotificationTimes
+        }
         
         try await publicDatabase.save(record)
         #if DEBUG
@@ -181,66 +191,76 @@ class VisitService: ObservableObject {
         record[VisitFields.updatedAt] = Date()
         record[VisitFields.lastModifiedBy] = visit.lastModifiedBy
         
-        // Update feeding records as individual arrays
-        let feedingTimestamps = visit.feedingRecords.map { $0.timestamp }
-        let feedingTypes = visit.feedingRecords.map { $0.type.rawValue }
-        let feedingNotes = visit.feedingRecords.map { $0.notes ?? "" }
-        let feedingRecordedBy = visit.feedingRecords.map { $0.recordedBy ?? "" }
-        let feedingIds = visit.feedingRecords.map { $0.id.uuidString }
+        // Update feeding records as individual arrays (only if not empty to avoid CloudKit errors)
+        if !visit.feedingRecords.isEmpty {
+            let feedingTimestamps = visit.feedingRecords.map { $0.timestamp }
+            let feedingTypes = visit.feedingRecords.map { $0.type.rawValue }
+            let feedingNotes = visit.feedingRecords.map { $0.notes ?? "" }
+            let feedingRecordedBy = visit.feedingRecords.map { $0.recordedBy ?? "" }
+            let feedingIds = visit.feedingRecords.map { $0.id.uuidString }
+            
+            record[VisitFields.feedingTimestamps] = feedingTimestamps
+            record[VisitFields.feedingTypes] = feedingTypes
+            record[VisitFields.feedingNotes] = feedingNotes
+            record[VisitFields.feedingRecordedBy] = feedingRecordedBy
+            record[VisitFields.feedingIds] = feedingIds
+        }
         
-        record[VisitFields.feedingTimestamps] = feedingTimestamps
-        record[VisitFields.feedingTypes] = feedingTypes
-        record[VisitFields.feedingNotes] = feedingNotes
-        record[VisitFields.feedingRecordedBy] = feedingRecordedBy
-        record[VisitFields.feedingIds] = feedingIds
+        // Update potty records as individual arrays (only if not empty to avoid CloudKit errors)
+        if !visit.pottyRecords.isEmpty {
+            let pottyTimestamps = visit.pottyRecords.map { $0.timestamp }
+            let pottyTypes = visit.pottyRecords.map { $0.type.rawValue }
+            let pottyNotes = visit.pottyRecords.map { $0.notes ?? "" }
+            let pottyRecordedBy = visit.pottyRecords.map { $0.recordedBy ?? "" }
+            let pottyIds = visit.pottyRecords.map { $0.id.uuidString }
+            
+            record[VisitFields.pottyTimestamps] = pottyTimestamps
+            record[VisitFields.pottyTypes] = pottyTypes
+            record[VisitFields.pottyNotes] = pottyNotes
+            record[VisitFields.pottyRecordedBy] = pottyRecordedBy
+            record[VisitFields.pottyIds] = pottyIds
+        }
         
-        // Update potty records as individual arrays
-        let pottyTimestamps = visit.pottyRecords.map { $0.timestamp }
-        let pottyTypes = visit.pottyRecords.map { $0.type.rawValue }
-        let pottyNotes = visit.pottyRecords.map { $0.notes ?? "" }
-        let pottyRecordedBy = visit.pottyRecords.map { $0.recordedBy ?? "" }
-        let pottyIds = visit.pottyRecords.map { $0.id.uuidString }
+        // Update medication records as individual arrays (only if not empty to avoid CloudKit errors)
+        if !visit.medicationRecords.isEmpty {
+            let medicationRecordTimestamps = visit.medicationRecords.map { $0.timestamp }
+            let medicationRecordNotes = visit.medicationRecords.map { $0.notes ?? "" }
+            let medicationRecordRecordedBy = visit.medicationRecords.map { $0.recordedBy ?? "" }
+            let medicationRecordIds = visit.medicationRecords.map { $0.id.uuidString }
+            
+            record[VisitFields.medicationRecordTimestamps] = medicationRecordTimestamps
+            record[VisitFields.medicationRecordNotes] = medicationRecordNotes
+            record[VisitFields.medicationRecordRecordedBy] = medicationRecordRecordedBy
+            record[VisitFields.medicationRecordIds] = medicationRecordIds
+        }
         
-        record[VisitFields.pottyTimestamps] = pottyTimestamps
-        record[VisitFields.pottyTypes] = pottyTypes
-        record[VisitFields.pottyNotes] = pottyNotes
-        record[VisitFields.pottyRecordedBy] = pottyRecordedBy
-        record[VisitFields.pottyIds] = pottyIds
+        // Update medications as individual arrays (only if not empty to avoid CloudKit errors)
+        if !visit.medications.isEmpty {
+            let medicationNames = visit.medications.map { $0.name }
+            let medicationTypes = visit.medications.map { $0.type.rawValue }
+            let medicationNotes = visit.medications.map { $0.notes ?? "" }
+            let medicationIds = visit.medications.map { $0.id.uuidString }
+            
+            record[VisitFields.medicationNames] = medicationNames
+            record[VisitFields.medicationTypes] = medicationTypes
+            record[VisitFields.medicationNotes] = medicationNotes
+            record[VisitFields.medicationIds] = medicationIds
+        }
         
-        // Update medication records as individual arrays
-        let medicationRecordTimestamps = visit.medicationRecords.map { $0.timestamp }
-        let medicationRecordNotes = visit.medicationRecords.map { $0.notes ?? "" }
-        let medicationRecordRecordedBy = visit.medicationRecords.map { $0.recordedBy ?? "" }
-        let medicationRecordIds = visit.medicationRecords.map { $0.id.uuidString }
-        
-        record[VisitFields.medicationRecordTimestamps] = medicationRecordTimestamps
-        record[VisitFields.medicationRecordNotes] = medicationRecordNotes
-        record[VisitFields.medicationRecordRecordedBy] = medicationRecordRecordedBy
-        record[VisitFields.medicationRecordIds] = medicationRecordIds
-        
-        // Update medications as individual arrays (matching CloudKit schema)
-        let medicationNames = visit.medications.map { $0.name }
-        let medicationTypes = visit.medications.map { $0.type.rawValue }
-        let medicationNotes = visit.medications.map { $0.notes ?? "" }
-        let medicationIds = visit.medications.map { $0.id.uuidString }
-        
-        record[VisitFields.medicationNames] = medicationNames
-        record[VisitFields.medicationTypes] = medicationTypes
-        record[VisitFields.medicationNotes] = medicationNotes
-        record[VisitFields.medicationIds] = medicationIds
-        
-        // Update scheduled medications as individual arrays
-        let scheduledMedicationDates = visit.scheduledMedications.map { $0.scheduledDate }
-        let scheduledMedicationStatuses = visit.scheduledMedications.map { $0.status.rawValue }
-        let scheduledMedicationNotes = visit.scheduledMedications.map { $0.notes ?? "" }
-        let scheduledMedicationIds = visit.scheduledMedications.map { $0.medicationId.uuidString }
-        let scheduledMedicationNotificationTimes = visit.scheduledMedications.map { $0.notificationTime }
-        
-        record[VisitFields.scheduledMedicationDates] = scheduledMedicationDates
-        record[VisitFields.scheduledMedicationStatuses] = scheduledMedicationStatuses
-        record[VisitFields.scheduledMedicationNotes] = scheduledMedicationNotes
-        record[VisitFields.scheduledMedicationIds] = scheduledMedicationIds
-        record[VisitFields.scheduledMedicationNotificationTimes] = scheduledMedicationNotificationTimes
+        // Update scheduled medications as individual arrays (only if not empty to avoid CloudKit errors)
+        if !visit.scheduledMedications.isEmpty {
+            let scheduledMedicationDates = visit.scheduledMedications.map { $0.scheduledDate }
+            let scheduledMedicationStatuses = visit.scheduledMedications.map { $0.status.rawValue }
+            let scheduledMedicationNotes = visit.scheduledMedications.map { $0.notes ?? "" }
+            let scheduledMedicationIds = visit.scheduledMedications.map { $0.medicationId.uuidString }
+            let scheduledMedicationNotificationTimes = visit.scheduledMedications.map { $0.notificationTime }
+            
+            record[VisitFields.scheduledMedicationDates] = scheduledMedicationDates
+            record[VisitFields.scheduledMedicationStatuses] = scheduledMedicationStatuses
+            record[VisitFields.scheduledMedicationNotes] = scheduledMedicationNotes
+            record[VisitFields.scheduledMedicationIds] = scheduledMedicationIds
+            record[VisitFields.scheduledMedicationNotificationTimes] = scheduledMedicationNotificationTimes
+        }
         
         try await publicDatabase.save(record)
         #if DEBUG
@@ -251,16 +271,31 @@ class VisitService: ObservableObject {
     func fetchVisits(predicate: NSPredicate? = nil) async throws -> [Visit] {
         #if DEBUG
         print("🔍 Fetching visits...")
+        print("   Record type being queried: \(RecordTypes.visit)")
         #endif
         
         let finalPredicate = predicate ?? NSPredicate(value: true)
         let query = CKQuery(recordType: RecordTypes.visit, predicate: finalPredicate)
         query.sortDescriptors = [NSSortDescriptor(key: VisitFields.arrivalDate, ascending: false)]
         
-        let result = try await publicDatabase.records(matching: query)
-        let records = result.matchResults.compactMap { try? $0.1.get() }
+        #if DEBUG
+        print("   Executing query for record type: \(query.recordType)")
+        print("   Query predicate: \(query.predicate)")
+        #endif
         
-        var visits: [Visit] = []
+        do {
+            let result = try await publicDatabase.records(matching: query)
+            let records = result.matchResults.compactMap { try? $0.1.get() }
+            
+            #if DEBUG
+            print("   CloudKit query completed successfully")
+            print("   CloudKit returned \(records.count) Visit records")
+            if records.isEmpty {
+                print("   ⚠️ No Visit records found in CloudKit!")
+            }
+            #endif
+            
+            var visits: [Visit] = []
         
         for record in records {
             guard let idString = record[VisitFields.id] as? String,
@@ -442,12 +477,18 @@ class VisitService: ObservableObject {
             )
             
             visits.append(visit)
+            }
+            
+            #if DEBUG
+            print("✅ Fetched \(visits.count) visits")
+            #endif
+            return visits
+        } catch {
+            #if DEBUG
+            print("   ❌ CloudKit query failed: \(error)")
+            #endif
+            throw error
         }
-        
-        #if DEBUG
-        print("✅ Fetched \(visits.count) visits")
-        #endif
-        return visits
     }
     
     func fetchVisitsForDog(_ dogId: UUID, includeDeleted: Bool = false) async throws -> [Visit] {
@@ -462,12 +503,51 @@ class VisitService: ObservableObject {
     }
     
     func fetchActiveVisits() async throws -> [Visit] {
-        let now = Date()
+        #if DEBUG
+        print("🔍 Fetching today's visits from CloudKit...")
+        #endif
         
-        // CloudKit doesn't support "== nil" comparisons, use absence check
-        let predicate = NSPredicate(format: "\(VisitFields.arrivalDate) <= %@ AND \(VisitFields.departureDate) == NULL AND \(VisitFields.isDeleted) != %@", 
-                                   now as NSDate, NSNumber(value: true))
-        return try await fetchVisits(predicate: predicate)
+        // Fetch ALL visits first to debug what's in CloudKit
+        let allVisits = try await fetchVisits(predicate: NSPredicate(value: true))
+        
+        #if DEBUG
+        print("📊 Total visits in CloudKit: \(allVisits.count)")
+        for visit in allVisits {
+            print("  - Visit ID: \(visit.id)")
+            print("    Dog ID: \(visit.dogId)")
+            print("    Arrival: \(visit.arrivalDate)")
+            print("    Departure: \(visit.departureDate?.description ?? "nil")")
+            print("    isDeleted: \(visit.isDeleted)")
+        }
+        #endif
+        
+        let now = Date()
+        let calendar = Calendar.current
+        let todaysVisits = allVisits.filter { visit in
+            // Include visits that:
+            // 1. Have arrived (arrival date is today or earlier)
+            let hasArrived = visit.arrivalDate <= now
+            
+            // 2. Are either still present OR departed today
+            let isStillPresent = visit.departureDate == nil
+            let departedToday = visit.departureDate != nil && calendar.isDateInToday(visit.departureDate!)
+            
+            let shouldInclude = hasArrived && (isStillPresent || departedToday)
+            
+            #if DEBUG
+            if shouldInclude {
+                print("  ✓ Including visit for dog: \(visit.dogId) (present: \(isStillPresent), departed today: \(departedToday))")
+            }
+            #endif
+            
+            return shouldInclude
+        }
+        
+        #if DEBUG
+        print("📊 Today's visits: \(todaysVisits.count) out of \(allVisits.count) total visits")
+        #endif
+        
+        return todaysVisits
     }
     
     func fetchAllVisits() async throws -> [Visit] {
