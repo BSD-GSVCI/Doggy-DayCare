@@ -10,7 +10,8 @@ struct DogDetailView: View {
     @State private var showingExtendStaySheet = false
     @State private var showingDeleteAlert = false
     @State private var showingSetArrivalTimeSheet = false
-    @State private var showingMedicationManagement = false
+    @State private var showingAddMedication = false
+    @State private var showingAddScheduledMedication = false
     @State private var boardingEndDate = Date()
     @State private var newArrivalTime = Date()
     @State private var showingImageZoom = false
@@ -192,6 +193,22 @@ struct DogDetailView: View {
             
             // Always show Medications section for access to management button
             Section("Medications") {
+                // Medication Management Buttons at the top (always visible)
+                VStack(alignment: .leading, spacing: 12) {
+                    Button("Add Daily Medication") {
+                        showingAddMedication = true
+                    }
+                    .foregroundStyle(.blue)
+                    .buttonStyle(.plain)
+                    
+                    Button("Add/Edit Scheduled Medication") {
+                        showingAddScheduledMedication = true
+                    }
+                    .foregroundStyle(.blue)
+                    .buttonStyle(.plain)
+                }
+                .padding(.bottom, 8)
+                
                 // Show empty state if no medications exist
                 if dog.medications.isEmpty && dog.medicationRecords.isEmpty {
                     HStack {
@@ -228,6 +245,12 @@ struct DogDetailView: View {
                                     }
                                     
                                     Spacer()
+                                    
+                                    Button("Remove") {
+                                        deleteMedication(medication)
+                                    }
+                                    .foregroundStyle(.red)
+                                    .font(.caption)
                                 }
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
@@ -274,6 +297,12 @@ struct DogDetailView: View {
                                             .background(Color(scheduledMedication.status.color).opacity(0.2))
                                             .foregroundStyle(Color(scheduledMedication.status.color))
                                             .clipShape(Capsule())
+                                        
+                                        Button("Remove") {
+                                            deleteScheduledMedication(scheduledMedication)
+                                        }
+                                        .foregroundStyle(.red)
+                                        .font(.caption)
                                 }
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
@@ -313,26 +342,6 @@ struct DogDetailView: View {
                             }
                         }
                     }
-                }
-                
-                // Manage Medications Button (always visible)
-                    Button {
-                        showingMedicationManagement = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "pills")
-                                .foregroundStyle(.white)
-                            Text("Manage Medications")
-                                .foregroundStyle(.white)
-                                .fontWeight(.medium)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(.blue)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 8)
                 }
             }
             
@@ -540,10 +549,25 @@ struct DogDetailView: View {
                 SetArrivalTimeView(dog: dog, newArrivalTime: $newArrivalTime)
             }
         }
-        .sheet(isPresented: $showingMedicationManagement) {
-            NavigationStack {
-                MedicationManagementView(dog: dog)
-            }
+        .sheet(isPresented: $showingAddMedication) {
+            AddMedicationSheet(
+                dog: dog,
+                medicationType: .daily,
+                onSave: { medication in
+                    addMedication(medication)
+                }
+            )
+        }
+        .sheet(isPresented: $showingAddScheduledMedication) {
+            AddScheduledMedicationSheet(
+                dog: dog,
+                onSave: { scheduledMedication in
+                    addScheduledMedication(scheduledMedication)
+                },
+                onAddMedication: { medication in
+                    addMedication(medication)
+                }
+            )
         }
         .overlay {
             if showingImageZoom, let imageData = dog.profilePictureData, let uiImage = UIImage(data: imageData) {
@@ -638,6 +662,62 @@ struct DogDetailView: View {
         case .lunch: return .yellow
         case .dinner: return .purple
         case .snack: return .orange
+        }
+    }
+    
+    // MARK: - Medication Management Functions
+    
+    private func addMedication(_ medication: Medication) {
+        Task {
+            if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
+                var updatedDog = dataManager.dogs[dogIndex]
+                if updatedDog.currentVisit != nil {
+                    updatedDog.currentVisit!.medications.append(medication)
+                    await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
+                }
+            }
+        }
+    }
+    
+    private func addScheduledMedication(_ scheduledMedication: ScheduledMedication) {
+        Task {
+            if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
+                var updatedDog = dataManager.dogs[dogIndex]
+                if updatedDog.currentVisit != nil {
+                    updatedDog.currentVisit!.scheduledMedications.append(scheduledMedication)
+                    await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
+                    
+                    // Schedule notification
+                    await NotificationService.shared.scheduleMedicationNotification(for: updatedDog, scheduledMedication: scheduledMedication)
+                }
+            }
+        }
+    }
+    
+    private func deleteMedication(_ medication: Medication) {
+        Task {
+            if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
+                var updatedDog = dataManager.dogs[dogIndex]
+                if updatedDog.currentVisit != nil {
+                    updatedDog.currentVisit!.medications.removeAll { $0.id == medication.id }
+                    await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
+                }
+            }
+        }
+    }
+    
+    private func deleteScheduledMedication(_ scheduledMedication: ScheduledMedication) {
+        Task {
+            if let dogIndex = dataManager.dogs.firstIndex(where: { $0.id == dog.id }) {
+                var updatedDog = dataManager.dogs[dogIndex]
+                if updatedDog.currentVisit != nil {
+                    updatedDog.currentVisit!.scheduledMedications.removeAll { $0.id == scheduledMedication.id }
+                    await dataManager.updateDogMedications(updatedDog, medications: updatedDog.medications, scheduledMedications: updatedDog.scheduledMedications)
+                    
+                    // Cancel notification
+                    NotificationService.shared.cancelMedicationNotification(for: updatedDog, scheduledMedication: scheduledMedication)
+                }
+            }
         }
     }
 }

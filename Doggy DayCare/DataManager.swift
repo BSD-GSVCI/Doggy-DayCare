@@ -2681,17 +2681,22 @@ Call Stack: \(callStack)
         medications: [Medication],
         scheduledMedications: [ScheduledMedication]
     ) async {
+        #if DEBUG
         print("🔄 DataManager: updateDogWithVisit called for \(name)")
+        #endif
         
         do {
-            // Update persistent dog
+            // Update persistent dog with ALL fields
             var updatedPersistentDog = dogWithVisit.persistentDog
             updatedPersistentDog.name = name
             updatedPersistentDog.ownerName = ownerName
             updatedPersistentDog.ownerPhoneNumber = ownerPhoneNumber
-            // needsWalking, walkingNotes, and notes belong to PersistentDog now
-            updatedPersistentDog.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions
+            updatedPersistentDog.isDaycareFed = isDaycareFed
+            updatedPersistentDog.needsWalking = needsWalking
+            updatedPersistentDog.walkingNotes = walkingNotes
+            updatedPersistentDog.notes = notes
             updatedPersistentDog.specialInstructions = specialInstructions
+            updatedPersistentDog.allergiesAndFeedingInstructions = allergiesAndFeedingInstructions
             updatedPersistentDog.profilePictureData = profilePictureData
             updatedPersistentDog.age = age
             updatedPersistentDog.gender = gender
@@ -2700,7 +2705,12 @@ Call Stack: \(callStack)
             updatedPersistentDog.updatedAt = Date()
             
             try await persistentDogService.updatePersistentDog(updatedPersistentDog)
-            print("✅ DataManager: Updated persistent dog with ID \(updatedPersistentDog.id)")
+            #if DEBUG
+            print("✅ DataManager: Successfully updated persistent dog \(name) in CloudKit")
+            #endif
+            
+            // Update persistent dog cache immediately for responsive UI
+            await incrementallyUpdatePersistentDogCache(update: updatedPersistentDog)
             
             // Update visit if it exists
             if var currentVisit = dogWithVisit.currentVisit {
@@ -2711,26 +2721,22 @@ Call Stack: \(callStack)
                 currentVisit.scheduledMedications = scheduledMedications
                 currentVisit.updatedAt = Date()
                 
-                // Update persistent dog fields (modify the already existing updatedPersistentDog)
-                updatedPersistentDog.isDaycareFed = isDaycareFed
-                updatedPersistentDog.needsWalking = needsWalking
-                updatedPersistentDog.walkingNotes = walkingNotes
-                updatedPersistentDog.notes = notes
-                updatedPersistentDog.specialInstructions = specialInstructions
-                updatedPersistentDog.updatedAt = Date()
-                
                 try await visitService.updateVisit(currentVisit)
+                #if DEBUG
                 print("✅ DataManager: Updated visit with ID \(currentVisit.id)")
+                #endif
                 
-                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
-                print("✅ DataManager: Updated persistent dog with ID \(updatedPersistentDog.id)")
+                // Update visit cache immediately for responsive UI
+                await incrementallyUpdateVisitCache(update: currentVisit)
             }
             
-            // Refresh dogs list
+            // Refresh dogs list to ensure UI is updated
             await fetchDogs()
             
         } catch {
+            #if DEBUG
             print("❌ DataManager: Failed to update dog with visit: \(error)")
+            #endif
             errorMessage = "Failed to update dog: \(error.localizedDescription)"
         }
     }
