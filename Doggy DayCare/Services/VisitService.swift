@@ -524,15 +524,22 @@ class VisitService: ObservableObject {
         let now = Date()
         let calendar = Calendar.current
         let todaysVisits = allVisits.filter { visit in
-            // Include visits that:
-            // 1. Have arrived (arrival date is today or earlier)
-            let hasArrived = visit.arrivalDate <= now
+            // Skip deleted visits
+            if visit.isDeleted {
+                return false
+            }
             
-            // 2. Are either still present OR departed today
-            let isStillPresent = visit.departureDate == nil
+            // Include visits that:
+            // 1. Are currently present (no departure date and have arrived)
+            let isStillPresent = visit.departureDate == nil && visit.arrivalDate <= now
+            
+            // 2. OR departed today (regardless of arrival date)
             let departedToday = visit.departureDate != nil && calendar.isDateInToday(visit.departureDate!)
             
-            let shouldInclude = hasArrived && (isStillPresent || departedToday)
+            // 3. OR arriving today but not yet arrived (future arrivals for today)
+            let arrivingToday = calendar.isDateInToday(visit.arrivalDate) && visit.arrivalDate > now
+            
+            let shouldInclude = isStillPresent || departedToday || arrivingToday
             
             #if DEBUG
             if shouldInclude {

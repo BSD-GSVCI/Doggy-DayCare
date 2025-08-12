@@ -10,6 +10,7 @@ struct DogDetailView: View {
     @State private var showingExtendStaySheet = false
     @State private var showingDeleteAlert = false
     @State private var showingSetArrivalTimeSheet = false
+    @State private var showingMedicationManagement = false
     @State private var boardingEndDate = Date()
     @State private var newArrivalTime = Date()
     @State private var showingImageZoom = false
@@ -188,8 +189,19 @@ struct DogDetailView: View {
                         .font(.body)
                 }
             }
-            if !dog.medications.isEmpty || !dog.medicationRecords.isEmpty {
-                Section("Medications") {
+            
+            // Always show Medications section for access to management button
+            Section("Medications") {
+                // Show empty state if no medications exist
+                if dog.medications.isEmpty && dog.medicationRecords.isEmpty {
+                    HStack {
+                        Image(systemName: "pills")
+                            .foregroundStyle(.gray)
+                        Text("No medications configured")
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 8)
+                } else {
                     // Daily Medications
                     if !dog.dailyMedications.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -302,7 +314,28 @@ struct DogDetailView: View {
                         }
                     }
                 }
+                
+                // Manage Medications Button (always visible)
+                    Button {
+                        showingMedicationManagement = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "pills")
+                                .foregroundStyle(.white)
+                            Text("Manage Medications")
+                                .foregroundStyle(.white)
+                                .fontWeight(.medium)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(.blue)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 8)
+                }
             }
+            
             if let allergiesAndFeedingInstructions = dog.allergiesAndFeedingInstructions, !allergiesAndFeedingInstructions.isEmpty {
                 Section("Allergies & Feeding Instructions") {
                     Text(allergiesAndFeedingInstructions)
@@ -505,6 +538,11 @@ struct DogDetailView: View {
         .sheet(isPresented: $showingSetArrivalTimeSheet) {
             NavigationStack {
                 SetArrivalTimeView(dog: dog, newArrivalTime: $newArrivalTime)
+            }
+        }
+        .sheet(isPresented: $showingMedicationManagement) {
+            NavigationStack {
+                MedicationManagementView(dog: dog)
             }
         }
         .overlay {

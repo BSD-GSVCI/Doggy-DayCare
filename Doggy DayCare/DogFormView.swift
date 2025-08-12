@@ -225,8 +225,8 @@ struct DogFormView: View {
                 
                 Section("Medications") {
                     if dog != nil {
-                        // For existing dogs, show a simplified view since medications are managed elsewhere
-                    Text("Edit medications from the dog detail view")
+                        // For existing dogs, medications are managed through the dedicated interface
+                    Text("Use the 'Manage Medications' button in the dog detail view")
                         .foregroundStyle(.secondary)
                         .font(.caption)
                     } else {
