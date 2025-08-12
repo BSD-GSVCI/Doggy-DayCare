@@ -10,8 +10,7 @@ struct MedicationsListView: View {
     @State private var selectedFilter: MedicationFilter = .all
     @State private var selectedSort: MedicationSort = .alphabetical
     @State private var showingDeleteAlert = false
-    @State private var showingMedicationPopup = false
-    @State private var medicationNotes = ""
+    @State private var showingMedicationSheet = false
     @State private var editingMedicationRecord: MedicationRecord?
     
     enum MedicationFilter {
@@ -157,8 +156,7 @@ struct DogMedicationRow: View {
     @StateObject private var authService = AuthenticationService.shared
     let dog: DogWithVisit
     @State private var showingDeleteAlert = false
-    @State private var showingMedicationPopup = false
-    @State private var medicationNotes = ""
+    @State private var showingMedicationSheet = false
     @State private var editingMedicationRecord: MedicationRecord?
     
     private func editMedicationRecord(_ record: MedicationRecord) {
@@ -277,20 +275,10 @@ struct DogMedicationRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture {
-            showingMedicationPopup = true
+            showingMedicationSheet = true
         }
-        .alert("Record Medication", isPresented: $showingMedicationPopup) {
-            TextField("Notes (optional)", text: $medicationNotes)
-            Button("Cancel", role: .cancel) { }
-            Button("Record") {
-                let notesToSave = medicationNotes  // Capture the value before resetting
-                medicationNotes = ""  // Reset the state variable
-                Task {
-                    await addMedicationRecord(notes: notesToSave)
-                }
-            }
-        } message: {
-            Text("Add notes for \(dog.name)'s medication")
+        .sheet(isPresented: $showingMedicationSheet) {
+            RecordMedicationView(dog: dog)
         }
         .alert("Delete Last Medication", isPresented: $showingDeleteAlert) {
             Button("Cancel", role: .cancel) { }
@@ -303,18 +291,6 @@ struct DogMedicationRow: View {
 
     }
     
-    private func addMedicationRecord(notes: String) async {
-        #if DEBUG
-        print("🔄 DogMedicationRow.addMedicationRecord called for \(dog.name)")
-        print("📝 Notes parameter: '\(notes)'")
-        print("📝 Notes isEmpty: \(notes.isEmpty)")
-        #endif
-        
-        await dataManager.addMedicationRecord(to: dog, notes: notes.isEmpty ? nil : notes, recordedBy: authService.currentUser?.name)
-        #if DEBUG
-        print("✅ Medication record added for \(dog.name)")
-        #endif
-    }
     
     private func deleteLastMedication() {
         if let lastMedication = dog.medicationRecords.last {
@@ -441,8 +417,9 @@ struct MedicationInstanceView: View {
                                 .font(.headline)
                                 .padding(.top)
                             
-                            DatePicker("Timestamp", selection: $editedTimestamp, displayedComponents: [.date, .hourAndMinute])
-                                .datePickerStyle(.compact)
+                            DatePicker("Time", selection: $editedTimestamp, displayedComponents: [.hourAndMinute])
+                                .datePickerStyle(.wheel)
+                                .labelsHidden()
                         }
                         .padding()
                     }
@@ -547,6 +524,76 @@ struct AddMedicationView: View {
         isLoading = true
         
         await dataManager.addMedicationRecord(to: dog, notes: notes.isEmpty ? nil : notes, recordedBy: AuthenticationService.shared.currentUser?.name)
+        
+        isLoading = false
+        dismiss()
+    }
+}
+
+struct RecordMedicationView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var dataManager: DataManager
+    @StateObject private var authService = AuthenticationService.shared
+    let dog: DogWithVisit
+    
+    @State private var notes = ""
+    @State private var isLoading = false
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Dog: \(dog.name)")
+                        .font(.headline)
+                    
+                    if !dog.dailyMedications.isEmpty {
+                        Text("Medications: \(dog.dailyMedications.map(\.name).joined(separator: ", "))")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                
+                Section("Medication Details") {
+                    TextField("Notes (optional)", text: $notes, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+            }
+            .navigationTitle("Record Medication")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Record") {
+                        Task {
+                            await recordMedication()
+                        }
+                    }
+                    .disabled(isLoading)
+                }
+            }
+            .overlay {
+                if isLoading {
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                        .overlay {
+                            ProgressView("Recording...")
+                                .padding()
+                                .background(.regularMaterial)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                }
+            }
+        }
+    }
+    
+    private func recordMedication() async {
+        isLoading = true
+        
+        await dataManager.addMedicationRecord(to: dog, notes: notes.isEmpty ? nil : notes, recordedBy: authService.currentUser?.name)
         
         isLoading = false
         dismiss()

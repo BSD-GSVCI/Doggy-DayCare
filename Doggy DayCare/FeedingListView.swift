@@ -495,8 +495,9 @@ struct FeedingListView: View {
                                     .font(.headline)
                                     .padding(.top)
                                 
-                                DatePicker("Timestamp", selection: $editedTimestamp, displayedComponents: [.date, .hourAndMinute])
-                                    .datePickerStyle(.compact)
+                                DatePicker("Time", selection: $editedTimestamp, displayedComponents: [.hourAndMinute])
+                                    .datePickerStyle(.wheel)
+                                    .labelsHidden()
                             }
                             .padding()
                         }

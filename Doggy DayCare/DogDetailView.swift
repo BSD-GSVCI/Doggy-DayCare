@@ -12,6 +12,10 @@ struct DogDetailView: View {
     @State private var showingSetArrivalTimeSheet = false
     @State private var showingAddMedication = false
     @State private var showingAddScheduledMedication = false
+    @State private var showingDeleteMedicationAlert = false
+    @State private var showingDeleteScheduledMedicationAlert = false
+    @State private var medicationToDelete: Medication?
+    @State private var scheduledMedicationToDelete: ScheduledMedication?
     @State private var boardingEndDate = Date()
     @State private var newArrivalTime = Date()
     @State private var showingImageZoom = false
@@ -247,7 +251,8 @@ struct DogDetailView: View {
                                     Spacer()
                                     
                                     Button("Remove") {
-                                        deleteMedication(medication)
+                                        medicationToDelete = medication
+                                        showingDeleteMedicationAlert = true
                                     }
                                     .foregroundStyle(.red)
                                     .font(.caption)
@@ -299,7 +304,8 @@ struct DogDetailView: View {
                                             .clipShape(Capsule())
                                         
                                         Button("Remove") {
-                                            deleteScheduledMedication(scheduledMedication)
+                                            scheduledMedicationToDelete = scheduledMedication
+                                            showingDeleteScheduledMedicationAlert = true
                                         }
                                         .foregroundStyle(.red)
                                         .font(.caption)
@@ -620,6 +626,33 @@ struct DogDetailView: View {
             }
         } message: {
             Text("Are you sure you want to delete \(dog.name)? This action cannot be undone.")
+        }
+        .alert("Delete Medication", isPresented: $showingDeleteMedicationAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                if let medication = medicationToDelete {
+                    deleteMedication(medication)
+                    medicationToDelete = nil
+                }
+            }
+        } message: {
+            if let medication = medicationToDelete {
+                Text("Are you sure you want to delete '\(medication.name)'?")
+            }
+        }
+        .alert("Delete Scheduled Medication", isPresented: $showingDeleteScheduledMedicationAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                if let scheduledMedication = scheduledMedicationToDelete {
+                    deleteScheduledMedication(scheduledMedication)
+                    scheduledMedicationToDelete = nil
+                }
+            }
+        } message: {
+            if let scheduledMedication = scheduledMedicationToDelete,
+               let medication = dog.medications.first(where: { $0.id == scheduledMedication.medicationId }) {
+                Text("Are you sure you want to delete '\(medication.name)' at \(scheduledMedication.scheduledDate.formatted(date: .abbreviated, time: .shortened))?")
+            }
         }
     }
     
