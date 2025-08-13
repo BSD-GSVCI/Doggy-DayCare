@@ -191,13 +191,22 @@ struct DogMedicationRow: View {
                         HStack {
                             Image(systemName: "pills.fill")
                                 .foregroundStyle(.purple)
-                            Text(medication.name)
-                                .font(.subheadline)
-                            if let notes = medication.notes, !notes.isEmpty {
-                                Text("📝")
-                                    .font(.caption)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(medication.name)
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                    .foregroundStyle(.secondary)
+                                
+                                if let notes = medication.notes, !notes.isEmpty {
+                                    Text(notes)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
+                            
                             Spacer()
+                            
                             Text("Daily")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -213,14 +222,26 @@ struct DogMedicationRow: View {
                             HStack {
                                 Image(systemName: "clock.fill")
                                     .foregroundStyle(.orange)
-                                VStack(alignment: .leading) {
+                                
+                                VStack(alignment: .leading, spacing: 2) {
                                     Text(medication.name)
                                         .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .foregroundStyle(.secondary)
+                                    
                                     Text(scheduledMedication.scheduledDate.formatted(date: .omitted, time: .shortened))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                    
+                                    if let notes = scheduledMedication.notes, !notes.isEmpty {
+                                        Text(notes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
+                                
                                 Spacer()
+                                
                                 Text(scheduledMedication.status.displayName)
                                     .font(.caption)
                                     .padding(.horizontal, 6)
@@ -538,22 +559,114 @@ struct RecordMedicationView: View {
     
     @State private var notes = ""
     @State private var isLoading = false
+    @State private var selectedMedicationType: MedicationType = .daily
+    @State private var selectedScheduledMedication: ScheduledMedication?
+    
+    enum MedicationType {
+        case daily
+        case scheduled
+    }
+    
+    private var availableScheduledMedications: [ScheduledMedication] {
+        let today = Date()
+        return dog.scheduledMedications.filter { scheduledMed in
+            Calendar.current.isDate(scheduledMed.scheduledDate, inSameDayAs: today)
+        }.sorted { $0.scheduledDate < $1.scheduledDate }
+    }
     
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Dog: \(dog.name)")
+                    Text(dog.name)
                         .font(.headline)
-                    
+                }
+                
+                Section("Medication Type") {
+                    Picker("Type", selection: $selectedMedicationType) {
+                        Text("Daily Medication").tag(MedicationType.daily)
+                        Text("Scheduled Medication").tag(MedicationType.scheduled)
+                    }
+                    .pickerStyle(.segmented)
+                }
+                
+                if selectedMedicationType == .daily {
                     if !dog.dailyMedications.isEmpty {
-                        Text("Medications: \(dog.dailyMedications.map(\.name).joined(separator: ", "))")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        Section("Daily Medications") {
+                            ForEach(dog.dailyMedications) { medication in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(medication.name)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    
+                                    if let notes = medication.notes, !notes.isEmpty {
+                                        Text(notes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    } else {
+                        Section("Daily Medications") {
+                            Text("No daily medications configured")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
+                    if !availableScheduledMedications.isEmpty {
+                        Section("Today's Scheduled Medications") {
+                            ForEach(availableScheduledMedications) { scheduledMedication in
+                                let medication = dog.medications.first(where: { $0.id == scheduledMedication.medicationId })
+                                let isTimeToAdminister = scheduledMedication.scheduledDate <= Date()
+                                
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(medication?.name ?? "Unknown Medication")
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                        
+                                        Text("Scheduled: \(scheduledMedication.scheduledDate.formatted(date: .omitted, time: .shortened))")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        
+                                        if !isTimeToAdminister {
+                                            Text("Time hasn't arrived yet")
+                                                .font(.caption)
+                                                .foregroundStyle(.orange)
+                                        }
+                                        
+                                        if let notes = scheduledMedication.notes, !notes.isEmpty {
+                                            Text(notes)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    if selectedScheduledMedication?.id == scheduledMedication.id {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.blue)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    selectedScheduledMedication = scheduledMedication
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    } else {
+                        Section("Today's Scheduled Medications") {
+                            Text("No scheduled medications for today")
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 
-                Section("Medication Details") {
+                Section("Notes") {
                     TextField("Notes (optional)", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
                 }
@@ -572,7 +685,7 @@ struct RecordMedicationView: View {
                             await recordMedication()
                         }
                     }
-                    .disabled(isLoading)
+                    .disabled(isLoading || (selectedMedicationType == .scheduled && selectedScheduledMedication == nil))
                 }
             }
             .overlay {
@@ -593,7 +706,12 @@ struct RecordMedicationView: View {
     private func recordMedication() async {
         isLoading = true
         
-        await dataManager.addMedicationRecord(to: dog, notes: notes.isEmpty ? nil : notes, recordedBy: authService.currentUser?.name)
+        if selectedMedicationType == .daily {
+            await dataManager.addMedicationRecord(to: dog, notes: notes.isEmpty ? nil : notes, recordedBy: authService.currentUser?.name)
+        } else if selectedScheduledMedication != nil {
+            // Record the scheduled medication (for now, treating it like a regular medication record)
+            await dataManager.addMedicationRecord(to: dog, notes: notes.isEmpty ? nil : notes, recordedBy: authService.currentUser?.name)
+        }
         
         isLoading = false
         dismiss()
