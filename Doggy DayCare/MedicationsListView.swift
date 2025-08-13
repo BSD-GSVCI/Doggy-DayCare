@@ -217,6 +217,10 @@ struct DogMedicationRow: View {
                 // Scheduled medications due today
                 let todaysScheduledMedications = dog.todaysScheduledMedications
                 if !todaysScheduledMedications.isEmpty {
+                    // Add spacing between daily and scheduled medications
+                    if !dog.dailyMedications.isEmpty {
+                        Spacer().frame(height: 8)
+                    }
                     ForEach(todaysScheduledMedications) { scheduledMedication in
                         if let medication = dog.medications.first(where: { $0.id == scheduledMedication.medicationId }) {
                             HStack {
