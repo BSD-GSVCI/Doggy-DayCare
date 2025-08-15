@@ -504,57 +504,35 @@ class VisitService: ObservableObject {
     
     func fetchActiveVisits() async throws -> [Visit] {
         #if DEBUG
-        print("🔍 Fetching today's visits from CloudKit...")
+        print("🔍 Fetching today's active visits from CloudKit...")
         #endif
         
-        // Fetch ALL visits first to debug what's in CloudKit
-        let allVisits = try await fetchVisits(predicate: NSPredicate(value: true))
-        
-        #if DEBUG
-        print("📊 Total visits in CloudKit: \(allVisits.count)")
-        for visit in allVisits {
-            print("  - Visit ID: \(visit.id)")
-            print("    Dog ID: \(visit.dogId)")
-            print("    Arrival: \(visit.arrivalDate)")
-            print("    Departure: \(visit.departureDate?.description ?? "nil")")
-            print("    isDeleted: \(visit.isDeleted)")
-        }
-        #endif
-        
-        let now = Date()
+        // Create proper predicate for currently active visits
         let calendar = Calendar.current
-        let todaysVisits = allVisits.filter { visit in
-            // Skip deleted visits
-            if visit.isDeleted {
-                return false
-            }
-            
-            // Include visits that:
-            // 1. Are currently present (no departure date and have arrived)
-            let isStillPresent = visit.departureDate == nil && visit.arrivalDate <= now
-            
-            // 2. OR departed today (regardless of arrival date)
-            let departedToday = visit.departureDate != nil && calendar.isDateInToday(visit.departureDate!)
-            
-            // 3. OR arriving today but not yet arrived (future arrivals for today)
-            let arrivingToday = calendar.isDateInToday(visit.arrivalDate) && visit.arrivalDate > now
-            
-            let shouldInclude = isStillPresent || departedToday || arrivingToday
-            
-            #if DEBUG
-            if shouldInclude {
-                print("  ✓ Including visit for dog: \(visit.dogId) (present: \(isStillPresent), departed today: \(departedToday))")
-            }
-            #endif
-            
-            return shouldInclude
-        }
+        let today = calendar.startOfDay(for: Date())
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
+        
+        // Fetch visits that are:
+        // 1. Currently present (no departure date) OR
+        // 2. Departed today (for today's records) OR  
+        // 3. Arriving today (future bookings)
+        // AND not deleted
+        let predicate = NSPredicate(format: "((departureDate == nil) OR (departureDate >= %@ AND departureDate < %@) OR (arrivalDate >= %@ AND arrivalDate < %@)) AND isDeleted == %@", 
+                                  today as NSDate, tomorrow as NSDate,    // departed today
+                                  today as NSDate, tomorrow as NSDate,    // arriving today
+                                  NSNumber(value: false))
+        
+        let activeVisits = try await fetchVisits(predicate: predicate)
         
         #if DEBUG
-        print("📊 Today's visits: \(todaysVisits.count) out of \(allVisits.count) total visits")
+        print("📊 Active visits from CloudKit: \(activeVisits.count)")
+        for visit in activeVisits {
+            let status = visit.departureDate == nil ? "PRESENT" : "departed today"
+            print("  - Visit: \(visit.dogId) arrived: \(visit.arrivalDate) [\(status)]")
+        }
         #endif
         
-        return todaysVisits
+        return activeVisits
     }
     
     func fetchAllVisits() async throws -> [Visit] {
