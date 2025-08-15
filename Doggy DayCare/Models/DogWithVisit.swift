@@ -2,7 +2,7 @@ import Foundation
 
 // This struct combines a PersistentDog with its current Visit for UI display
 // This replaces the legacy Dog model throughout the app
-struct DogWithVisit: Identifiable, Codable {
+struct DogWithVisit: Identifiable, Codable, Equatable {
     let persistentDog: PersistentDog
     var currentVisit: Visit?
     

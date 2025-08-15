@@ -4,7 +4,7 @@
 
 import Foundation
 
-struct PottyRecord: Codable, Identifiable {
+struct PottyRecord: Codable, Identifiable, Equatable {
     var id = UUID()
     var timestamp: Date
     var type: PottyType
@@ -50,7 +50,7 @@ struct PottyRecord: Codable, Identifiable {
     }
 }
 
-struct FeedingRecord: Codable, Identifiable {
+struct FeedingRecord: Codable, Identifiable, Equatable {
     var id = UUID()
     var timestamp: Date
     var type: FeedingType
@@ -72,7 +72,7 @@ struct FeedingRecord: Codable, Identifiable {
     }
 }
 
-struct MedicationRecord: Codable, Identifiable {
+struct MedicationRecord: Codable, Identifiable, Equatable {
     var id = UUID()
     var timestamp: Date
     var notes: String?
@@ -86,7 +86,7 @@ struct MedicationRecord: Codable, Identifiable {
 }
 
 // Enhanced medication models
-struct Medication: Codable, Identifiable {
+struct Medication: Codable, Identifiable, Equatable {
     var id = UUID()
     var name: String
     var type: MedicationType
@@ -115,7 +115,7 @@ struct Medication: Codable, Identifiable {
     }
 }
 
-struct ScheduledMedication: Codable, Identifiable {
+struct ScheduledMedication: Codable, Identifiable, Equatable {
     var id = UUID()
     var medicationId: UUID
     var scheduledDate: Date

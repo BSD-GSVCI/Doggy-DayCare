@@ -1,6 +1,6 @@
 import Foundation
 
-struct PersistentDog: Codable, Identifiable {
+struct PersistentDog: Codable, Identifiable, Equatable {
     let id: UUID
     var name: String
     var ownerName: String?

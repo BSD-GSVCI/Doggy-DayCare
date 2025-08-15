@@ -19,11 +19,96 @@ class DataManager: ObservableObject {
     private var lastSyncTime: Date = Date.distantPast
     private var lastAllDogsSyncTime: Date = Date.distantPast
     
+    // Multi-user sync timer for detecting changes from other users
+    private var multiUserSyncTimer: Timer?
+    private let multiUserSyncInterval: TimeInterval = 15 // Sync every 15 seconds
+    
     
     private init() {
         #if DEBUG
         print("📱 DataManager initialized")
         #endif
+        startMultiUserSync()
+    }
+    
+    deinit {
+        // Stop the timer directly without Task since we're in deinit
+        multiUserSyncTimer?.invalidate()
+        multiUserSyncTimer = nil
+    }
+    
+    // MARK: - Multi-User Sync
+    
+    private func startMultiUserSync() {
+        multiUserSyncTimer = Timer.scheduledTimer(withTimeInterval: multiUserSyncInterval, repeats: true) { [weak self] _ in
+            Task { [weak self] in
+                await self?.performMultiUserSync()
+            }
+        }
+        
+        #if DEBUG
+        print("🔄 Multi-user sync started (every \(Int(multiUserSyncInterval))s)")
+        #endif
+    }
+    
+    private func stopMultiUserSync() {
+        multiUserSyncTimer?.invalidate()
+        multiUserSyncTimer = nil
+        
+        #if DEBUG
+        print("⏹ Multi-user sync stopped")
+        #endif
+    }
+    
+    private func performMultiUserSync() async {
+        // Don't sync if we're already loading or if last sync was too recent
+        guard !isLoading else { return }
+        
+        let cacheStats = DataIntegrityCache.shared.getCacheStats()
+        let timeSinceLastSync = Date().timeIntervalSince(cacheStats.lastSync)
+        
+        // Only sync if enough time has passed
+        guard timeSinceLastSync >= 10 else { return }
+        
+        do {
+            #if DEBUG
+            print("🔄 Performing multi-user sync check...")
+            #endif
+            
+            // Sync with CloudKit to get changes from other users
+            try await DataIntegrityCache.shared.syncWithCloudKit(
+                fetchPersistentDogs: { [weak self] in
+                    try await self?.persistentDogService.fetchPersistentDogs() ?? []
+                },
+                fetchVisits: { [weak self] in
+                    try await self?.visitService.fetchActiveVisits() ?? []
+                }
+            )
+            
+            // Update UI with any changes
+            let updatedDogs = DataIntegrityCache.shared.getCurrentDogsWithVisits()
+            
+            await MainActor.run {
+                let previousCount = self.dogs.count
+                
+                // Only update if there are actual changes
+                if self.dogs != updatedDogs {
+                    self.dogs = updatedDogs
+                    
+                    #if DEBUG
+                    let diff = updatedDogs.count - previousCount
+                    if diff != 0 {
+                        print("📊 Multi-user sync: Dog count changed by \(diff > 0 ? "+\(diff)" : "\(diff)")")
+                    }
+                    #endif
+                }
+            }
+            
+        } catch {
+            #if DEBUG
+            print("⚠️ Multi-user sync failed: \(error)")
+            #endif
+        }
     }
     
     // MARK: - Authentication
@@ -101,8 +186,8 @@ class DataManager: ObservableObject {
                 #endif
             }
             
-            // Combine persistent dogs with their active visits
-            let dogsWithVisits = DogWithVisit.currentlyPresentFromPersistentDogsAndVisits(persistentDogs, activeVisits)
+            // Get dogs from unified cache instead of combining separate caches
+            let dogsWithVisits = DataIntegrityCache.shared.getCurrentDogsWithVisits()
             
             #if DEBUG
             print("🔍 DataManager: Created \(dogsWithVisits.count) dogs with visits")
@@ -1466,7 +1551,10 @@ class DataManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        // Create the new record
+        // 1. Check for conflicts before proceeding
+        let currentDogState = DataIntegrityCache.shared.getCurrentDogsWithVisits()
+            .first { $0.id == dog.id }
+        
         let newRecord = FeedingRecord(
             timestamp: Date(),
             type: type,
@@ -1474,11 +1562,26 @@ class DataManager: ObservableObject {
             recordedBy: recordedBy
         )
         
-        // Update local cache immediately for responsive UI
+        if let conflict = ConflictResolver.shared.detectPotentialConflict(
+            operation: .addFeedingRecord(dogId: dog.id, record: newRecord),
+            currentState: currentDogState ?? dog
+        ) {
+            await MainActor.run {
+                self.errorMessage = conflict.message + " " + conflict.suggestion
+                self.isLoading = false
+            }
+            return
+        }
+        
+        // 2. Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
                 self.dogs[index].currentVisit?.feedingRecords.append(newRecord)
                 self.dogs[index].currentVisit?.updatedAt = Date()
+                
+                #if DEBUG
+                print("✅ Added feeding record to local cache with conflict protection")
+                #endif
             }
         }
         
@@ -2552,61 +2655,74 @@ Call Stack: \(callStack)
         medications: [Medication],
         scheduledMedications: [ScheduledMedication]
     ) async {
+        #if DEBUG
         print("🔄 DataManager: addDogWithVisit called for \(name)")
+        #endif
+        
+        // Create persistent dog and visit objects
+        let persistentDog = PersistentDog(
+            name: name,
+            ownerName: ownerName,
+            ownerPhoneNumber: ownerPhoneNumber,
+            age: age,
+            gender: gender,
+            vaccinations: vaccinations,
+            isNeuteredOrSpayed: isNeuteredOrSpayed,
+            allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
+            profilePictureData: profilePictureData,
+            visitCount: 1, // First visit
+            lastVisitDate: arrivalDate,
+            needsWalking: needsWalking,
+            walkingNotes: walkingNotes,
+            isDaycareFed: isDaycareFed,
+            notes: notes,
+            specialInstructions: specialInstructions
+        )
+        
+        let visit = Visit(
+            dogId: persistentDog.id,
+            arrivalDate: arrivalDate,
+            departureDate: nil,
+            isBoarding: isBoarding,
+            boardingEndDate: boardingEndDate,
+            medications: medications,
+            scheduledMedications: scheduledMedications
+        )
         
         do {
-            // Create persistent dog first
-            let persistentDog = PersistentDog(
-                name: name,
-                ownerName: ownerName,
-                ownerPhoneNumber: ownerPhoneNumber,
-                age: age,
-                gender: gender,
-                vaccinations: vaccinations,
-                isNeuteredOrSpayed: isNeuteredOrSpayed,
-                allergiesAndFeedingInstructions: allergiesAndFeedingInstructions,
-                profilePictureData: profilePictureData,
-                visitCount: 1, // First visit
-                lastVisitDate: arrivalDate,
-                needsWalking: needsWalking,
-                walkingNotes: walkingNotes,
-                isDaycareFed: isDaycareFed,
-                notes: notes,
-                specialInstructions: specialInstructions
+            // Use the new atomic transaction system with rollback capability
+            try await DataIntegrityCache.shared.addDogWithVisit(
+                persistentDog: persistentDog,
+                visit: visit,
+                cloudKitConfirmation: { [weak self] in
+                    // CloudKit operations
+                    try await self?.persistentDogService.createPersistentDog(persistentDog)
+                    try await self?.visitService.createVisit(visit)
+                    
+                    #if DEBUG
+                    print("✅ CloudKit: Successfully saved dog and visit")
+                    #endif
+                }
             )
             
-            try await persistentDogService.createPersistentDog(persistentDog)
-            print("✅ DataManager: Created persistent dog with ID \(persistentDog.id)")
-            
-            // Create visit
-            let visit = Visit(
-                dogId: persistentDog.id,
-                arrivalDate: arrivalDate,
-                departureDate: nil,
-                isBoarding: isBoarding,
-                boardingEndDate: boardingEndDate,
-                medications: medications,
-                scheduledMedications: scheduledMedications
-            )
-            
-            try await visitService.createVisit(visit)
-            
-            #if DEBUG
-            print("✅ DataManager: Created visit with ID \(visit.id)")
-            #endif
-            
-            // Update persistent dog cache with new dog
-            await incrementallyUpdatePersistentDogCache(add: persistentDog)
-            
-            // Update active visits cache with new visit
-            await incrementallyUpdateVisitCache(add: visit)
-            
-            // Refresh dogs list
-            await fetchDogs()
+            // Update UI immediately with the new dog
+            let newDogWithVisit = DogWithVisit(persistentDog: persistentDog, currentVisit: visit)
+            await MainActor.run {
+                self.dogs.append(newDogWithVisit)
+                
+                #if DEBUG
+                print("✅ UI: Added \(name) to dogs array - total count: \(self.dogs.count)")
+                #endif
+            }
             
         } catch {
+            #if DEBUG
             print("❌ DataManager: Failed to add dog with visit: \(error)")
-            errorMessage = "Failed to add dog: \(error.localizedDescription)"
+            #endif
+            
+            await MainActor.run {
+                self.errorMessage = "Failed to add dog: \(error.localizedDescription)"
+            }
         }
     }
     

@@ -1,6 +1,6 @@
 import Foundation
 
-struct Visit: Codable, Identifiable {
+struct Visit: Codable, Identifiable, Equatable {
     let id: UUID
     let dogId: UUID // Reference to PersistentDog
     var arrivalDate: Date
