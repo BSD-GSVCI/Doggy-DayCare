@@ -525,6 +525,8 @@ class VisitService: ObservableObject {
         print("📅 Tomorrow: \(tomorrow)")
         #endif
         
+        // CloudKit doesn't support complex OR predicates, so we need separate queries
+        
         // Query 1: Dogs still present (isDepartureTimeSet == 0 AND arrived <= today)
         let stillPresentPredicate = NSPredicate(format: "isDepartureTimeSet == %@ AND arrivalDate <= %@", 
                                               NSNumber(value: 0), today as NSDate)
