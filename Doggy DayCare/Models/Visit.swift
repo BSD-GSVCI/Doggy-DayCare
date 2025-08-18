@@ -7,6 +7,7 @@ struct Visit: Codable, Identifiable, Equatable {
     var departureDate: Date?
     var isBoarding: Bool
     var boardingEndDate: Date?
+    var isArrivalTimeSet: Bool = true // Default true for normal check-ins, false for future bookings
     var isDeleted: Bool = false
     var deletedAt: Date?
     var deletedBy: String?
@@ -31,6 +32,7 @@ struct Visit: Codable, Identifiable, Equatable {
         departureDate: Date? = nil,
         isBoarding: Bool = false,
         boardingEndDate: Date? = nil,
+        isArrivalTimeSet: Bool = true,
         isDeleted: Bool = false,
         deletedAt: Date? = nil,
         deletedBy: String? = nil,
@@ -50,6 +52,7 @@ struct Visit: Codable, Identifiable, Equatable {
         self.departureDate = departureDate
         self.isBoarding = isBoarding
         self.boardingEndDate = boardingEndDate
+        self.isArrivalTimeSet = isArrivalTimeSet
         self.isDeleted = isDeleted
         self.deletedAt = deletedAt
         self.deletedBy = deletedBy

@@ -89,7 +89,7 @@ struct DogDetailView: View {
             // Action Buttons Section (only for present dogs)
             if dog.isCurrentlyPresent {
                 Section {
-                    // Set Arrival Time button for dogs that have arrived but don't have arrival time set
+                    // Set Arrival Time button for future booking dogs that arrived today but don't have arrival time set
                     if Calendar.current.isDateInToday(dog.arrivalDate) && !dog.isArrivalTimeSet {
                         Button {
                             newArrivalTime = Date()
@@ -97,9 +97,9 @@ struct DogDetailView: View {
                         } label: {
                             HStack {
                                 Image(systemName: "clock.badge.checkmark")
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(.blue)
                                 Text("Set Arrival Time")
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(.blue)
                             }
                         }
                     }
@@ -923,23 +923,23 @@ struct SetArrivalTimeView: View {
     
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Text("Dog: \(dog.name)")
-                        .font(.headline)
-                    
-                    Text("Set the actual arrival time for today")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+            VStack(spacing: 20) {
+                Text("Set Arrival Time")
+                    .font(.headline)
+                    .padding(.top)
                 
-                Section("Arrival Time") {
-                    DatePicker("Arrival Time", selection: $newArrivalTime, displayedComponents: [.date, .hourAndMinute])
-                        .datePickerStyle(.wheel)
-                        .labelsHidden()
-                }
+                Text("Set arrival time for \(dog.name)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                
+                // Only show time picker since date is already set
+                DatePicker("", selection: $newArrivalTime, displayedComponents: .hourAndMinute)
+                    .datePickerStyle(.wheel)
+                    .labelsHidden()
+                
+                Spacer()
             }
-            .navigationTitle("Set Arrival Time")
+            .padding()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

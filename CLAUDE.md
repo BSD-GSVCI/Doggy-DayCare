@@ -220,6 +220,10 @@ func saveData() {
 - `DeleteLogView.swift`: Debugging tool no longer needed
 - Migration infrastructure: Temporary migration code removed
 
+**Legacy Fields (DO NOT USE in new architecture)**:
+- **`isDeleted` flag**: Used in old architecture for "soft delete" where every visit had its own UUID. In the new PersistentDog + Visit architecture, visits should be truly deleted from CloudKit when no longer needed, not marked with a flag. The `isDeleted` field exists in CloudKit schema for backward compatibility but should NOT be used in new code.
+- **Rationale**: Old system needed soft delete because visit UUIDs were the primary identifier. New system uses stable PersistentDog entities, so visits can be safely deleted without losing dog data.
+
 ## Commit Message Format
 When creating git commits, use simple, clean commit messages with bullet points:
 - Do NOT include "Generated with Claude Code" footer

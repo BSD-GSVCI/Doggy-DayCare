@@ -7,11 +7,9 @@ struct DogRow: View {
     @State private var showingDetail = false
     @State private var showingUndoAlert = false
     @State private var showingEditDeparture = false
-    @State private var showingSetArrivalTime = false
     @State private var showingValidationAlert = false
     @State private var validationMessage = ""
     @State private var newDepartureDate = Date()
-    @State private var newArrivalTime = Date()
     
     private let shortDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -210,53 +208,6 @@ struct DogRow: View {
                 }
             }
         }
-        .contextMenu {
-            // Add Set Arrival Time option for dogs that have arrived but don't have arrival time set
-            if Calendar.current.isDateInToday(dog.arrivalDate) && !dog.isArrivalTimeSet {
-                Button {
-                    newArrivalTime = Date()
-                    showingSetArrivalTime = true
-                } label: {
-                    Label("Set Arrival Time", systemImage: "clock.badge.checkmark")
-                }
-            }
-        }
-        .sheet(isPresented: $showingSetArrivalTime) {
-            NavigationStack {
-                VStack(spacing: 20) {
-                    Text("Set Arrival Time")
-                        .font(.headline)
-                        .padding(.top)
-                    
-                    Text("Set arrival time for \(dog.name)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    
-                    DatePicker("Arrival Time", selection: $newArrivalTime, displayedComponents: [.date, .hourAndMinute])
-                        .datePickerStyle(.wheel)
-                        .labelsHidden()
-                    
-                    Spacer()
-                }
-                .padding()
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") {
-                            showingSetArrivalTime = false
-                        }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Set Time") {
-                            Task {
-                                await setArrivalTime()
-                            }
-                            showingSetArrivalTime = false
-                        }
-                    }
-                }
-            }
-        }
     }
     
     private func undoDeparture() async {
@@ -273,10 +224,6 @@ struct DogRow: View {
         }
         
         await dataManager.editDepartureOptimized(for: dog, newDate: newDepartureDate)
-    }
-    
-    private func setArrivalTime() async {
-        await dataManager.setArrivalTimeOptimized(for: dog, newArrivalTime: newArrivalTime)
     }
 }
 

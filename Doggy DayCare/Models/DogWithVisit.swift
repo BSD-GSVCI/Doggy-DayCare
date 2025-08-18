@@ -59,7 +59,7 @@ struct DogWithVisit: Identifiable, Codable, Equatable {
     }
     
     var isArrivalTimeSet: Bool {
-        return currentVisit != nil
+        return currentVisit?.isArrivalTimeSet ?? false
     }
     
     // MARK: - Activity Counts

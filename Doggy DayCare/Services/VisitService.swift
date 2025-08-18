@@ -57,6 +57,8 @@ class VisitService: ObservableObject {
         static let scheduledMedicationNotes = "scheduledMedicationNotes"
         static let scheduledMedicationIds = "scheduledMedicationIds"
         static let scheduledMedicationNotificationTimes = "scheduledMedicationNotificationTimes"
+        static let isDepartureTimeSet = "isDepartureTimeSet"
+        static let isArrivalTimeSet = "isArrivalTimeSet"
     }
     
     private init() {
@@ -80,6 +82,8 @@ class VisitService: ObservableObject {
         record[VisitFields.dogId] = visit.dogId.uuidString
         record[VisitFields.arrivalDate] = visit.arrivalDate
         record[VisitFields.departureDate] = visit.departureDate
+        record[VisitFields.isDepartureTimeSet] = (visit.departureDate != nil) ? 1 : 0
+        record[VisitFields.isArrivalTimeSet] = visit.isArrivalTimeSet ? 1 : 0
         record[VisitFields.isBoarding] = visit.isBoarding ? 1 : 0
         record[VisitFields.boardingEndDate] = visit.boardingEndDate
         record[VisitFields.isDeleted] = visit.isDeleted ? 1 : 0
@@ -183,6 +187,8 @@ class VisitService: ObservableObject {
         
         // Update fields
         record[VisitFields.departureDate] = visit.departureDate
+        record[VisitFields.isDepartureTimeSet] = (visit.departureDate != nil) ? 1 : 0
+        record[VisitFields.isArrivalTimeSet] = visit.isArrivalTimeSet ? 1 : 0
         record[VisitFields.isBoarding] = visit.isBoarding ? 1 : 0
         record[VisitFields.boardingEndDate] = visit.boardingEndDate
         record[VisitFields.isDeleted] = visit.isDeleted ? 1 : 0
@@ -307,6 +313,7 @@ class VisitService: ObservableObject {
             }
             
             let departureDate = record[VisitFields.departureDate] as? Date
+            let isArrivalTimeSet = (record[VisitFields.isArrivalTimeSet] as? Int64 ?? 1) == 1 // Default to true for backwards compatibility
             let isBoarding = (record[VisitFields.isBoarding] as? Int64 ?? 0) == 1
             let boardingEndDate = record[VisitFields.boardingEndDate] as? Date
             let isDeleted = (record[VisitFields.isDeleted] as? Int64 ?? 0) == 1
@@ -462,6 +469,7 @@ class VisitService: ObservableObject {
                 departureDate: departureDate,
                 isBoarding: isBoarding,
                 boardingEndDate: boardingEndDate,
+                isArrivalTimeSet: isArrivalTimeSet,
                 isDeleted: isDeleted,
                 deletedAt: deletedAt,
                 deletedBy: deletedBy,
@@ -512,17 +520,34 @@ class VisitService: ObservableObject {
         let today = calendar.startOfDay(for: Date())
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
         
-        // Fetch visits that are:
-        // 1. Currently present (no departure date) OR
-        // 2. Departed today (for today's records) OR  
-        // 3. Arriving today (future bookings)
-        // AND not deleted
-        let predicate = NSPredicate(format: "((departureDate == nil) OR (departureDate >= %@ AND departureDate < %@) OR (arrivalDate >= %@ AND arrivalDate < %@)) AND isDeleted == %@", 
-                                  today as NSDate, tomorrow as NSDate,    // departed today
-                                  today as NSDate, tomorrow as NSDate,    // arriving today
-                                  NSNumber(value: false))
+        #if DEBUG
+        print("📅 Today: \(today)")
+        print("📅 Tomorrow: \(tomorrow)")
+        print("📅 Today timestamp: \(today.timeIntervalSince1970)")
+        #endif
         
-        let activeVisits = try await fetchVisits(predicate: predicate)
+        // TEST: Isolate each query to see what works
+        
+        #if DEBUG
+        print("🧪 TEST 1: Trying to fetch records with nil departure date...")
+        #endif
+        
+        // Query 1: Dogs still present (isDepartureTimeSet == 0 AND arrived <= today)
+        let stillPresentPredicate = NSPredicate(format: "isDepartureTimeSet == %@ AND arrivalDate <= %@", 
+                                              NSNumber(value: 0), today as NSDate)
+        let stillPresent = try await fetchVisits(predicate: stillPresentPredicate)
+        
+        // Query 2: Dogs that departed today
+        let departedTodayPredicate = NSPredicate(format: "departureDate >= %@ AND departureDate < %@", 
+                                               today as NSDate, tomorrow as NSDate)
+        let departedToday = try await fetchVisits(predicate: departedTodayPredicate)
+        
+        // Merge and deduplicate by visit ID
+        var visitMap: [UUID: Visit] = [:]
+        for visit in stillPresent + departedToday {
+            visitMap[visit.id] = visit
+        }
+        let activeVisits = Array(visitMap.values)
         
         #if DEBUG
         print("📊 Active visits from CloudKit: \(activeVisits.count)")

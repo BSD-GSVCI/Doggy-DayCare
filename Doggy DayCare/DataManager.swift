@@ -316,12 +316,13 @@ class DataManager: ObservableObject {
                 persistentDog = newPersistentDog
             }
             
-            // Create the future visit
+            // Create the future visit with isArrivalTimeSet = false
             let visit = Visit(
                 dogId: persistentDog.id,
                 arrivalDate: arrivalDate,
                 isBoarding: isBoarding,
                 boardingEndDate: boardingEndDate,
+                isArrivalTimeSet: false,  // Future bookings don't have arrival time set
                 medications: medications,
                 scheduledMedications: scheduledMedications
             )
@@ -671,8 +672,9 @@ class DataManager: ObservableObject {
         errorMessage = nil
         
         do {
-            // Update the arrival time
+            // Update the arrival time and set the flag
             visit.arrivalDate = newArrivalTime
+            visit.isArrivalTimeSet = true  // Mark that arrival time has been set
             visit.updatedAt = Date()
             
             try await visitService.updateVisit(visit)
