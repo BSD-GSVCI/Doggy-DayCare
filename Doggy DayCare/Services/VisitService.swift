@@ -523,13 +523,6 @@ class VisitService: ObservableObject {
         #if DEBUG
         print("📅 Today: \(today)")
         print("📅 Tomorrow: \(tomorrow)")
-        print("📅 Today timestamp: \(today.timeIntervalSince1970)")
-        #endif
-        
-        // TEST: Isolate each query to see what works
-        
-        #if DEBUG
-        print("🧪 TEST 1: Trying to fetch records with nil departure date...")
         #endif
         
         // Query 1: Dogs still present (isDepartureTimeSet == 0 AND arrived <= today)

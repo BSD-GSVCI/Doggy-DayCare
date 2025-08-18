@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 @MainActor
 class DataManager: ObservableObject {
@@ -21,13 +22,15 @@ class DataManager: ObservableObject {
     
     // Multi-user sync timer for detecting changes from other users
     private var multiUserSyncTimer: Timer?
-    private let multiUserSyncInterval: TimeInterval = 15 // Sync every 15 seconds
+    private let multiUserSyncInterval: TimeInterval = 60 // Sync every 60 seconds
+    private var isAppActive = true // Track app state
     
     
     private init() {
         #if DEBUG
         print("📱 DataManager initialized")
         #endif
+        setupAppStateObservers()
         startMultiUserSync()
     }
     
@@ -35,6 +38,46 @@ class DataManager: ObservableObject {
         // Stop the timer directly without Task since we're in deinit
         multiUserSyncTimer?.invalidate()
         multiUserSyncTimer = nil
+        
+        // Remove notification observers
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    // MARK: - App State Management
+    
+    private func setupAppStateObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
+    }
+    
+    @objc private func appDidBecomeActive() {
+        isAppActive = true
+        #if DEBUG
+        print("📱 App became active - resuming multi-user sync")
+        #endif
+        
+        // Perform immediate sync when app becomes active
+        Task {
+            await performMultiUserSync()
+        }
+    }
+    
+    @objc private func appDidEnterBackground() {
+        isAppActive = false
+        #if DEBUG
+        print("📱 App entered background - pausing multi-user sync")
+        #endif
     }
     
     // MARK: - Multi-User Sync
@@ -61,8 +104,15 @@ class DataManager: ObservableObject {
     }
     
     private func performMultiUserSync() async {
-        // Don't sync if we're already loading or if last sync was too recent
-        guard !isLoading else { return }
+        // Don't sync if app is in background, already loading, or if last sync was too recent
+        guard isAppActive && !isLoading else { 
+            #if DEBUG
+            if !isAppActive {
+                print("⏸ Skipping multi-user sync - app is in background")
+            }
+            #endif
+            return 
+        }
         
         let cacheStats = DataIntegrityCache.shared.getCacheStats()
         let timeSinceLastSync = Date().timeIntervalSince(cacheStats.lastSync)
