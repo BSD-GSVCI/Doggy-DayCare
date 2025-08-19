@@ -114,7 +114,7 @@ class DataManager: ObservableObject {
             return 
         }
         
-        let cacheStats = DataIntegrityCache.shared.getCacheStats()
+        let cacheStats = await DataIntegrityCache.shared.getCacheStats()
         let timeSinceLastSync = Date().timeIntervalSince(cacheStats.lastSync)
         
         // Only sync if enough time has passed
@@ -136,7 +136,7 @@ class DataManager: ObservableObject {
             )
             
             // Update UI with any changes
-            let updatedDogs = DataIntegrityCache.shared.getCurrentDogsWithVisits()
+            let updatedDogs = await DataIntegrityCache.shared.getCurrentDogsWithVisits()
             
             await MainActor.run {
                 let previousCount = self.dogs.count
@@ -237,7 +237,7 @@ class DataManager: ObservableObject {
             }
             
             // Get dogs from unified cache instead of combining separate caches
-            let dogsWithVisits = DataIntegrityCache.shared.getCurrentDogsWithVisits()
+            let dogsWithVisits = await DataIntegrityCache.shared.getCurrentDogsWithVisits()
             
             #if DEBUG
             print("🔍 DataManager: Created \(dogsWithVisits.count) dogs with visits")
@@ -1604,7 +1604,7 @@ class DataManager: ObservableObject {
         errorMessage = nil
         
         // 1. Check for conflicts before proceeding
-        let currentDogState = DataIntegrityCache.shared.getCurrentDogsWithVisits()
+        let currentDogState = await DataIntegrityCache.shared.getCurrentDogsWithVisits()
             .first { $0.id == dog.id }
         
         let newRecord = FeedingRecord(

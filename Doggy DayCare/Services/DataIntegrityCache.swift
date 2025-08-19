@@ -2,7 +2,8 @@ import Foundation
 import CloudKit
 
 /// Enterprise-grade cache system that ensures absolute data integrity between UI, Cache, and CloudKit
-final class DataIntegrityCache {
+/// Uses Swift's actor model for guaranteed thread safety in business-critical operations
+actor DataIntegrityCache {
     static let shared = DataIntegrityCache()
     
     // MARK: - Cache Storage
@@ -16,9 +17,8 @@ final class DataIntegrityCache {
         var changeTokens: [String: CKServerChangeToken] = [:]
     }
     
-    /// Thread-safe cache state
+    /// Actor-isolated cache state (thread safety guaranteed by Swift)
     private var state = CacheState()
-    private let stateQueue = DispatchQueue(label: "com.doggydaycare.cache.state", attributes: .concurrent)
     
     /// Pending operations that haven't been confirmed by CloudKit
     private var pendingOperations: [UUID: PendingOperation] = [:]
@@ -51,29 +51,23 @@ final class DataIntegrityCache {
     
     /// Atomically get all dogs with their visits (main page display)
     func getCurrentDogsWithVisits() -> [DogWithVisit] {
-        stateQueue.sync(execute: {
-            let activeVisits = state.visits.values.filter { $0.isCurrentlyPresent }
-            return state.persistentDogs.values.compactMap { dog in
-                if let visit = activeVisits.first(where: { $0.dogId == dog.id }) {
-                    return DogWithVisit(persistentDog: dog, currentVisit: visit)
-                }
-                return nil
+        let activeVisits = state.visits.values.filter { $0.isCurrentlyPresent }
+        return state.persistentDogs.values.compactMap { dog in
+            if let visit = activeVisits.first(where: { $0.dogId == dog.id }) {
+                return DogWithVisit(persistentDog: dog, currentVisit: visit)
             }
-        })
+            return nil
+        }
     }
     
     /// Atomically get all persistent dogs (for database view)
     func getAllPersistentDogs() -> [PersistentDog] {
-        stateQueue.sync(execute: {
-            Array(state.persistentDogs.values)
-        })
+        Array(state.persistentDogs.values)
     }
     
     /// Atomically get all visits
     func getAllVisits() -> [Visit] {
-        stateQueue.sync(execute: {
-            Array(state.visits.values)
-        })
+        Array(state.visits.values)
     }
     
     // MARK: - Transactional Updates
@@ -86,7 +80,7 @@ final class DataIntegrityCache {
     ) async throws {
         
         // 1. Check for conflicts before proceeding
-        if let existingDog = stateQueue.sync(execute: { state.persistentDogs[persistentDog.id] }) {
+        if let existingDog = state.persistentDogs[persistentDog.id] {
             // Dog already exists - this could be a duplicate or conflict
             let existingDogWithVisit = DogWithVisit(persistentDog: existingDog, currentVisit: nil)
             
@@ -96,7 +90,7 @@ final class DataIntegrityCache {
         }
         
         // 2. Capture original state for rollback
-        let originalState = stateQueue.sync(execute: { state })
+        let originalState = state
         
         // 3. Create pending operation
         let operation = PendingOperation(
@@ -106,11 +100,10 @@ final class DataIntegrityCache {
         pendingOperations[operation.id] = operation
         
         // 4. Update cache atomically
-        stateQueue.async(flags: .barrier) {
-            self.state.persistentDogs[persistentDog.id] = persistentDog
-            self.state.visits[visit.id] = visit
-            self.state.version += 1
-        }
+        // Actor isolation ensures atomic updates
+        state.persistentDogs[persistentDog.id] = persistentDog
+        state.visits[visit.id] = visit
+        state.version += 1
         
         // 5. Execute CloudKit operation with conflict detection
         do {
@@ -151,15 +144,13 @@ final class DataIntegrityCache {
         cloudKitConfirmation: @escaping () async throws -> Void
     ) async throws {
         
-        let originalState = stateQueue.sync(execute: { state })
+        let originalState = state
         let operation = PendingOperation(type: .updateDog(dog), originalState: originalState)
         pendingOperations[operation.id] = operation
         
-        // Update cache
-        stateQueue.async(flags: .barrier) {
-            self.state.persistentDogs[dog.id] = dog
-            self.state.version += 1
-        }
+        // Update cache (actor isolation ensures atomicity)
+        state.persistentDogs[dog.id] = dog
+        state.version += 1
         
         do {
             try await cloudKitConfirmation()
@@ -176,15 +167,13 @@ final class DataIntegrityCache {
         cloudKitConfirmation: @escaping () async throws -> Void
     ) async throws {
         
-        let originalState = stateQueue.sync(execute: { state })
+        let originalState = state
         let operation = PendingOperation(type: .updateVisit(visit), originalState: originalState)
         pendingOperations[operation.id] = operation
         
-        // Update cache
-        stateQueue.async(flags: .barrier) {
-            self.state.visits[visit.id] = visit
-            self.state.version += 1
-        }
+        // Update cache (actor isolation ensures atomicity)
+        state.visits[visit.id] = visit
+        state.version += 1
         
         do {
             try await cloudKitConfirmation()
@@ -198,14 +187,12 @@ final class DataIntegrityCache {
     // MARK: - Rollback Mechanism
     
     private func rollback(operation: PendingOperation) async {
-        stateQueue.async(flags: .barrier) {
-            // Restore original state
-            self.state = operation.originalState
-            
-            #if DEBUG
-            print("🔄 DataIntegrityCache: Rolled back to version \(operation.originalState.version)")
-            #endif
-        }
+        // Restore original state (actor isolation ensures atomicity)
+        state = operation.originalState
+        
+        #if DEBUG
+        print("🔄 DataIntegrityCache: Rolled back to version \(operation.originalState.version)")
+        #endif
         
         // Remove from pending
         pendingOperations.removeValue(forKey: operation.id)
@@ -215,7 +202,7 @@ final class DataIntegrityCache {
     
     /// Validates cache consistency with CloudKit
     func validateIntegrity() async throws -> IntegrityReport {
-        let cacheState = stateQueue.sync(execute: { state })
+        let cacheState = state
         
         var report = IntegrityReport()
         
@@ -296,7 +283,7 @@ final class DataIntegrityCache {
         let cloudKitVisits = try await fetchVisits()
         
         // Get current cache state
-        let cacheState = stateQueue.sync(execute: { state })
+        let cacheState = state
         
         // Compare counts
         if cloudKitDogs.count != cacheState.persistentDogs.count {
@@ -351,7 +338,7 @@ final class DataIntegrityCache {
         #endif
         
         // Capture current state for conflict resolution
-        let currentState = stateQueue.sync(execute: { state })
+        let currentState = state
         
         // Fetch fresh data from CloudKit
         let cloudKitDogs = try await fetchPersistentDogs()
@@ -420,43 +407,41 @@ final class DataIntegrityCache {
             }
         }
         
-        // Update cache atomically with resolved data
-        stateQueue.async(flags: .barrier) {
-            // Preserve pending operations by re-applying them
-            for operation in self.pendingOperations.values {
-                switch operation.type {
-                case .addDog(let dog, let visit):
+        // Update cache atomically with resolved data (actor isolation ensures thread safety)
+        // Preserve pending operations by re-applying them
+        for operation in pendingOperations.values {
+            switch operation.type {
+            case .addDog(let dog, let visit):
+                resolvedDogs[dog.id] = dog
+                resolvedVisits[visit.id] = visit
+            case .updateDog(let dog):
+                // Only apply if we don't have a more recent version
+                if resolvedDogs[dog.id] == nil || 
+                   resolvedDogs[dog.id]?.updatedAt ?? Date.distantPast < dog.updatedAt {
                     resolvedDogs[dog.id] = dog
+                }
+            case .updateVisit(let visit):
+                if resolvedVisits[visit.id] == nil ||
+                   resolvedVisits[visit.id]?.updatedAt ?? Date.distantPast < visit.updatedAt {
                     resolvedVisits[visit.id] = visit
-                case .updateDog(let dog):
-                    // Only apply if we don't have a more recent version
-                    if resolvedDogs[dog.id] == nil || 
-                       resolvedDogs[dog.id]?.updatedAt ?? Date.distantPast < dog.updatedAt {
-                        resolvedDogs[dog.id] = dog
-                    }
-                case .updateVisit(let visit):
-                    if resolvedVisits[visit.id] == nil ||
-                       resolvedVisits[visit.id]?.updatedAt ?? Date.distantPast < visit.updatedAt {
-                        resolvedVisits[visit.id] = visit
-                    }
-                case .deleteDog(let dogId):
-                    resolvedDogs.removeValue(forKey: dogId)
-                case .deleteVisit(let visitId):
-                    resolvedVisits.removeValue(forKey: visitId)
-                case .checkoutDog(let dogId, let departureDate):
-                    if var visit = resolvedVisits.values.first(where: { $0.dogId == dogId && $0.departureDate == nil }) {
-                        visit.departureDate = departureDate
-                        visit.updatedAt = Date()
-                        resolvedVisits[visit.id] = visit
-                    }
+                }
+            case .deleteDog(let dogId):
+                resolvedDogs.removeValue(forKey: dogId)
+            case .deleteVisit(let visitId):
+                resolvedVisits.removeValue(forKey: visitId)
+            case .checkoutDog(let dogId, let departureDate):
+                if var visit = resolvedVisits.values.first(where: { $0.dogId == dogId && $0.departureDate == nil }) {
+                    visit.departureDate = departureDate
+                    visit.updatedAt = Date()
+                    resolvedVisits[visit.id] = visit
                 }
             }
-            
-            self.state.persistentDogs = resolvedDogs
-            self.state.visits = resolvedVisits
-            self.state.version += 1
-            self.state.lastCloudKitSync = Date()
         }
+        
+        state.persistentDogs = resolvedDogs
+        state.visits = resolvedVisits
+        state.version += 1
+        state.lastCloudKitSync = Date()
         
         // Log conflict resolutions for debugging
         if !conflictResolutions.isEmpty {
@@ -591,27 +576,23 @@ final class DataIntegrityCache {
     
     /// Clear all cached data (use with caution)
     func clearCache() {
-        stateQueue.async(flags: .barrier) {
-            self.state = CacheState()
-            self.pendingOperations.removeAll()
-            
-            #if DEBUG
-            print("⚠️ DataIntegrityCache: Cache cleared - all data removed")
-            #endif
-        }
+        state = CacheState()
+        pendingOperations.removeAll()
+        
+        #if DEBUG
+        print("⚠️ DataIntegrityCache: Cache cleared - all data removed")
+        #endif
     }
     
     /// Get cache statistics
     func getCacheStats() -> CacheStatistics {
-        stateQueue.sync(execute: {
-            CacheStatistics(
-                dogCount: state.persistentDogs.count,
-                visitCount: state.visits.count,
-                pendingOperations: pendingOperations.count,
-                cacheVersion: state.version,
-                lastSync: state.lastCloudKitSync
-            )
-        })
+        CacheStatistics(
+            dogCount: state.persistentDogs.count,
+            visitCount: state.visits.count,
+            pendingOperations: pendingOperations.count,
+            cacheVersion: state.version,
+            lastSync: state.lastCloudKitSync
+        )
     }
 }
 
