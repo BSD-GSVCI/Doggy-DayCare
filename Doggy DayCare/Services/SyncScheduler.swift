@@ -9,7 +9,7 @@ class SyncScheduler: ObservableObject {
     
     // MARK: - Configuration
     
-    private let foregroundSyncInterval: TimeInterval = 5.0 // 5 seconds in foreground
+    private let foregroundSyncInterval: TimeInterval = 10.0 // 10 seconds in foreground
     private let minimumSyncInterval: TimeInterval = 1.0 // Minimum 1 second between syncs
     
     // MARK: - State
@@ -161,9 +161,9 @@ class SyncScheduler: ObservableObject {
             }
             #endif
             
-            // Fetch incremental changes
+            // Fetch incremental changes - only active visits for scalability
             async let persistentDogsTask = persistentDogService.fetchPersistentDogs(modifiedAfter: modifiedAfter)
-            async let visitsTask = visitService.fetchVisits(modifiedAfter: modifiedAfter)
+            async let visitsTask = visitService.fetchActiveVisits(modifiedAfter: modifiedAfter)
             
             let (persistentDogs, visits) = try await (persistentDogsTask, visitsTask)
             
@@ -195,9 +195,9 @@ class SyncScheduler: ObservableObject {
         #endif
         
         do {
-            // Load all data for initial cache population
+            // Load data for initial cache population - only active visits for scalability
             async let persistentDogsTask = persistentDogService.fetchPersistentDogs()
-            async let visitsTask = visitService.fetchVisits()
+            async let visitsTask = visitService.fetchActiveVisits()
             
             let (persistentDogs, visits) = try await (persistentDogsTask, visitsTask)
             

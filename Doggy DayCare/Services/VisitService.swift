@@ -531,7 +531,7 @@ class VisitService: ObservableObject {
         return try await fetchVisits(predicate: predicate)
     }
     
-    func fetchActiveVisits() async throws -> [Visit] {
+    func fetchActiveVisits(modifiedAfter: Date? = nil) async throws -> [Visit] {
         #if DEBUG
         print("🔍 Fetching today's active visits from CloudKit...")
         #endif
@@ -553,12 +553,12 @@ class VisitService: ObservableObject {
         // Query 1: Dogs still present (isDepartureTimeSet == 0 AND arrived <= today)
         let stillPresentPredicate = NSPredicate(format: "isDepartureTimeSet == %@ AND arrivalDate <= %@", 
                                               NSNumber(value: 0), today as NSDate)
-        let stillPresent = try await fetchVisits(predicate: stillPresentPredicate)
+        let stillPresent = try await fetchVisits(predicate: stillPresentPredicate, modifiedAfter: modifiedAfter)
         
         // Query 2: Dogs that departed today
         let departedTodayPredicate = NSPredicate(format: "departureDate >= %@ AND departureDate < %@", 
                                                today as NSDate, tomorrow as NSDate)
-        let departedToday = try await fetchVisits(predicate: departedTodayPredicate)
+        let departedToday = try await fetchVisits(predicate: departedTodayPredicate, modifiedAfter: modifiedAfter)
         
         // Merge and deduplicate by visit ID
         var visitMap: [UUID: Visit] = [:]
