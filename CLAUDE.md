@@ -187,6 +187,30 @@ do {
 3. **ALWAYS CONSULT WITH USER** before making architectural decisions about error handling patterns
 4. Optimistic UI updates require proper error handling to implement revert functionality
 
+## CRITICAL CloudKit Predicate Rules (NEVER VIOLATE)
+
+### Date Comparison Predicates - ALWAYS Use Upper Bound
+
+**❌ INCORRECT - Using start of day as upper bound:**
+```swift
+let today = Calendar.current.startOfDay(for: Date())
+let predicate = NSPredicate(format: "arrivalDate <= %@", today as NSDate)
+```
+
+**✅ CORRECT - Using tomorrow as upper bound:**
+```swift
+let today = Calendar.current.startOfDay(for: Date())
+let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today)!
+let predicate = NSPredicate(format: "arrivalDate < %@", tomorrow as NSDate)
+```
+
+**Why This Matters:**
+- Dogs arriving after start of day (7:00 AM) won't match `arrivalDate <= today`
+- Using `arrivalDate < tomorrow` captures the entire day (7:00 AM - 11:59 PM)
+- **This bug took 3 hours to debug** - NEVER make this mistake again
+
+**MANDATORY Rule:** When filtering for "today", always use tomorrow as the upper bound with `<` operator, never use today with `<=` operator.
+
 ## CloudKit Requirements
 - Requires Apple Developer account with CloudKit container
 - Uses public database for shared data across all users

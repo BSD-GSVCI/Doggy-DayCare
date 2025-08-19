@@ -1614,7 +1614,7 @@ class DataManager: ObservableObject {
         errorMessage = nil
         
         // 1. Check current state from cache
-        let currentDogState = cacheManager.getCurrentDogsWithVisits()
+        let _ = cacheManager.getCurrentDogsWithVisits()
             .first { $0.id == dog.id }
         
         let newRecord = FeedingRecord(

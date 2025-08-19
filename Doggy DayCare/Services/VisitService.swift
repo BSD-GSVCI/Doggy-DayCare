@@ -550,15 +550,39 @@ class VisitService: ObservableObject {
         
         // CloudKit doesn't support complex OR predicates, so we need separate queries
         
-        // Query 1: Dogs still present (isDepartureTimeSet == 0 AND arrived <= today)
-        let stillPresentPredicate = NSPredicate(format: "isDepartureTimeSet == %@ AND arrivalDate <= %@", 
-                                              NSNumber(value: 0), today as NSDate)
+        // Query 1: Dogs still present (isDepartureTimeSet == 0 AND arrived <= end of today)
+        let stillPresentPredicate = NSPredicate(format: "isDepartureTimeSet == %@ AND arrivalDate < %@", 
+                                              NSNumber(value: 0), tomorrow as NSDate)
+        
+        #if DEBUG
+        print("🔍 Query 1 predicate: \(stillPresentPredicate)")
+        #endif
+        
         let stillPresent = try await fetchVisits(predicate: stillPresentPredicate, modifiedAfter: modifiedAfter)
+        
+        #if DEBUG
+        print("🔍 Query 1 returned: \(stillPresent.count) visits")
+        for visit in stillPresent {
+            print("   - Dog \(visit.dogId): isDepartureTimeSet=\(visit.departureDate != nil ? 1 : 0), arrivalDate=\(visit.arrivalDate)")
+        }
+        #endif
         
         // Query 2: Dogs that departed today
         let departedTodayPredicate = NSPredicate(format: "departureDate >= %@ AND departureDate < %@", 
                                                today as NSDate, tomorrow as NSDate)
+        
+        #if DEBUG
+        print("🔍 Query 2 predicate: \(departedTodayPredicate)")
+        #endif
+        
         let departedToday = try await fetchVisits(predicate: departedTodayPredicate, modifiedAfter: modifiedAfter)
+        
+        #if DEBUG
+        print("🔍 Query 2 returned: \(departedToday.count) visits")
+        for visit in departedToday {
+            print("   - Dog \(visit.dogId): isDepartureTimeSet=\(visit.departureDate != nil ? 1 : 0), departureDate=\(visit.departureDate?.description ?? "nil")")
+        }
+        #endif
         
         // Merge and deduplicate by visit ID
         var visitMap: [UUID: Visit] = [:]

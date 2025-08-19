@@ -113,10 +113,49 @@ class SyncScheduler: ObservableObject {
     
     func performManualSync() async {
         #if DEBUG
-        print("🔄 Manual sync requested")
+        print("🔄 Manual sync requested - performing full sync")
         #endif
         
-        await performIncrementalSync(forceSync: true)
+        // Manual refresh should always do full sync, not incremental
+        // Prevent concurrent syncs
+        guard !isSyncing else {
+            #if DEBUG
+            print("🔄 Sync already in progress - skipping manual sync")
+            #endif
+            return
+        }
+        
+        isSyncing = true
+        lastSyncTime = Date()
+        
+        #if DEBUG
+        print("🔄 Starting full sync (no timestamp filtering)...")
+        #endif
+        
+        do {
+            // Fetch ALL active data without modifiedAfter parameter
+            async let persistentDogsTask = persistentDogService.fetchPersistentDogs()
+            async let visitsTask = visitService.fetchActiveVisits()
+            
+            let (persistentDogs, visits) = try await (persistentDogsTask, visitsTask)
+            
+            // Merge with local cache using intelligent timestamp comparison
+            cacheManager.mergeDataFromCloudKit(persistentDogs: persistentDogs, visits: visits)
+            
+            #if DEBUG
+            print("🔄 Full sync complete - fetched \(persistentDogs.count) dogs, \(visits.count) visits")
+            #endif
+            
+        } catch {
+            #if DEBUG
+            print("🔄 Full sync failed: \(error)")
+            #endif
+            
+            // Don't update lastSyncTime on failure
+            lastSyncTime = Date.distantPast
+        }
+        
+        isSyncing = false
     }
     
     // MARK: - Core Sync Logic

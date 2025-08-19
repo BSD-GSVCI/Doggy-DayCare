@@ -117,12 +117,23 @@ struct DogWithVisit: Identifiable, Codable {
         }
     }
     
-    // Only include dogs that are currently present (have an active visit)
+    // Include dogs that are currently present OR departed today (visible on main page)
     static func currentlyPresentFromPersistentDogsAndVisits(_ persistentDogs: [PersistentDog], _ visits: [Visit]) -> [DogWithVisit] {
         return persistentDogs.compactMap { persistentDog in
+            // First check for currently present visits (original working logic)
             if let currentVisit = visits.first(where: { $0.dogId == persistentDog.id && $0.isCurrentlyPresent }) {
                 return DogWithVisit(persistentDog: persistentDog, currentVisit: currentVisit)
             }
+            
+            // Then check for departed today visits (to show in departed today pane)
+            if let departedVisit = visits.first(where: { 
+                $0.dogId == persistentDog.id && 
+                $0.departureDate != nil && 
+                Calendar.current.isDateInToday($0.departureDate!)
+            }) {
+                return DogWithVisit(persistentDog: persistentDog, currentVisit: departedVisit)
+            }
+            
             return nil
         }
     }
