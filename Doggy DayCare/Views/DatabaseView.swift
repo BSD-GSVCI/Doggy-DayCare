@@ -437,7 +437,7 @@ struct DatabaseDogRow: View {
                 }
                 
                 if isOnMainPage {
-                    Text("EXISTS ON MAIN PAGE")
+                    Text("EXISTS AT DAYCARE")
                         .font(.caption)
                         .fontWeight(.medium)
                         .foregroundStyle(.green)
