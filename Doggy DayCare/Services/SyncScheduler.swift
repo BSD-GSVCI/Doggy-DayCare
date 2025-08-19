@@ -227,7 +227,8 @@ class SyncScheduler: ObservableObject {
     // MARK: - Cleanup
     
     deinit {
-        stopForegroundSync()
+        foregroundSyncTimer?.invalidate()
+        foregroundSyncTimer = nil
         NotificationCenter.default.removeObserver(self)
     }
 }

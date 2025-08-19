@@ -81,6 +81,7 @@ xcodebuild clean -project "Doggy DayCare.xcodeproj" -scheme "Doggy DayCare"
 2. **ALWAYS VERIFY BEFORE CHANGING** - Read implementation, understand current behavior
 3. **BE THOROUGH IN ANALYSIS** - Consider full impact, check edge cases
 4. **ASK CLARIFYING QUESTIONS** - Better to ask than assume
+5. **CONSULT BEFORE ARCHITECTURAL DECISIONS** - Always ask user before making decisions about error handling patterns, async/await vs Task blocks, or other architectural choices that affect the entire codebase
 
 ### Business Critical App
 - Real business data - users depend on correctness
@@ -144,6 +145,47 @@ func saveData() {
 ```
 
 **This is mandatory for all new code** - no exceptions. This prevents the current codebase-wide debug wrapping effort from being needed in the future.
+
+### Error Handling and Task Blocks (IMPORTANT - ARCHITECTURAL DECISION)
+
+**ALWAYS use `try await` instead of `Task { }` blocks for CloudKit operations that need error handling:**
+
+```swift
+// ❌ INCORRECT - Task blocks don't propagate errors to outer catch blocks:
+do {
+    // Optimistic update
+    cacheManager.updateLocalVisit(visit)
+    self.dogs = cacheManager.getCurrentDogsWithVisits()
+    
+    Task {
+        try await visitService.updateVisit(visit) // Error won't propagate!
+    }
+} catch {
+    // This catch block becomes unreachable!
+    print("Error: \(error)") // Never executed
+}
+
+// ✅ CORRECT - try await propagates errors properly:
+do {
+    // Optimistic update
+    cacheManager.updateLocalVisit(visit)
+    self.dogs = cacheManager.getCurrentDogsWithVisits()
+    
+    // Sync to CloudKit with proper error handling
+    try await self.visitService.updateVisit(visit)
+} catch {
+    // Error handling works correctly
+    cacheManager.revertVisitUpdate(to: previousVisit)
+    self.dogs = cacheManager.getCurrentDogsWithVisits()
+    errorMessage = "Failed: \(error.localizedDescription)"
+}
+```
+
+**Key Rules:**
+1. Use `Task { }` only for fire-and-forget operations that don't need error handling
+2. Use `try await` for operations that need proper error propagation and recovery
+3. **ALWAYS CONSULT WITH USER** before making architectural decisions about error handling patterns
+4. Optimistic UI updates require proper error handling to implement revert functionality
 
 ## CloudKit Requirements
 - Requires Apple Developer account with CloudKit container
@@ -331,13 +373,98 @@ try await DataIntegrityCache.shared.deleteVisit(
 - ✅ **Scalable**: Intelligent merging preserves performance during multi-user sync
 - ✅ **Zero Bypass**: No direct service calls remain - all wrapped with integrity layer
 
-## Recent Debug Wrapping Progress (Historical)
+## Recent Major Architecture Migration (August 2025 Session)
+
+### Completed: DataIntegrityCache Replacement with Timestamp-Based Caching
+
+**Context**: User reported 43 compilation errors in DataManager.swift after previous session's cache system refactoring. This session focused on fixing all compilation issues and completing the architectural migration.
+
+**Problem Solved**: The complex DataIntegrityCache system was completely replaced with a much simpler, more reliable timestamp-based caching approach that properly handles error propagation.
+
+#### Key Changes Made:
+
+**1. New Caching Architecture:**
+- **CacheManager.swift**: Simple timestamp-based cache with intelligent "last writer wins" merging
+- **SyncScheduler.swift**: Handles background sync scheduling and app lifecycle events  
+- **Removed**: All DataIntegrityCache and ConflictResolver complexity
+
+**2. Error Handling Architecture Fix (CRITICAL):**
+- **Problem**: `Task { try await service.method() }` blocks inside do-catch don't propagate errors
+- **User Feedback**: "Well if we don't catch the errors from cloudkit then how are we going to handle those errors?"
+- **Solution**: Converted all Task blocks to `try await self.service.method()` for proper error propagation
+- **User Decision**: "Ok then let's do it. Try await it is. And also add it to Claude.md that I need to be consulted with on such changes beforehand."
+
+**3. Service Layer Updates:**
+- Added `modifiedAfter` parameters to PersistentDogService and VisitService for incremental sync
+- DataManager now uses direct service calls with optimistic UI updates
+
+**4. Key Pattern Established:**
+```swift
+// Optimistic UI Update with Proper Error Handling:
+do {
+    // Store previous state for revert (outside do block)
+    let previousVisit = currentVisit
+    
+    // Optimistic update: immediate UI
+    cacheManager.updateLocalVisit(updatedVisit)
+    self.dogs = cacheManager.getCurrentDogsWithVisits()
+    
+    // Sync to CloudKit with proper error handling  
+    try await self.visitService.updateVisit(updatedVisit)
+} catch {
+    // Revert optimistic update on failure
+    cacheManager.revertVisitUpdate(to: previousVisit)
+    self.dogs = cacheManager.getCurrentDogsWithVisits()
+    errorMessage = "Failed: \(error.localizedDescription)"
+}
+```
+
+**5. Compilation Status:**
+- ✅ **Fixed 43 compilation errors** (down to 0)
+- ✅ **Fixed all "unreachable catch block" warnings**  
+- ✅ **Fixed MainActor context issues in SyncScheduler**
+- ✅ **All error handling now works properly**
+
+**6. User Feedback Integration:**
+- "You're getting sloppy. This is the third time you're making this exact same mistake" - Fixed variable scoping issues
+- "Ok forget it. We fix debug guards later. Just make sure from now on you don't neglect them." - Debug wrapping postponed
+- Added consultation requirement to CLAUDE.md for architectural decisions
+
+**7. Files Modified:**
+- `DataManager.swift`: Complete error handling refactoring
+- `CacheManager.swift`: New timestamp-based cache system
+- `SyncScheduler.swift`: New background sync system + MainActor fix
+- `PersistentDogService.swift`: Incremental sync capability
+- `VisitService.swift`: Incremental sync capability  
+- `CLAUDE.md`: Added error handling patterns and consultation requirement
+
+**8. Performance Improvements:**
+- **Incremental Sync**: Only fetches data modified since last sync timestamp
+- **Intelligent Merging**: Timestamp-based "last writer wins" eliminates complex conflict resolution
+- **Optimistic UI**: Immediate UI updates with proper revert on CloudKit failure
+- **Background Sync**: 5-second foreground intervals, app lifecycle sync
+
+## Previous Debug Wrapping Progress (Historical)
+
+### Completed Debug Wrapping (Pre-Migration):
+- ✅ AuthenticationService.swift - All debug statements wrapped
+- ✅ CloudKitHistoryService.swift - All debug statements wrapped  
+- ✅ CloudKitService.swift - Partially wrapped (Sessions 1-2 completed)
+
+### Debug Wrapping Still Needed:
+- CloudKitService.swift - Remaining portions
+- DataManager.swift - **Major refactoring completed, debug wrapping postponed per user**
+- PersistentDogService.swift  
+- VisitService.swift
+- Other service files
 
 ### Debug Wrapping Rules:
 1. Wrap ONLY debug print statements and debug-only code blocks
 2. NEVER wrap production functionality  
 3. Keep debug statements close to their related production code
 4. Use proper indentation within #if DEBUG blocks
+
+**Note**: Debug wrapping for modified files postponed due to major architecture migration. User decided to handle debug guards in future session.
 
 ## Critical Architecture Notes
 

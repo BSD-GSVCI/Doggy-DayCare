@@ -64,11 +64,9 @@ class DataManager: ObservableObject {
     
     func authenticate() async throws {
         try await cloudKitService.authenticate()
-        // After successful authentication, fetch the data in background
-        Task {
-            await fetchDogs()
-            await fetchUsers()
-        }
+        // After successful authentication, fetch the data
+        await fetchDogs()
+        await fetchUsers()
     }
     
     // MARK: - Dog Management
@@ -89,32 +87,32 @@ class DataManager: ObservableObject {
     }
     
     private func fetchDogsWithPersistentSystem(shouldShowLoading: Bool) async {
-        do {
-            #if DEBUG
-            print("🔄 Using new CacheManager and SyncScheduler system")
-            #endif
-            
-            if shouldShowLoading {
-                isLoading = true
-            }
-            
-            // Perform sync using new system
-            await SyncScheduler.shared.performManualSync()
-            
-            // Get dogs from CacheManager
-            let dogsWithVisits = CacheManager.shared.getCurrentDogsWithVisits()
-            
-            #if DEBUG
-            print("🔍 DataManager: Got \(dogsWithVisits.count) dogs with visits from cache")
-            #endif
-            
-            #if DEBUG
-            // Debug: Print each dog's details
-            for dogWithVisit in dogsWithVisits {
-                print("🐕 Dog: \(dogWithVisit.name), Owner: \(dogWithVisit.ownerName ?? "none"), Present: \(dogWithVisit.isCurrentlyPresent), Arrival: \(dogWithVisit.arrivalDate)")
-            }
-            #endif
-            
+        #if DEBUG
+        print("🔄 Using new CacheManager and SyncScheduler system")
+        #endif
+        
+        if shouldShowLoading {
+            isLoading = true
+        }
+        
+        // Perform sync using new system
+        await SyncScheduler.shared.performManualSync()
+        
+        // Get dogs from CacheManager
+        let dogsWithVisits = CacheManager.shared.getCurrentDogsWithVisits()
+        
+        #if DEBUG
+        print("🔍 DataManager: Got \(dogsWithVisits.count) dogs with visits from cache")
+        #endif
+        
+        #if DEBUG
+        // Debug: Print each dog's details
+        for dogWithVisit in dogsWithVisits {
+            print("🐕 Dog: \(dogWithVisit.name), Owner: \(dogWithVisit.ownerName ?? "none"), Present: \(dogWithVisit.isCurrentlyPresent), Arrival: \(dogWithVisit.arrivalDate)")
+        }
+        #endif
+        
+        await MainActor.run {
             let previousCount = self.dogs.count
             let previousDogIds = Set(self.dogs.map { $0.id })
             
@@ -135,29 +133,21 @@ class DataManager: ObservableObject {
                 }
                 #endif
             }
-                
-                if shouldShowLoading {
-                    self.isLoading = false
-                }
-                #if DEBUG
-                print("✅ DataManager: Set \(dogsWithVisits.count) dogs in local array")
-                #endif
-                
-                // Update last sync time
-                self.lastSyncTime = Date()
-                
-                // Record daily snapshot for history
-                Task {
-                    await self.recordDailySnapshotIfNeeded()
-                }
+            
+            if shouldShowLoading {
+                self.isLoading = false
             }
-        } catch {
-            await MainActor.run {
-                self.errorMessage = "Failed to fetch dogs: \(error.localizedDescription)"
-                if shouldShowLoading {
-                    self.isLoading = false
-                }
-            }
+            
+            #if DEBUG
+            print("✅ DataManager: Set \(dogsWithVisits.count) dogs in local array")
+            #endif
+            
+            // Sync handled by SyncScheduler
+        }
+        
+        // Record daily snapshot for history
+        Task {
+            await self.recordDailySnapshotIfNeeded()
         }
     }
     
@@ -308,6 +298,9 @@ class DataManager: ObservableObject {
         errorMessage = nil
         
         do {
+            // Store previous state for potential revert
+            let previousPersistentDog = dogWithVisit.persistentDog
+            
             // Update the persistent dog info
             var updatedPersistentDog = dogWithVisit.persistentDog
             updatedPersistentDog.name = name
@@ -322,16 +315,28 @@ class DataManager: ObservableObject {
             updatedPersistentDog.isNeuteredOrSpayed = isNeuteredOrSpayed
             updatedPersistentDog.updatedAt = Date()
             
-            // Optimistic update: immediate UI + background sync
+            // Optimistic update: immediate UI + sync with error handling
             cacheManager.updateLocalPersistentDog(updatedPersistentDog)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
+            // Sync to CloudKit with proper error handling
+            do {
                 try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            } catch {
+                #if DEBUG
+                print("❌ CloudKit sync failed for persistent dog, reverting: \(error)")
+                #endif
+                
+                // Revert optimistic update
+                cacheManager.revertDogUpdate(to: previousPersistentDog)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                throw error
             }
             
             // Update the visit info if it exists
             if var visit = dogWithVisit.currentVisit {
+                let previousVisit = visit
+                
                 visit.arrivalDate = arrivalDate
                 visit.isBoarding = isBoarding
                 visit.boardingEndDate = boardingEndDate
@@ -339,12 +344,22 @@ class DataManager: ObservableObject {
                 visit.scheduledMedications = scheduledMedications
                 visit.updatedAt = Date()
                 
-                // Optimistic update: immediate UI + background sync
+                // Optimistic update: immediate UI + sync with error handling
                 cacheManager.updateLocalVisit(visit)
                 self.dogs = cacheManager.getCurrentDogsWithVisits()
                 
-                Task {
+                // Sync to CloudKit with proper error handling
+                do {
                     try await visitService.updateVisit(visit)
+                } catch {
+                    #if DEBUG
+                    print("❌ CloudKit sync failed for visit, reverting: \(error)")
+                    #endif
+                    
+                    // Revert optimistic update
+                    cacheManager.revertVisitUpdate(to: previousVisit)
+                    self.dogs = cacheManager.getCurrentDogsWithVisits()
+                    throw error
                 }
                 
                 // Update persistent dog fields (modify the already existing updatedPersistentDog)
@@ -355,12 +370,22 @@ class DataManager: ObservableObject {
                 updatedPersistentDog.specialInstructions = specialInstructions
                 updatedPersistentDog.updatedAt = Date()
                 
-                // Optimistic update: immediate UI + background sync
+                // Optimistic update: immediate UI + sync with error handling
                 cacheManager.updateLocalPersistentDog(updatedPersistentDog)
                 self.dogs = cacheManager.getCurrentDogsWithVisits()
                 
-                Task {
+                // Sync to CloudKit with proper error handling (second update with visit-specific fields)
+                do {
                     try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+                } catch {
+                    #if DEBUG
+                    print("❌ CloudKit sync failed for persistent dog (visit fields), reverting: \(error)")
+                    #endif
+                    
+                    // Revert optimistic update
+                    cacheManager.revertDogUpdate(to: previousPersistentDog)
+                    self.dogs = cacheManager.getCurrentDogsWithVisits()
+                    throw error
                 }
             }
             
@@ -427,12 +452,22 @@ class DataManager: ObservableObject {
             updatedPersistentDog.isNeuteredOrSpayed = isNeuteredOrSpayed
             updatedPersistentDog.updatedAt = Date()
             
-            // Optimistic update: immediate UI + background sync
+            // Optimistic update: immediate UI + sync with error handling
             cacheManager.updateLocalPersistentDog(updatedPersistentDog)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
+            // Sync to CloudKit with proper error handling
+            do {
                 try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            } catch {
+                #if DEBUG
+                print("❌ CloudKit sync failed for persistent dog info, reverting: \(error)")
+                #endif
+                
+                // Revert optimistic update
+                cacheManager.revertDogUpdate(to: persistentDog)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                throw error
             }
             
             #if DEBUG
@@ -518,6 +553,9 @@ class DataManager: ObservableObject {
         print("🔄 Starting optimized undo departure for dog: \(dogWithVisit.name)")
         #endif
         
+        // Store previous state for revert (before any updates)
+        let previousDepartureDate = visit.departureDate
+        
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dogWithVisit.id }) {
@@ -532,17 +570,18 @@ class DataManager: ObservableObject {
         // Handle CloudKit operations in background without blocking UI
         Task {
             do {
+                
                 // Clear the departure date to make the dog present again
                 visit.departureDate = nil
                 visit.updatedAt = Date()
                 
-                // Optimistic update: immediate UI + background sync
+                // Optimistic update: immediate UI + sync with error handling
                 cacheManager.updateLocalVisit(visit)
                 self.dogs = cacheManager.getCurrentDogsWithVisits()
                 
-                Task {
-                    try await visitService.updateVisit(visit)
-                }
+                // Sync to CloudKit with proper error handling
+                try await self.visitService.updateVisit(visit)
+                
                 #if DEBUG
                 print("✅ Updated visit in CloudKit for undo departure: \(dogWithVisit.name)")
                 #endif
@@ -557,17 +596,13 @@ class DataManager: ObservableObject {
                 print("❌ Failed to undo departure in CloudKit: \(error)")
                 #endif
                 // Revert local cache if CloudKit update failed
-                await MainActor.run {
-                    if let index = self.dogs.firstIndex(where: { $0.id == dogWithVisit.id }) {
-                        self.dogs[index].currentVisit?.departureDate = Date() // Revert to some departure date
-                        #if DEBUG
-                        print("🔄 Reverted undo departure in local cache due to CloudKit failure")
-                        #endif
-                    }
+                if let index = self.dogs.firstIndex(where: { $0.id == dogWithVisit.id }) {
+                    self.dogs[index].currentVisit?.departureDate = previousDepartureDate // Restore the previous departure date
+                    #if DEBUG
+                    print("🔄 Reverted undo departure in local cache due to CloudKit failure")
+                    #endif
                 }
-                await MainActor.run {
-                    self.errorMessage = "Failed to undo departure: \(error.localizedDescription)"
-                }
+                self.errorMessage = "Failed to undo departure: \(error.localizedDescription)"
             }
         }
         
@@ -586,6 +621,9 @@ class DataManager: ObservableObject {
         print("🔄 Starting optimized departure edit for dog: \(dogWithVisit.name)")
         #endif
         
+        // Store previous state for revert (before updating anything)
+        let previousDepartureDate = visit.departureDate
+        
         // Update local cache immediately for responsive UI
         await MainActor.run {
             if let index = self.dogs.firstIndex(where: { $0.id == dogWithVisit.id }) {
@@ -600,17 +638,18 @@ class DataManager: ObservableObject {
         // Handle CloudKit operations in background without blocking UI
         Task {
             do {
+                
                 // Update the departure date
                 visit.departureDate = newDate
                 visit.updatedAt = Date()
                 
-                // Optimistic update: immediate UI + background sync
+                // Optimistic update: immediate UI + sync with error handling
                 cacheManager.updateLocalVisit(visit)
                 self.dogs = cacheManager.getCurrentDogsWithVisits()
                 
-                Task {
-                    try await visitService.updateVisit(visit)
-                }
+                // Sync to CloudKit with proper error handling
+                try await self.visitService.updateVisit(visit)
+                
                 #if DEBUG
                 print("✅ Updated departure time in CloudKit for \(dogWithVisit.name)")
                 #endif
@@ -622,17 +661,13 @@ class DataManager: ObservableObject {
                 print("❌ Failed to update departure in CloudKit: \(error)")
                 #endif
                 // Revert local cache if CloudKit update failed
-                await MainActor.run {
-                    if let index = self.dogs.firstIndex(where: { $0.id == dogWithVisit.id }) {
-                        self.dogs[index].currentVisit?.departureDate = visit.departureDate
-                        #if DEBUG
-                        print("🔄 Reverted departure edit in local cache due to CloudKit failure")
-                        #endif
-                    }
+                if let index = self.dogs.firstIndex(where: { $0.id == dogWithVisit.id }) {
+                    self.dogs[index].currentVisit?.departureDate = previousDepartureDate
+                    #if DEBUG
+                    print("🔄 Reverted departure edit in local cache due to CloudKit failure")
+                    #endif
                 }
-                await MainActor.run {
-                    self.errorMessage = "Failed to update departure: \(error.localizedDescription)"
-                }
+                self.errorMessage = "Failed to update departure: \(error.localizedDescription)"
             }
         }
         
@@ -645,20 +680,24 @@ class DataManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         
+        // Store previous state for revert (before any changes)
+        let previousVisit = visit
+        
         do {
+            
             // Update the arrival time and set the flag
             visit.arrivalDate = newArrivalTime
             visit.isArrivalTimeSet = true  // Mark that arrival time has been set
             visit.updatedAt = Date()
             
             // When a future booking's arrival time is set, it becomes an active dog
-            // Optimistic update: immediate UI + background sync
+            // Optimistic update: immediate UI + sync with error handling
             cacheManager.updateLocalVisit(visit)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await visitService.updateVisit(visit)
-            }
+            // Sync to CloudKit with proper error handling
+            try await self.visitService.updateVisit(visit)
+            
             #if DEBUG
             print("✅ Updated arrival time for \(dogWithVisit.name)")
             #endif
@@ -669,6 +708,11 @@ class DataManager: ObservableObject {
             #if DEBUG
             print("❌ Failed to update arrival time: \(error)")
             #endif
+            
+            // Revert optimistic update
+            cacheManager.revertVisitUpdate(to: previousVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
             errorMessage = "Failed to update arrival time: \(error.localizedDescription)"
         }
         
@@ -710,9 +754,8 @@ class DataManager: ObservableObject {
     
     
     func forceRefreshDatabaseCache() {
-        // Clear AdvancedCache and reset sync time for PersistentDogs
-        AdvancedCache.shared.remove("persistent_dogs_cache")
-        lastAllDogsSyncTime = Date.distantPast
+        // Clear the cache using the new CacheManager
+        cacheManager.clearCache()
         
         #if DEBUG
         print("🔄 Database cache manually cleared - will fetch fresh data on next access")
@@ -752,7 +795,7 @@ class DataManager: ObservableObject {
         // Clear both caches
         AdvancedCache.shared.remove("active_visits_cache")
         AdvancedCache.shared.remove("persistent_dogs_cache")
-        lastSyncTime = Date.distantPast
+        // Sync timing handled by SyncScheduler
         
         #if DEBUG
         print("🔄 Main page caches cleared - will fetch fresh data on next access")
@@ -823,39 +866,26 @@ class DataManager: ObservableObject {
         }
         
         // Handle CloudKit operations in background without blocking UI
-        Task.detached {
-            do {
-                #if DEBUG
-                print("🔄 Updating persistent dog in CloudKit: \(dog.name)")
-                #endif
-                
-                // Update persistent dog information
-                // Optimistic update: immediate UI + background sync
-                cacheManager.updateLocalPersistentDog(dog.persistentDog)
-                self.dogs = cacheManager.getCurrentDogsWithVisits()
-                
-                Task {
-                    try await persistentDogService.updatePersistentDog(dog.persistentDog)
-                }
-                
-                #if DEBUG
-                print("✅ Updated persistent dog in CloudKit for \(dog.name)")
-                #endif
-                
-                // Update persistent dog cache
-                await self.incrementallyUpdatePersistentDogCache(update: dog.persistentDog)
-                
-                await MainActor.run {
-                    self.lastSyncTime = Date() // Update sync time for dog update
-                }
-            } catch {
-                #if DEBUG
-                print("❌ Failed to update persistent dog in CloudKit: \(error)")
-                #endif
-                await MainActor.run {
-                    self.errorMessage = "Failed to update dog: \(error.localizedDescription)"
-                }
+        Task {
+            #if DEBUG
+            print("🔄 Updating persistent dog in CloudKit: \(dog.name)")
+            #endif
+            
+            // Update persistent dog information
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalPersistentDog(dog.persistentDog)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await self.persistentDogService.updatePersistentDog(dog.persistentDog)
             }
+            
+            #if DEBUG
+            print("✅ Updated persistent dog in CloudKit for \(dog.name)")
+            #endif
+            
+            // Update persistent dog cache
+            await self.incrementallyUpdatePersistentDogCache(update: dog.persistentDog)
         }
     }
     
@@ -875,39 +905,28 @@ class DataManager: ObservableObject {
         }
         
         // Handle CloudKit operations in background
-        Task.detached {
-            do {
-                // Update the visit with new medications
-                if var visit = dog.currentVisit {
-                    visit.medications = medications
-                    visit.scheduledMedications = scheduledMedications
-                    visit.updatedAt = Date()
-                    
-                    print("🔄 Calling CloudKit medication update in background...")
-                    // Optimistic update: immediate UI + background sync
-                    cacheManager.updateLocalVisit(visit)
-                    self.dogs = cacheManager.getCurrentDogsWithVisits()
-                    
-                    Task {
-                        try await visitService.updateVisit(visit)
-                    }
-                    print("✅ CloudKit medication update successful")
-                } else {
-                    print("⚠️ No current visit found to update medications")
-                }
+        Task {
+            // Update the visit with new medications
+            if var visit = dog.currentVisit {
+                visit.medications = medications
+                visit.scheduledMedications = scheduledMedications
+                visit.updatedAt = Date()
                 
-                // Update cache with the changed dog
-                await self.updateDogsCache(with: [dog])
+                print("🔄 Calling CloudKit medication update in background...")
+                // Optimistic update: immediate UI + background sync
+                self.cacheManager.updateLocalVisit(visit)
+                self.dogs = self.cacheManager.getCurrentDogsWithVisits()
                 
-                await MainActor.run {
-                    self.lastSyncTime = Date()
+                Task {
+                    try await self.visitService.updateVisit(visit)
                 }
-            } catch {
-                print("❌ Failed to update medications in CloudKit: \(error)")
-                await MainActor.run {
-                    self.errorMessage = "Failed to update medications: \(error.localizedDescription)"
-                }
+                print("✅ CloudKit medication update successful")
+            } else {
+                print("⚠️ No current visit found to update medications")
             }
+            
+            // Update cache with the changed dog
+            await self.updateDogsCache(with: [dog])
         }
     }
     
@@ -942,28 +961,21 @@ class DataManager: ObservableObject {
         }
         
         // Update the persistent dog in CloudKit
-        do {
-            var updatedPersistentDog = dogWithVisit.persistentDog
-            updatedPersistentDog.vaccinations = vaccinations
-            updatedPersistentDog.updatedAt = Date()
-            
-            // Optimistic update: immediate UI + background sync
-            cacheManager.updateLocalPersistentDog(updatedPersistentDog)
-            self.dogs = cacheManager.getCurrentDogsWithVisits()
-            
-            Task {
-                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
-            }
-            print("✅ Updated vaccinations in CloudKit")
-            
-            // Refresh data
-            await fetchDogs()
-        } catch {
-            print("❌ Failed to update vaccinations: \(error)")
-            errorMessage = "Failed to update vaccinations: \(error.localizedDescription)"
-            // Refresh to restore correct state
-            await fetchDogs()
+        var updatedPersistentDog = dogWithVisit.persistentDog
+        updatedPersistentDog.vaccinations = vaccinations
+        updatedPersistentDog.updatedAt = Date()
+        
+        // Optimistic update: immediate UI + background sync
+        cacheManager.updateLocalPersistentDog(updatedPersistentDog)
+        self.dogs = cacheManager.getCurrentDogsWithVisits()
+        
+        Task {
+            try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
         }
+        print("✅ Updated vaccinations in CloudKit")
+        
+        // Refresh data
+        await fetchDogs()
     }
     
     
@@ -979,6 +991,9 @@ class DataManager: ObservableObject {
         
         print("🔄 Starting delete visit for dog: \(dogWithVisit.name)")
         
+        // Store for potential revert before any changes
+        let previousDogs = self.dogs
+        
         // Remove from local cache immediately for responsive UI
         await MainActor.run {
             self.dogs.removeAll { $0.id == dogWithVisit.id }
@@ -986,34 +1001,36 @@ class DataManager: ObservableObject {
         }
         
         do {
+            
             // Delete the visit in CloudKit with atomic transaction
-            // Optimistic delete: immediate UI update + background sync
+            // Optimistic delete: immediate UI update + sync with error handling
             cacheManager.removeLocalVisit(visit.id)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await visitService.deleteVisit(visit)
-            }
+            try await self.visitService.deleteVisit(visit)
             print("✅ Marked visit as deleted in CloudKit")
             
             // Update the persistent dog's last visit date
             var updatedPersistentDog = dogWithVisit.persistentDog
             updatedPersistentDog.lastVisitDate = Date()
             
-            // Optimistic update: immediate UI + background sync
+            // Optimistic update: immediate UI + sync with error handling
             cacheManager.updateLocalPersistentDog(updatedPersistentDog)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
-            }
+            try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
             
             // Refresh data
             await fetchDogs()
         } catch {
             print("❌ Failed to delete visit: \(error)")
             errorMessage = "Failed to delete: \(error.localizedDescription)"
-            // Re-add to cache if delete failed
+            
+            // Revert optimistic delete
+            cacheManager.addLocalDogWithVisit(persistentDog: dogWithVisit.persistentDog, visit: visit)
+            self.dogs = previousDogs
+            
+            // Re-fetch to ensure consistency
             await fetchDogs()
         }
         
@@ -1071,14 +1088,17 @@ class DataManager: ObservableObject {
         updatedVisit.boardingEndDate = newEndDate
         updatedVisit.updatedAt = Date()
         
+        // Store previous state for revert (before any changes)
+        let previousVisit = currentVisit
+        
         do {
-            // Optimistic update: immediate UI + background sync
+            
+            // Optimistic update: immediate UI + sync with error handling
             cacheManager.updateLocalVisit(updatedVisit)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await visitService.updateVisit(updatedVisit)
-            }
+            // Sync to CloudKit with proper error handling
+            try await self.visitService.updateVisit(updatedVisit)
             
             // Update local cache
             await MainActor.run {
@@ -1094,6 +1114,11 @@ class DataManager: ObservableObject {
             print("✅ Successfully extended boarding for \(dog.name)")
         } catch {
             print("❌ Failed to extend boarding: \(error)")
+            
+            // Revert optimistic update
+            cacheManager.revertVisitUpdate(to: previousVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
             errorMessage = "Failed to extend boarding: \(error.localizedDescription)"
         }
     }
@@ -1116,14 +1141,17 @@ class DataManager: ObservableObject {
         updatedVisit.boardingEndDate = endDate
         updatedVisit.updatedAt = Date()
         
+        // Store previous state for revert (before any changes)
+        let previousVisit = currentVisit
+        
         do {
-            // Optimistic update: immediate UI + background sync
+            
+            // Optimistic update: immediate UI + sync with error handling
             cacheManager.updateLocalVisit(updatedVisit)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await visitService.updateVisit(updatedVisit)
-            }
+            // Sync to CloudKit with proper error handling
+            try await self.visitService.updateVisit(updatedVisit)
             
             // Update local cache
             await MainActor.run {
@@ -1143,6 +1171,11 @@ class DataManager: ObservableObject {
             #if DEBUG
             print("❌ Failed to convert to boarding: \(error)")
             #endif
+            
+            // Revert optimistic update
+            cacheManager.revertVisitUpdate(to: previousVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
             errorMessage = "Failed to convert to boarding: \(error.localizedDescription)"
         }
     }
@@ -1292,18 +1325,21 @@ class DataManager: ObservableObject {
             return
         }
         
+        // Store previous state for revert (before any changes)
+        let previousVisit = currentVisit
+        
         // Remove from visit's feeding records
         currentVisit.feedingRecords.removeAll { $0.id == record.id }
         currentVisit.updatedAt = Date()
         
         do {
-            // Optimistic update: immediate UI + background sync
+            
+            // Optimistic update: immediate UI + sync with error handling
             cacheManager.updateLocalVisit(currentVisit)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await visitService.updateVisit(currentVisit)
-            }
+            // Sync to CloudKit with proper error handling
+            try await self.visitService.updateVisit(currentVisit)
             
             // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1316,16 +1352,10 @@ class DataManager: ObservableObject {
             print("❌ Failed to delete feeding record: \(error)")
             #endif
             
-            // Revert local cache if update failed
-            await MainActor.run {
-                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].currentVisit?.feedingRecords.append(record)
-                    
-                    #if DEBUG
-                    print("🔄 Reverted feeding record in local cache due to failure")
-                    #endif
-                }
-            }
+            // Revert optimistic update
+            cacheManager.revertVisitUpdate(to: previousVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
             errorMessage = "Failed to delete feeding record: \(error.localizedDescription)"
         }
         
@@ -1354,18 +1384,20 @@ class DataManager: ObservableObject {
             return
         }
         
+        // Store previous state for revert (before any changes)
+        let previousVisit = currentVisit
+        
         // Remove from visit's medication records
         currentVisit.medicationRecords.removeAll { $0.id == record.id }
         currentVisit.updatedAt = Date()
         
         do {
-            // Optimistic update: immediate UI + background sync
+            // Optimistic update: immediate UI + sync with error handling
             cacheManager.updateLocalVisit(currentVisit)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await visitService.updateVisit(currentVisit)
-            }
+            // Sync to CloudKit with proper error handling
+            try await self.visitService.updateVisit(currentVisit)
             
             // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1378,12 +1410,10 @@ class DataManager: ObservableObject {
             print("❌ Failed to delete medication record: \(error)")
             #endif
             
-            // Revert local cache if update failed
-            await MainActor.run {
-                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].currentVisit?.medicationRecords.append(record)
-                }
-            }
+            // Revert optimistic update
+            cacheManager.revertVisitUpdate(to: previousVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
             errorMessage = "Failed to delete medication record: \(error.localizedDescription)"
         }
         
@@ -1412,18 +1442,20 @@ class DataManager: ObservableObject {
             return
         }
         
+        // Store previous state for revert (before any changes)
+        let previousVisit = currentVisit
+        
         // Remove from visit's potty records
         currentVisit.pottyRecords.removeAll { $0.id == record.id }
         currentVisit.updatedAt = Date()
         
         do {
-            // Optimistic update: immediate UI + background sync
+            // Optimistic update: immediate UI + sync with error handling
             cacheManager.updateLocalVisit(currentVisit)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await visitService.updateVisit(currentVisit)
-            }
+            // Sync to CloudKit with proper error handling
+            try await self.visitService.updateVisit(currentVisit)
             
             // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1436,12 +1468,10 @@ class DataManager: ObservableObject {
             print("❌ Failed to delete potty record: \(error)")
             #endif
             
-            // Revert local cache if update failed
-            await MainActor.run {
-                if let index = self.dogs.firstIndex(where: { $0.id == dog.id }) {
-                    self.dogs[index].currentVisit?.pottyRecords.append(record)
-                }
-            }
+            // Revert optimistic update
+            cacheManager.revertVisitUpdate(to: previousVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
             errorMessage = "Failed to delete potty record: \(error.localizedDescription)"
         }
         
@@ -1489,9 +1519,8 @@ class DataManager: ObservableObject {
             cacheManager.updateLocalVisit(currentVisit)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await visitService.updateVisit(currentVisit)
-            }
+            // Sync to CloudKit with proper error handling
+            try await self.visitService.updateVisit(currentVisit)
             
             // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1501,7 +1530,7 @@ class DataManager: ObservableObject {
             #endif
             
             // Update sync time for new record
-            lastSyncTime = Date()
+            // Sync timing handled by SyncScheduler
         } catch {
             #if DEBUG
             print("❌ Failed to add potty record: \(error)")
@@ -1552,9 +1581,8 @@ class DataManager: ObservableObject {
                 cacheManager.updateLocalVisit(currentVisit)
                 self.dogs = cacheManager.getCurrentDogsWithVisits()
                 
-                Task {
-                    try await visitService.updateVisit(currentVisit)
-                }
+                // Sync to CloudKit with proper error handling
+                try await self.visitService.updateVisit(currentVisit)
                 
                 // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1630,9 +1658,8 @@ class DataManager: ObservableObject {
             cacheManager.updateLocalVisit(currentVisit)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await visitService.updateVisit(currentVisit)
-            }
+            // Sync to CloudKit with proper error handling
+            try await self.visitService.updateVisit(currentVisit)
             
             // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1642,7 +1669,7 @@ class DataManager: ObservableObject {
             #endif
             
             // Update sync time for new record
-            lastSyncTime = Date()
+            // Sync timing handled by SyncScheduler
         } catch {
             #if DEBUG
             print("❌ Failed to add feeding record: \(error)")
@@ -1693,9 +1720,8 @@ class DataManager: ObservableObject {
                 cacheManager.updateLocalVisit(currentVisit)
                 self.dogs = cacheManager.getCurrentDogsWithVisits()
                 
-                Task {
-                    try await visitService.updateVisit(currentVisit)
-                }
+                // Sync to CloudKit with proper error handling
+                try await self.visitService.updateVisit(currentVisit)
                 
                 // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1755,9 +1781,8 @@ class DataManager: ObservableObject {
                 cacheManager.updateLocalVisit(currentVisit)
                 self.dogs = cacheManager.getCurrentDogsWithVisits()
                 
-                Task {
-                    try await visitService.updateVisit(currentVisit)
-                }
+                // Sync to CloudKit with proper error handling
+                try await self.visitService.updateVisit(currentVisit)
                 
                 // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1767,7 +1792,7 @@ class DataManager: ObservableObject {
                 #endif
                 
                 // Update sync time for record update
-                lastSyncTime = Date()
+                // Sync timing handled by SyncScheduler
             } catch {
                 #if DEBUG
                 print("❌ Failed to update feeding record timestamp: \(error)")
@@ -1820,9 +1845,8 @@ class DataManager: ObservableObject {
                 cacheManager.updateLocalVisit(currentVisit)
                 self.dogs = cacheManager.getCurrentDogsWithVisits()
                 
-                Task {
-                    try await visitService.updateVisit(currentVisit)
-                }
+                // Sync to CloudKit with proper error handling
+                try await self.visitService.updateVisit(currentVisit)
                 
                 // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1832,7 +1856,7 @@ class DataManager: ObservableObject {
                 #endif
                 
                 // Update sync time for record update
-                lastSyncTime = Date()
+                // Sync timing handled by SyncScheduler
             } catch {
                 #if DEBUG
                 print("❌ Failed to update potty record timestamp: \(error)")
@@ -1890,9 +1914,8 @@ class DataManager: ObservableObject {
             cacheManager.updateLocalVisit(currentVisit)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await visitService.updateVisit(currentVisit)
-            }
+            // Sync to CloudKit with proper error handling
+            try await self.visitService.updateVisit(currentVisit)
             
             // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1902,7 +1925,7 @@ class DataManager: ObservableObject {
             #endif
             
             // Update sync time for new record
-            lastSyncTime = Date()
+            // Sync timing handled by SyncScheduler
         } catch {
             #if DEBUG
             print("❌ Failed to add medication record: \(error)")
@@ -1953,9 +1976,8 @@ class DataManager: ObservableObject {
                 cacheManager.updateLocalVisit(currentVisit)
                 self.dogs = cacheManager.getCurrentDogsWithVisits()
                 
-                Task {
-                    try await visitService.updateVisit(currentVisit)
-                }
+                // Sync to CloudKit with proper error handling
+                try await self.visitService.updateVisit(currentVisit)
                 
                 // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1965,7 +1987,7 @@ class DataManager: ObservableObject {
                 #endif
                 
                 // Update sync time for record update
-                lastSyncTime = Date()
+                // Sync timing handled by SyncScheduler
             } catch {
                 #if DEBUG
                 print("❌ Failed to update medication record timestamp: \(error)")
@@ -2018,9 +2040,8 @@ class DataManager: ObservableObject {
                 cacheManager.updateLocalVisit(currentVisit)
                 self.dogs = cacheManager.getCurrentDogsWithVisits()
                 
-                Task {
-                    try await visitService.updateVisit(currentVisit)
-                }
+                // Sync to CloudKit with proper error handling
+                try await self.visitService.updateVisit(currentVisit)
                 
                 // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
@@ -2055,21 +2076,6 @@ class DataManager: ObservableObject {
             (dog.ownerName?.localizedCaseInsensitiveContains(query) ?? false)
         }
         return filteredDogs
-    }
-    
-    // MARK: - Data Refresh
-    
-    func refreshData() async {
-        #if DEBUG
-        print("🔄 DataManager: Manual refresh requested - clearing caches")
-        #endif
-        
-        // Clear caches to force fresh data
-        forceRefreshMainPageCache()
-        
-        // Fetch fresh data (will populate caches)
-        await fetchDogs()
-        await fetchUsers()
     }
     
     // MARK: - History Management
@@ -2267,7 +2273,7 @@ class DataManager: ObservableObject {
         }
         
         // Handle CloudKit operations in background without blocking UI
-        Task.detached {
+        Task {
             do {
                 // Use new persistent dog system
                 if var currentVisit = dog.currentVisit {
@@ -2276,11 +2282,11 @@ class DataManager: ObservableObject {
                     
                     // Dog will still show in "departed today" section until tomorrow
                     // Optimistic update: immediate UI + background sync
-                    cacheManager.updateLocalVisit(currentVisit)
-                    self.dogs = cacheManager.getCurrentDogsWithVisits()
+                    self.cacheManager.updateLocalVisit(currentVisit)
+                    self.dogs = self.cacheManager.getCurrentDogsWithVisits()
                     
                     Task {
-                        try await visitService.updateVisit(currentVisit)
+                        try await self.visitService.updateVisit(currentVisit)
                     }
                     
                     #if DEBUG
@@ -2366,7 +2372,7 @@ class DataManager: ObservableObject {
             
             await MainActor.run {
                 self.allDogs = dogsWithVisits.sorted { $0.name < $1.name }
-                self.lastAllDogsSyncTime = Date()
+                // Sync timing handled by SyncScheduler
                 self.isLoading = false
                 
                 #if DEBUG
@@ -2388,9 +2394,15 @@ class DataManager: ObservableObject {
     func fetchAllDogsIncremental() async {
         isLoading = true
         errorMessage = nil
-        print("🔍 DataManager: Starting fetchAllDogsIncremental (since \(lastAllDogsSyncTime))...")
+        
+        #if DEBUG
+        let lastSyncTime = cacheManager.getLastSyncTime()
+        print("🔍 DataManager: Starting fetchAllDogsIncremental (since \(lastSyncTime))...")
+        #endif
+        
         do {
-            let changedCloudKitDogs = try await cloudKitService.fetchAllDogsIncremental(since: lastAllDogsSyncTime)
+            let lastSyncTime = cacheManager.getLastSyncTime()
+            let changedCloudKitDogs = try await cloudKitService.fetchAllDogsIncremental(since: lastSyncTime)
             print("🔍 DataManager: Got \(changedCloudKitDogs.count) changed CloudKit dogs (including deleted)")
             let changedLocalDogs = changedCloudKitDogs.map { $0.toDogWithVisit() }
             // Merge changes into allDogs
@@ -2404,7 +2416,7 @@ class DataManager: ObservableObject {
             }
             await MainActor.run {
                 self.allDogs = updatedAllDogs.sorted { $0.updatedAt > $1.updatedAt }
-                self.lastAllDogsSyncTime = Date()
+                // Sync timing handled by SyncScheduler
                 self.isLoading = false
                 print("✅ DataManager: Updated allDogs with incremental changes (\(self.allDogs.count) total)")
             }
@@ -2710,9 +2722,8 @@ Call Stack: \(callStack)
             cacheManager.updateLocalPersistentDog(updatedPersistentDog)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
-            }
+            // Sync to CloudKit with proper error handling
+            try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
             
             // Update caches
             await incrementallyUpdatePersistentDogCache(update: updatedPersistentDog)
@@ -2792,15 +2803,13 @@ Call Stack: \(callStack)
             cacheManager.addLocalDogWithVisit(persistentDog: persistentDog, visit: visit)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            // Sync to CloudKit in background
-            Task {
-                try await persistentDogService.createPersistentDog(persistentDog)
-                try await visitService.createVisit(visit)
-                
-                #if DEBUG
-                print("✅ CloudKit: Successfully saved dog and visit")
-                #endif
-            }
+            // Sync to CloudKit with proper error handling
+            try await self.persistentDogService.createPersistentDog(persistentDog)
+            try await self.visitService.createVisit(visit)
+            
+            #if DEBUG
+            print("✅ CloudKit: Successfully saved dog and visit")
+            #endif
             
             // Update UI immediately with the new dog
             let newDogWithVisit = DogWithVisit(persistentDog: persistentDog, currentVisit: visit)
@@ -2921,9 +2930,8 @@ Call Stack: \(callStack)
             cacheManager.updateLocalPersistentDog(updatedPersistentDog)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
-            Task {
-                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
-            }
+            // Sync to CloudKit with proper error handling
+            try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
             #if DEBUG
             print("✅ DataManager: Successfully updated persistent dog \(name) in CloudKit")
             #endif
@@ -2944,9 +2952,8 @@ Call Stack: \(callStack)
                 cacheManager.updateLocalVisit(currentVisit)
                 self.dogs = cacheManager.getCurrentDogsWithVisits()
                 
-                Task {
-                    try await visitService.updateVisit(currentVisit)
-                }
+                // Sync to CloudKit with proper error handling
+                try await self.visitService.updateVisit(currentVisit)
                 #if DEBUG
                 print("✅ DataManager: Updated visit with ID \(currentVisit.id)")
                 #endif
@@ -3016,12 +3023,11 @@ Call Stack: \(callStack)
     }
 }
 
-    // MARK: - DogWithVisit Helper Methods
-    // Removed inefficient updateDogWithVisitTimestamp - now using proper service calls
-
 // MARK: - Conversion Extensions
 
 extension CloudKitDog {
+    // MARK: - DogWithVisit Helper Methods
+    // Removed inefficient updateDogWithVisitTimestamp - now using proper service calls
     
     func toDogWithVisit() -> DogWithVisit {
         // Create PersistentDog
