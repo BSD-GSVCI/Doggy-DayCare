@@ -366,8 +366,8 @@ struct DogFormView: View {
                     TextField("Owner's Phone Number", text: $ownerPhoneNumber)
                         .keyboardType(.phonePad)
                         .onChange(of: ownerPhoneNumber) { _, newValue in
-                            // Format the phone number as user types
-                            let formatted = newValue.formatPhoneNumber()
+                            // Format the phone number in real-time as user types
+                            let formatted = newValue.formatPhoneNumberRealTime()
                             if formatted != newValue {
                                 ownerPhoneNumber = formatted
                             }

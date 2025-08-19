@@ -424,32 +424,30 @@ struct DatabaseDogRow: View {
                 }
             }
             
-            // Visit count
-            HStack(spacing: 4) {
-                Image(systemName: "pencil.and.list.clipboard")
-                    .font(.caption)
-                    .foregroundStyle(.blue)
-                Text("\(visitCount) visit\(visitCount == 1 ? "" : "s")")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.blue)
+            // Visit count and status
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Image(systemName: "pencil.and.list.clipboard")
+                        .font(.caption)
+                        .foregroundStyle(.blue)
+                    Text("\(visitCount) visit\(visitCount == 1 ? "" : "s")")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.blue)
+                }
+                
+                if isOnMainPage {
+                    Text("EXISTS ON MAIN PAGE")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.green)
+                }
             }
             
             Spacer()
             
-            // Show status indicators
+            // Show status indicators (only deleted status now)
             HStack(spacing: 4) {
-                if isOnMainPage {
-                    Text("EXISTS ON MAIN PAGE")
-                        .font(.caption)
-                        .fontWeight(.bold)
-                        .foregroundStyle(.green)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(.green.opacity(0.2))
-                        .clipShape(Capsule())
-                }
-                
                 if dog.isDeleted {
                     Text("DELETED")
                         .font(.caption)

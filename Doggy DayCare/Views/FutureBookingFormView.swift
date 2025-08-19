@@ -309,7 +309,7 @@ extension FutureBookingFormView {
             TextField("Owner's Phone Number", text: $ownerPhoneNumber)
                 .keyboardType(.phonePad)
                 .onChange(of: ownerPhoneNumber) { _, newValue in
-                    let formatted = newValue.formatPhoneNumber()
+                    let formatted = newValue.formatPhoneNumberRealTime()
                     if formatted != newValue {
                         ownerPhoneNumber = formatted
                     }
