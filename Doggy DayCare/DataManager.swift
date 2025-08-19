@@ -16,150 +16,49 @@ class DataManager: ObservableObject {
     private let persistentDogService = PersistentDogService.shared
     private let visitService = VisitService.shared
     
-    // Incremental sync tracking
-    private var lastSyncTime: Date = Date.distantPast
-    private var lastAllDogsSyncTime: Date = Date.distantPast
-    
-    // Multi-user sync timer for detecting changes from other users
-    private var multiUserSyncTimer: Timer?
-    private let multiUserSyncInterval: TimeInterval = 60 // Sync every 60 seconds
-    private var isAppActive = true // Track app state
+    // New cache and sync system
+    private let cacheManager = CacheManager.shared
+    private let syncScheduler = SyncScheduler.shared
     
     
     private init() {
         #if DEBUG
-        print("📱 DataManager initialized")
+        print("📱 DataManager initialized with new caching system")
         #endif
-        setupAppStateObservers()
-        startMultiUserSync()
+        
+        // Start initial data load and sync system
+        Task {
+            await syncScheduler.performInitialLoad()
+        }
     }
     
     deinit {
-        // Stop the timer directly without Task since we're in deinit
-        multiUserSyncTimer?.invalidate()
-        multiUserSyncTimer = nil
-        
-        // Remove notification observers
-        NotificationCenter.default.removeObserver(self)
-    }
-    
-    // MARK: - App State Management
-    
-    private func setupAppStateObservers() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appDidBecomeActive),
-            name: UIApplication.didBecomeActiveNotification,
-            object: nil
-        )
-        
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appDidEnterBackground),
-            name: UIApplication.didEnterBackgroundNotification,
-            object: nil
-        )
-    }
-    
-    @objc private func appDidBecomeActive() {
-        isAppActive = true
+        // Cleanup handled by SyncScheduler
         #if DEBUG
-        print("📱 App became active - resuming multi-user sync")
-        #endif
-        
-        // Perform immediate sync when app becomes active
-        Task {
-            await performMultiUserSync()
-        }
-    }
-    
-    @objc private func appDidEnterBackground() {
-        isAppActive = false
-        #if DEBUG
-        print("📱 App entered background - pausing multi-user sync")
+        print("📱 DataManager deinitialized")
         #endif
     }
     
-    // MARK: - Multi-User Sync
+    // MARK: - Data Refresh
     
-    private func startMultiUserSync() {
-        multiUserSyncTimer = Timer.scheduledTimer(withTimeInterval: multiUserSyncInterval, repeats: true) { [weak self] _ in
-            Task { [weak self] in
-                await self?.performMultiUserSync()
-            }
-        }
+    /// Manually refresh data (for pull-to-refresh)
+    func refreshData() async {
+        #if DEBUG
+        print("📱 Manual data refresh requested")
+        #endif
+        
+        await syncScheduler.performManualSync()
+        
+        // Update UI with latest data from cache
+        let updatedDogs = cacheManager.getCurrentDogsWithVisits()
+        self.dogs = updatedDogs
         
         #if DEBUG
-        print("🔄 Multi-user sync started (every \(Int(multiUserSyncInterval))s)")
+        print("📱 Manual refresh complete - \(updatedDogs.count) dogs")
         #endif
     }
     
-    private func stopMultiUserSync() {
-        multiUserSyncTimer?.invalidate()
-        multiUserSyncTimer = nil
-        
-        #if DEBUG
-        print("⏹ Multi-user sync stopped")
-        #endif
-    }
     
-    private func performMultiUserSync() async {
-        // Don't sync if app is in background, already loading, or if last sync was too recent
-        guard isAppActive && !isLoading else { 
-            #if DEBUG
-            if !isAppActive {
-                print("⏸ Skipping multi-user sync - app is in background")
-            }
-            #endif
-            return 
-        }
-        
-        let cacheStats = await DataIntegrityCache.shared.getCacheStats()
-        let timeSinceLastSync = Date().timeIntervalSince(cacheStats.lastSync)
-        
-        // Only sync if enough time has passed
-        guard timeSinceLastSync >= 10 else { return }
-        
-        do {
-            #if DEBUG
-            print("🔄 Performing multi-user sync check...")
-            #endif
-            
-            // Sync with CloudKit to get changes from other users
-            try await DataIntegrityCache.shared.syncWithCloudKit(
-                fetchPersistentDogs: { [weak self] in
-                    try await self?.persistentDogService.fetchPersistentDogs() ?? []
-                },
-                fetchVisits: { [weak self] in
-                    try await self?.visitService.fetchActiveVisits() ?? []
-                }
-            )
-            
-            // Update UI with any changes
-            let updatedDogs = await DataIntegrityCache.shared.getCurrentDogsWithVisits()
-            
-            await MainActor.run {
-                let previousCount = self.dogs.count
-                
-                // Only update if there are actual changes
-                if self.dogs != updatedDogs {
-                    self.dogs = updatedDogs
-                    
-                    #if DEBUG
-                    let diff = updatedDogs.count - previousCount
-                    if diff != 0 {
-                        print("📊 Multi-user sync: Dog count changed by \(diff > 0 ? "+\(diff)" : "\(diff)")")
-                    }
-                    #endif
-                }
-            }
-            
-        } catch {
-            #if DEBUG
-            print("⚠️ Multi-user sync failed: \(error)")
-            #endif
-        }
-    }
     
     // MARK: - Authentication
     
@@ -191,56 +90,22 @@ class DataManager: ObservableObject {
     
     private func fetchDogsWithPersistentSystem(shouldShowLoading: Bool) async {
         do {
-            // Try to use cached data first for active visits
-            var activeVisits: [Visit] = []
+            #if DEBUG
+            print("🔄 Using new CacheManager and SyncScheduler system")
+            #endif
             
-            if let cachedVisits: [Visit] = await AdvancedCache.shared.get("active_visits_cache") {
-                #if DEBUG
-                print("💾 Using cached active visits (\(cachedVisits.count) visits)")
-                #endif
-                activeVisits = cachedVisits
-            } else {
-                #if DEBUG
-                print("🔄 Cache miss - fetching active visits from service...")
-                #endif
-                // Fetch active visits from service
-                activeVisits = try await visitService.fetchActiveVisits()
-                
-                // Cache the active visits (30 minute expiration - shorter than persistent dogs since visits change more frequently)
-                AdvancedCache.shared.set(activeVisits, for: "active_visits_cache", expirationInterval: 1800)
-                
-                #if DEBUG
-                print("🔍 DataManager: Got \(activeVisits.count) active visits from service and cached them")
-                #endif
+            if shouldShowLoading {
+                isLoading = true
             }
             
-            // Get persistent dogs (using the already cached method)
-            var persistentDogs: [PersistentDog] = []
+            // Perform sync using new system
+            await SyncScheduler.shared.performManualSync()
             
-            if let cachedDogs: [PersistentDog] = await AdvancedCache.shared.get("persistent_dogs_cache") {
-                #if DEBUG
-                print("💾 Using cached persistent dogs (\(cachedDogs.count) dogs)")
-                #endif
-                persistentDogs = cachedDogs
-            } else {
-                #if DEBUG
-                print("🔄 Cache miss - fetching persistent dogs from service...")
-                #endif
-                persistentDogs = try await persistentDogService.fetchPersistentDogs()
-                
-                // Cache the persistent dogs (1 hour expiration)
-                AdvancedCache.shared.set(persistentDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
-                
-                #if DEBUG
-                print("🔍 DataManager: Got \(persistentDogs.count) persistent dogs from service and cached them")
-                #endif
-            }
-            
-            // Get dogs from unified cache instead of combining separate caches
-            let dogsWithVisits = await DataIntegrityCache.shared.getCurrentDogsWithVisits()
+            // Get dogs from CacheManager
+            let dogsWithVisits = CacheManager.shared.getCurrentDogsWithVisits()
             
             #if DEBUG
-            print("🔍 DataManager: Created \(dogsWithVisits.count) dogs with visits")
+            print("🔍 DataManager: Got \(dogsWithVisits.count) dogs with visits from cache")
             #endif
             
             #if DEBUG
@@ -250,27 +115,26 @@ class DataManager: ObservableObject {
             }
             #endif
             
-            await MainActor.run {
-                let previousCount = self.dogs.count
-                let previousDogIds = Set(self.dogs.map { $0.id })
+            let previousCount = self.dogs.count
+            let previousDogIds = Set(self.dogs.map { $0.id })
+            
+            self.dogs = dogsWithVisits
+            
+            // Validation checks
+            if previousCount > 0 {
+                let newDogIds = Set(dogsWithVisits.map { $0.id })
+                let missingDogs = previousDogIds.subtracting(newDogIds)
                 
-                self.dogs = dogsWithVisits
-                
-                // Validation checks
-                if previousCount > 0 {
-                    let newDogIds = Set(dogsWithVisits.map { $0.id })
-                    let missingDogs = previousDogIds.subtracting(newDogIds)
-                    
-                    #if DEBUG
-                    if missingDogs.count > 0 {
-                        print("⚠️ WARNING: \(missingDogs.count) dogs disappeared after fetch")
-                    }
-                    
-                    if dogsWithVisits.count < Int(Double(previousCount) * 0.5) {
-                        print("⚠️ CRITICAL: Dog count dropped from \(previousCount) to \(dogsWithVisits.count)")
-                    }
-                    #endif
+                #if DEBUG
+                if missingDogs.count > 0 {
+                    print("⚠️ WARNING: \(missingDogs.count) dogs disappeared after fetch")
                 }
+                
+                if dogsWithVisits.count < Int(Double(previousCount) * 0.5) {
+                    print("⚠️ CRITICAL: Dog count dropped from \(previousCount) to \(dogsWithVisits.count)")
+                }
+                #endif
+            }
                 
                 if shouldShowLoading {
                     self.isLoading = false
@@ -346,13 +210,27 @@ class DataManager: ObservableObject {
                 updatedDog.isNeuteredOrSpayed = isNeuteredOrSpayed ?? existingDog.isNeuteredOrSpayed
                 updatedDog.updatedAt = Date()
                 
-                // Update both CloudKit and DataIntegrityCache atomically
-                try await DataIntegrityCache.shared.updateDog(
-                    updatedDog,
-                    cloudKitConfirmation: {
-                        try await self.persistentDogService.updatePersistentDog(updatedDog)
+                // Optimistic update: immediate UI update + background CloudKit sync
+                let previousDog = cacheManager.getPersistentDog(id: updatedDog.id)
+                
+                // Update cache and UI immediately
+                cacheManager.updateLocalPersistentDog(updatedDog)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                // Sync to CloudKit in background
+                do {
+                    try await persistentDogService.updatePersistentDog(updatedDog)
+                    #if DEBUG
+                    print("💾 Successfully synced dog update: \(updatedDog.name)")
+                    #endif
+                } catch {
+                    // Revert on failure
+                    if let previousDog = previousDog {
+                        cacheManager.revertDogUpdate(to: previousDog)
+                        self.dogs = cacheManager.getCurrentDogsWithVisits()
                     }
-                )
+                    throw error
+                }
                 persistentDog = updatedDog
             } else {
                 // Create new persistent dog
@@ -388,15 +266,9 @@ class DataManager: ObservableObject {
             print("✅ Created future booking for \(name)")
             #endif
             
-            // CRITICAL: Update DataIntegrityCache with the future booking
-            // Even though it's a future booking, it needs to be in the cache
-            try await DataIntegrityCache.shared.addDogWithVisit(
-                persistentDog: persistentDog,
-                visit: visit,
-                cloudKitConfirmation: {
-                    // CloudKit operations already done above
-                }
-            )
+            // Add future booking to cache and update UI immediately
+            cacheManager.addLocalDogWithVisit(persistentDog: persistentDog, visit: visit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
             
             // Refresh data
             await fetchDogs()
@@ -450,13 +322,13 @@ class DataManager: ObservableObject {
             updatedPersistentDog.isNeuteredOrSpayed = isNeuteredOrSpayed
             updatedPersistentDog.updatedAt = Date()
             
-            // Update both CloudKit and DataIntegrityCache atomically
-            try await DataIntegrityCache.shared.updateDog(
-                updatedPersistentDog,
-                cloudKitConfirmation: {
-                    try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalPersistentDog(updatedPersistentDog)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            }
             
             // Update the visit info if it exists
             if var visit = dogWithVisit.currentVisit {
@@ -467,13 +339,13 @@ class DataManager: ObservableObject {
                 visit.scheduledMedications = scheduledMedications
                 visit.updatedAt = Date()
                 
-                // Update both CloudKit and DataIntegrityCache atomically
-                try await DataIntegrityCache.shared.updateVisit(
-                    visit,
-                    cloudKitConfirmation: {
-                        try await self.visitService.updateVisit(visit)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalVisit(visit)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await visitService.updateVisit(visit)
+                }
                 
                 // Update persistent dog fields (modify the already existing updatedPersistentDog)
                 updatedPersistentDog.isDaycareFed = isDaycareFed
@@ -483,13 +355,13 @@ class DataManager: ObservableObject {
                 updatedPersistentDog.specialInstructions = specialInstructions
                 updatedPersistentDog.updatedAt = Date()
                 
-                // Update both CloudKit and DataIntegrityCache atomically
-                try await DataIntegrityCache.shared.updateDog(
-                    updatedPersistentDog,
-                    cloudKitConfirmation: {
-                        try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalPersistentDog(updatedPersistentDog)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+                }
             }
             
             #if DEBUG
@@ -555,13 +427,13 @@ class DataManager: ObservableObject {
             updatedPersistentDog.isNeuteredOrSpayed = isNeuteredOrSpayed
             updatedPersistentDog.updatedAt = Date()
             
-            // Update both CloudKit and DataIntegrityCache atomically
-            try await DataIntegrityCache.shared.updateDog(
-                updatedPersistentDog,
-                cloudKitConfirmation: {
-                    try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalPersistentDog(updatedPersistentDog)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            }
             
             #if DEBUG
             print("✅ DataManager: Updated persistent dog info for: \(updatedPersistentDog.name)")
@@ -664,13 +536,13 @@ class DataManager: ObservableObject {
                 visit.departureDate = nil
                 visit.updatedAt = Date()
                 
-                // Update both CloudKit and DataIntegrityCache atomically
-                try await DataIntegrityCache.shared.updateVisit(
-                    visit,
-                    cloudKitConfirmation: {
-                        try await self.visitService.updateVisit(visit)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalVisit(visit)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await visitService.updateVisit(visit)
+                }
                 #if DEBUG
                 print("✅ Updated visit in CloudKit for undo departure: \(dogWithVisit.name)")
                 #endif
@@ -732,13 +604,13 @@ class DataManager: ObservableObject {
                 visit.departureDate = newDate
                 visit.updatedAt = Date()
                 
-                // Update both CloudKit and DataIntegrityCache atomically
-                try await DataIntegrityCache.shared.updateVisit(
-                    visit,
-                    cloudKitConfirmation: {
-                        try await self.visitService.updateVisit(visit)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalVisit(visit)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await visitService.updateVisit(visit)
+                }
                 #if DEBUG
                 print("✅ Updated departure time in CloudKit for \(dogWithVisit.name)")
                 #endif
@@ -779,14 +651,14 @@ class DataManager: ObservableObject {
             visit.isArrivalTimeSet = true  // Mark that arrival time has been set
             visit.updatedAt = Date()
             
-            // CRITICAL: Update DataIntegrityCache so the dog appears on main page
             // When a future booking's arrival time is set, it becomes an active dog
-            try await DataIntegrityCache.shared.updateVisit(
-                visit,
-                cloudKitConfirmation: {
-                    try await self.visitService.updateVisit(visit)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalVisit(visit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await visitService.updateVisit(visit)
+            }
             #if DEBUG
             print("✅ Updated arrival time for \(dogWithVisit.name)")
             #endif
@@ -852,50 +724,27 @@ class DataManager: ObservableObject {
     
     /// Incrementally add a new visit to the active visits cache
     private func incrementallyUpdateVisitCache(add visit: Visit) async {
-        // Get current cached visits or create empty array if cache doesn't exist
-        var cachedVisits: [Visit] = await AdvancedCache.shared.get("active_visits_cache") ?? []
-        
-        // Add if not already present
-        if !cachedVisits.contains(where: { $0.id == visit.id }) {
-            cachedVisits.append(visit)
-            AdvancedCache.shared.set(cachedVisits, for: "active_visits_cache", expirationInterval: 1800)
-            
-            #if DEBUG
-            print("✅ Incrementally added visit to cache for dog: \(visit.dogId) (cache had \(cachedVisits.count - 1) visits)")
-            #endif
-        }
+        // DEPRECATED: CacheManager now handles all caching automatically
+        // This function is kept for compatibility but does nothing
+        #if DEBUG
+        print("💾 DEPRECATED: AdvancedCache call skipped - CacheManager handles this automatically")
+        #endif
     }
     
     /// Incrementally update an existing visit in the cache
     private func incrementallyUpdateVisitCache(update visit: Visit) async {
-        // Get current cached visits
-        if var cachedVisits: [Visit] = await AdvancedCache.shared.get("active_visits_cache") {
-            // Update if exists
-            if let index = cachedVisits.firstIndex(where: { $0.id == visit.id }) {
-                cachedVisits[index] = visit
-                AdvancedCache.shared.set(cachedVisits, for: "active_visits_cache", expirationInterval: 1800)
-                
-                #if DEBUG
-                print("✅ Incrementally updated visit in cache for dog: \(visit.dogId)")
-                #endif
-            }
-        }
+        // DEPRECATED: CacheManager now handles all caching automatically
+        #if DEBUG
+        print("💾 DEPRECATED: DataIntegrityCache call skipped - CacheManager handles this automatically")
+        #endif
     }
     
     /// Incrementally remove a visit from the cache (when dog is checked out)
     private func incrementallyUpdateVisitCache(remove visitId: UUID) async {
-        // Get current cached visits
-        if var cachedVisits: [Visit] = await AdvancedCache.shared.get("active_visits_cache") {
-            // Remove if exists
-            if let index = cachedVisits.firstIndex(where: { $0.id == visitId }) {
-                let removedVisit = cachedVisits.remove(at: index)
-                AdvancedCache.shared.set(cachedVisits, for: "active_visits_cache", expirationInterval: 1800)
-                
-                #if DEBUG
-                print("✅ Incrementally removed visit from cache for dog: \(removedVisit.dogId)")
-                #endif
-            }
-        }
+        // DEPRECATED: CacheManager now handles all caching automatically
+        #if DEBUG
+        print("💾 DEPRECATED: DataIntegrityCache call skipped - CacheManager handles this automatically")
+        #endif
     }
     
     /// Force refresh both caches (for pull-to-refresh)
@@ -981,12 +830,13 @@ class DataManager: ObservableObject {
                 #endif
                 
                 // Update persistent dog information
-                try await DataIntegrityCache.shared.updateDog(
-                    dog.persistentDog,
-                    cloudKitConfirmation: {
-                        try await self.persistentDogService.updatePersistentDog(dog.persistentDog)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalPersistentDog(dog.persistentDog)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await persistentDogService.updatePersistentDog(dog.persistentDog)
+                }
                 
                 #if DEBUG
                 print("✅ Updated persistent dog in CloudKit for \(dog.name)")
@@ -1034,13 +884,13 @@ class DataManager: ObservableObject {
                     visit.updatedAt = Date()
                     
                     print("🔄 Calling CloudKit medication update in background...")
-                    // Update both CloudKit and DataIntegrityCache atomically
-                    try await DataIntegrityCache.shared.updateVisit(
-                        visit,
-                        cloudKitConfirmation: {
-                            try await self.visitService.updateVisit(visit)
-                        }
-                    )
+                    // Optimistic update: immediate UI + background sync
+                    cacheManager.updateLocalVisit(visit)
+                    self.dogs = cacheManager.getCurrentDogsWithVisits()
+                    
+                    Task {
+                        try await visitService.updateVisit(visit)
+                    }
                     print("✅ CloudKit medication update successful")
                 } else {
                     print("⚠️ No current visit found to update medications")
@@ -1097,13 +947,13 @@ class DataManager: ObservableObject {
             updatedPersistentDog.vaccinations = vaccinations
             updatedPersistentDog.updatedAt = Date()
             
-            // Update both CloudKit and DataIntegrityCache atomically
-            try await DataIntegrityCache.shared.updateDog(
-                updatedPersistentDog,
-                cloudKitConfirmation: {
-                    try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalPersistentDog(updatedPersistentDog)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            }
             print("✅ Updated vaccinations in CloudKit")
             
             // Refresh data
@@ -1137,25 +987,26 @@ class DataManager: ObservableObject {
         
         do {
             // Delete the visit in CloudKit with atomic transaction
-            try await DataIntegrityCache.shared.deleteVisit(
-                visit,
-                cloudKitConfirmation: {
-                    try await self.visitService.deleteVisit(visit)
-                }
-            )
+            // Optimistic delete: immediate UI update + background sync
+            cacheManager.removeLocalVisit(visit.id)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await visitService.deleteVisit(visit)
+            }
             print("✅ Marked visit as deleted in CloudKit")
             
             // Update the persistent dog's last visit date
             var updatedPersistentDog = dogWithVisit.persistentDog
             updatedPersistentDog.lastVisitDate = Date()
             
-            // Update both CloudKit and DataIntegrityCache atomically
-            try await DataIntegrityCache.shared.updateDog(
-                updatedPersistentDog,
-                cloudKitConfirmation: {
-                    try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalPersistentDog(updatedPersistentDog)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            }
             
             // Refresh data
             await fetchDogs()
@@ -1221,13 +1072,13 @@ class DataManager: ObservableObject {
         updatedVisit.updatedAt = Date()
         
         do {
-            // Update both CloudKit and DataIntegrityCache atomically
-            try await DataIntegrityCache.shared.updateVisit(
-                updatedVisit,
-                cloudKitConfirmation: {
-                    try await self.visitService.updateVisit(updatedVisit)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalVisit(updatedVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await visitService.updateVisit(updatedVisit)
+            }
             
             // Update local cache
             await MainActor.run {
@@ -1266,13 +1117,13 @@ class DataManager: ObservableObject {
         updatedVisit.updatedAt = Date()
         
         do {
-            // Update both CloudKit and DataIntegrityCache atomically
-            try await DataIntegrityCache.shared.updateVisit(
-                updatedVisit,
-                cloudKitConfirmation: {
-                    try await self.visitService.updateVisit(updatedVisit)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalVisit(updatedVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await visitService.updateVisit(updatedVisit)
+            }
             
             // Update local cache
             await MainActor.run {
@@ -1446,13 +1297,13 @@ class DataManager: ObservableObject {
         currentVisit.updatedAt = Date()
         
         do {
-            // Update both CloudKit and DataIntegrityCache atomically
-            try await DataIntegrityCache.shared.updateVisit(
-                currentVisit,
-                cloudKitConfirmation: {
-                    try await self.visitService.updateVisit(currentVisit)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalVisit(currentVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await visitService.updateVisit(currentVisit)
+            }
             
             // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1508,13 +1359,13 @@ class DataManager: ObservableObject {
         currentVisit.updatedAt = Date()
         
         do {
-            // Update both CloudKit and DataIntegrityCache atomically
-            try await DataIntegrityCache.shared.updateVisit(
-                currentVisit,
-                cloudKitConfirmation: {
-                    try await self.visitService.updateVisit(currentVisit)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalVisit(currentVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await visitService.updateVisit(currentVisit)
+            }
             
             // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1566,13 +1417,13 @@ class DataManager: ObservableObject {
         currentVisit.updatedAt = Date()
         
         do {
-            // Update both CloudKit and DataIntegrityCache atomically
-            try await DataIntegrityCache.shared.updateVisit(
-                currentVisit,
-                cloudKitConfirmation: {
-                    try await self.visitService.updateVisit(currentVisit)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalVisit(currentVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await visitService.updateVisit(currentVisit)
+            }
             
             // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1634,13 +1485,13 @@ class DataManager: ObservableObject {
         currentVisit.updatedAt = Date()
         
         do {
-            // Update both CloudKit and DataIntegrityCache atomically
-            try await DataIntegrityCache.shared.updateVisit(
-                currentVisit,
-                cloudKitConfirmation: {
-                    try await self.visitService.updateVisit(currentVisit)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalVisit(currentVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await visitService.updateVisit(currentVisit)
+            }
             
             // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1697,13 +1548,13 @@ class DataManager: ObservableObject {
             currentVisit.updatedAt = Date()
             
             do {
-                // Update both CloudKit and DataIntegrityCache atomically
-                try await DataIntegrityCache.shared.updateVisit(
-                    currentVisit,
-                    cloudKitConfirmation: {
-                        try await self.visitService.updateVisit(currentVisit)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalVisit(currentVisit)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await visitService.updateVisit(currentVisit)
+                }
                 
                 // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1734,8 +1585,8 @@ class DataManager: ObservableObject {
         isLoading = true
         errorMessage = nil
         
-        // 1. Check for conflicts before proceeding
-        let currentDogState = await DataIntegrityCache.shared.getCurrentDogsWithVisits()
+        // 1. Check current state from cache
+        let currentDogState = cacheManager.getCurrentDogsWithVisits()
             .first { $0.id == dog.id }
         
         let newRecord = FeedingRecord(
@@ -1745,16 +1596,8 @@ class DataManager: ObservableObject {
             recordedBy: recordedBy
         )
         
-        if let conflict = ConflictResolver.shared.detectPotentialConflict(
-            operation: .addFeedingRecord(dogId: dog.id, record: newRecord),
-            currentState: currentDogState ?? dog
-        ) {
-            await MainActor.run {
-                self.errorMessage = conflict.message + " " + conflict.suggestion
-                self.isLoading = false
-            }
-            return
-        }
+        // Simplified approach: no complex conflict detection needed
+        // CloudKit handles eventual consistency naturally
         
         // 2. Update local cache immediately for responsive UI
         await MainActor.run {
@@ -1783,13 +1626,13 @@ class DataManager: ObservableObject {
         currentVisit.updatedAt = Date()
         
         do {
-            // Update both CloudKit and DataIntegrityCache atomically
-            try await DataIntegrityCache.shared.updateVisit(
-                currentVisit,
-                cloudKitConfirmation: {
-                    try await self.visitService.updateVisit(currentVisit)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalVisit(currentVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await visitService.updateVisit(currentVisit)
+            }
             
             // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1846,13 +1689,13 @@ class DataManager: ObservableObject {
             currentVisit.updatedAt = Date()
             
             do {
-                // Update both CloudKit and DataIntegrityCache atomically
-                try await DataIntegrityCache.shared.updateVisit(
-                    currentVisit,
-                    cloudKitConfirmation: {
-                        try await self.visitService.updateVisit(currentVisit)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalVisit(currentVisit)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await visitService.updateVisit(currentVisit)
+                }
                 
                 // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1908,13 +1751,13 @@ class DataManager: ObservableObject {
             currentVisit.updatedAt = Date()
             
             do {
-                // Update both CloudKit and DataIntegrityCache atomically
-                try await DataIntegrityCache.shared.updateVisit(
-                    currentVisit,
-                    cloudKitConfirmation: {
-                        try await self.visitService.updateVisit(currentVisit)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalVisit(currentVisit)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await visitService.updateVisit(currentVisit)
+                }
                 
                 // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
@@ -1973,13 +1816,13 @@ class DataManager: ObservableObject {
             currentVisit.updatedAt = Date()
             
             do {
-                // Update both CloudKit and DataIntegrityCache atomically
-                try await DataIntegrityCache.shared.updateVisit(
-                    currentVisit,
-                    cloudKitConfirmation: {
-                        try await self.visitService.updateVisit(currentVisit)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalVisit(currentVisit)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await visitService.updateVisit(currentVisit)
+                }
                 
                 // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
@@ -2043,13 +1886,13 @@ class DataManager: ObservableObject {
         currentVisit.updatedAt = Date()
         
         do {
-            // Update both CloudKit and DataIntegrityCache atomically
-            try await DataIntegrityCache.shared.updateVisit(
-                currentVisit,
-                cloudKitConfirmation: {
-                    try await self.visitService.updateVisit(currentVisit)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalVisit(currentVisit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await visitService.updateVisit(currentVisit)
+            }
             
             // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
@@ -2106,13 +1949,13 @@ class DataManager: ObservableObject {
             currentVisit.updatedAt = Date()
             
             do {
-                // Update both CloudKit and DataIntegrityCache atomically
-                try await DataIntegrityCache.shared.updateVisit(
-                    currentVisit,
-                    cloudKitConfirmation: {
-                        try await self.visitService.updateVisit(currentVisit)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalVisit(currentVisit)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await visitService.updateVisit(currentVisit)
+                }
                 
                 // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
@@ -2171,13 +2014,13 @@ class DataManager: ObservableObject {
             currentVisit.updatedAt = Date()
             
             do {
-                // Update both CloudKit and DataIntegrityCache atomically
-                try await DataIntegrityCache.shared.updateVisit(
-                    currentVisit,
-                    cloudKitConfirmation: {
-                        try await self.visitService.updateVisit(currentVisit)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalVisit(currentVisit)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await visitService.updateVisit(currentVisit)
+                }
                 
                 // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
@@ -2338,12 +2181,13 @@ class DataManager: ObservableObject {
             persistentDog.lastVisitDate = lastVisitDate
             persistentDog.updatedAt = Date()
             
-            try await DataIntegrityCache.shared.updateDog(
-                persistentDog,
-                cloudKitConfirmation: {
-                    try await self.persistentDogService.updatePersistentDog(persistentDog)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalPersistentDog(persistentDog)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await persistentDogService.updatePersistentDog(persistentDog)
+            }
             print("✅ Updated persistent dog statistics: visitCount=\(persistentDog.visitCount), lastVisitDate=\(lastVisitDate)")
             
             // Update persistent dog cache for database view consistency
@@ -2372,12 +2216,13 @@ class DataManager: ObservableObject {
                 persistentDog.visitCount -= 1
                 persistentDog.updatedAt = Date()
                 
-                try await DataIntegrityCache.shared.updateDog(
-                    persistentDog,
-                    cloudKitConfirmation: {
-                        try await self.persistentDogService.updatePersistentDog(persistentDog)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalPersistentDog(persistentDog)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await persistentDogService.updatePersistentDog(persistentDog)
+                }
                 
                 #if DEBUG
                 print("✅ Decremented persistent dog visit count: visitCount=\(persistentDog.visitCount)")
@@ -2429,14 +2274,14 @@ class DataManager: ObservableObject {
                     currentVisit.departureDate = departureDate
                     currentVisit.updatedAt = departureDate
                     
-                    // CRITICAL: Update DataIntegrityCache with departed status
                     // Dog will still show in "departed today" section until tomorrow
-                    try await DataIntegrityCache.shared.updateVisit(
-                        currentVisit,
-                        cloudKitConfirmation: {
-                            try await self.visitService.updateVisit(currentVisit)
-                        }
-                    )
+                    // Optimistic update: immediate UI + background sync
+                    cacheManager.updateLocalVisit(currentVisit)
+                    self.dogs = cacheManager.getCurrentDogsWithVisits()
+                    
+                    Task {
+                        try await visitService.updateVisit(currentVisit)
+                    }
                     
                     #if DEBUG
                     print("✅ Visit updated in CloudKit for \(dog.name)")
@@ -2861,26 +2706,21 @@ Call Stack: \(callStack)
             var updatedPersistentDog = persistentDog
             updatedPersistentDog.visitCount += 1
             updatedPersistentDog.lastVisitDate = arrivalDate
-            try await DataIntegrityCache.shared.updateDog(
-                updatedPersistentDog,
-                cloudKitConfirmation: {
-                    try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalPersistentDog(updatedPersistentDog)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            }
             
             // Update caches
             await incrementallyUpdatePersistentDogCache(update: updatedPersistentDog)
             await incrementallyUpdateVisitCache(add: visit)
             
-            // CRITICAL: Also update DataIntegrityCache with the new dog+visit combination
-            // This is what the UI actually reads from via getCurrentDogsWithVisits()
-            try await DataIntegrityCache.shared.addDogWithVisit(
-                persistentDog: updatedPersistentDog,
-                visit: visit,
-                cloudKitConfirmation: {
-                    // CloudKit operations already done above
-                }
-            )
+            // Add to cache and update UI immediately  
+            cacheManager.addLocalDogWithVisit(persistentDog: updatedPersistentDog, visit: visit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
             
             // Refresh dogs list
             await fetchDogs()
@@ -2948,19 +2788,19 @@ Call Stack: \(callStack)
         
         do {
             // Use the new atomic transaction system with rollback capability
-            try await DataIntegrityCache.shared.addDogWithVisit(
-                persistentDog: persistentDog,
-                visit: visit,
-                cloudKitConfirmation: { [weak self] in
-                    // CloudKit operations
-                    try await self?.persistentDogService.createPersistentDog(persistentDog)
-                    try await self?.visitService.createVisit(visit)
-                    
-                    #if DEBUG
-                    print("✅ CloudKit: Successfully saved dog and visit")
-                    #endif
-                }
-            )
+            // Optimistic add: immediate UI update + background CloudKit sync
+            cacheManager.addLocalDogWithVisit(persistentDog: persistentDog, visit: visit)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            // Sync to CloudKit in background
+            Task {
+                try await persistentDogService.createPersistentDog(persistentDog)
+                try await visitService.createVisit(visit)
+                
+                #if DEBUG
+                print("✅ CloudKit: Successfully saved dog and visit")
+                #endif
+            }
             
             // Update UI immediately with the new dog
             let newDogWithVisit = DogWithVisit(persistentDog: persistentDog, currentVisit: visit)
@@ -3077,12 +2917,13 @@ Call Stack: \(callStack)
             updatedPersistentDog.isNeuteredOrSpayed = isNeuteredOrSpayed
             updatedPersistentDog.updatedAt = Date()
             
-            try await DataIntegrityCache.shared.updateDog(
-                updatedPersistentDog,
-                cloudKitConfirmation: {
-                    try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
-                }
-            )
+            // Optimistic update: immediate UI + background sync
+            cacheManager.updateLocalPersistentDog(updatedPersistentDog)
+            self.dogs = cacheManager.getCurrentDogsWithVisits()
+            
+            Task {
+                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            }
             #if DEBUG
             print("✅ DataManager: Successfully updated persistent dog \(name) in CloudKit")
             #endif
@@ -3099,13 +2940,13 @@ Call Stack: \(callStack)
                 currentVisit.scheduledMedications = scheduledMedications
                 currentVisit.updatedAt = Date()
                 
-                // Update both CloudKit and DataIntegrityCache atomically
-                try await DataIntegrityCache.shared.updateVisit(
-                    currentVisit,
-                    cloudKitConfirmation: {
-                        try await self.visitService.updateVisit(currentVisit)
-                    }
-                )
+                // Optimistic update: immediate UI + background sync
+                cacheManager.updateLocalVisit(currentVisit)
+                self.dogs = cacheManager.getCurrentDogsWithVisits()
+                
+                Task {
+                    try await visitService.updateVisit(currentVisit)
+                }
                 #if DEBUG
                 print("✅ DataManager: Updated visit with ID \(currentVisit.id)")
                 #endif

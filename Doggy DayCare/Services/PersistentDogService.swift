@@ -153,12 +153,33 @@ class PersistentDogService: ObservableObject {
         return dogs.first
     }
     
-    func fetchPersistentDogs(predicate: NSPredicate? = nil) async throws -> [PersistentDog] {
+    func fetchPersistentDogs(predicate: NSPredicate? = nil, modifiedAfter: Date? = nil) async throws -> [PersistentDog] {
         #if DEBUG
-        print("🔍 Fetching persistent dogs...")
+        if let modifiedAfter = modifiedAfter {
+            print("🔍 Fetching persistent dogs modified after: \(modifiedAfter)")
+        } else {
+            print("🔍 Fetching all persistent dogs...")
+        }
         #endif
         
-        let finalPredicate = predicate ?? NSPredicate(value: true)
+        var finalPredicate = predicate ?? NSPredicate(value: true)
+        
+        // Add timestamp filter for incremental sync
+        if let modifiedAfter = modifiedAfter {
+            let timestampPredicate = NSPredicate(format: "%K > %@", PersistentDogFields.updatedAt, modifiedAfter as NSDate)
+            
+            if predicate != nil {
+                // Combine existing predicate with timestamp filter
+                finalPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: [finalPredicate, timestampPredicate])
+            } else {
+                finalPredicate = timestampPredicate
+            }
+            
+            #if DEBUG
+            print("🔍 Added timestamp filter: updatedAt > \(modifiedAfter)")
+            #endif
+        }
+        
         let query = CKQuery(recordType: RecordTypes.persistentDog, predicate: finalPredicate)
         query.sortDescriptors = [NSSortDescriptor(key: PersistentDogFields.name, ascending: true)]
         

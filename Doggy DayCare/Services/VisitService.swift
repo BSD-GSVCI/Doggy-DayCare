@@ -274,13 +274,34 @@ class VisitService: ObservableObject {
         #endif
     }
     
-    func fetchVisits(predicate: NSPredicate? = nil) async throws -> [Visit] {
+    func fetchVisits(predicate: NSPredicate? = nil, modifiedAfter: Date? = nil) async throws -> [Visit] {
         #if DEBUG
-        print("🔍 Fetching visits...")
+        if let modifiedAfter = modifiedAfter {
+            print("🔍 Fetching visits modified after: \(modifiedAfter)")
+        } else {
+            print("🔍 Fetching all visits...")
+        }
         print("   Record type being queried: \(RecordTypes.visit)")
         #endif
         
-        let finalPredicate = predicate ?? NSPredicate(value: true)
+        var finalPredicate = predicate ?? NSPredicate(value: true)
+        
+        // Add timestamp filter for incremental sync
+        if let modifiedAfter = modifiedAfter {
+            let timestampPredicate = NSPredicate(format: "%K > %@", VisitFields.updatedAt, modifiedAfter as NSDate)
+            
+            if predicate != nil {
+                // Combine existing predicate with timestamp filter
+                finalPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: [finalPredicate, timestampPredicate])
+            } else {
+                finalPredicate = timestampPredicate
+            }
+            
+            #if DEBUG
+            print("🔍 Added timestamp filter: updatedAt > \(modifiedAfter)")
+            #endif
+        }
+        
         let query = CKQuery(recordType: RecordTypes.visit, predicate: finalPredicate)
         query.sortDescriptors = [NSSortDescriptor(key: VisitFields.arrivalDate, ascending: false)]
         
@@ -517,12 +538,14 @@ class VisitService: ObservableObject {
         
         // Create proper predicate for currently active visits
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let now = Date()
+        let today = calendar.startOfDay(for: now)
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
         
         #if DEBUG
-        print("📅 Today: \(today)")
-        print("📅 Tomorrow: \(tomorrow)")
+        print("📅 Current time: \(now)")
+        print("📅 Today (start of day): \(today)")
+        print("📅 Tomorrow (start of day): \(tomorrow)")
         #endif
         
         // CloudKit doesn't support complex OR predicates, so we need separate queries
