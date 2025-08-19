@@ -184,6 +184,39 @@ actor DataIntegrityCache {
         }
     }
     
+    /// Delete visit - atomic with rollback
+    func deleteVisit(
+        _ visit: Visit,
+        cloudKitConfirmation: @escaping () async throws -> Void
+    ) async throws {
+        
+        let originalState = state
+        let operation = PendingOperation(type: .deleteVisit(visit.id), originalState: originalState)
+        pendingOperations[operation.id] = operation
+        
+        // Remove from cache (actor isolation ensures atomicity)
+        state.visits.removeValue(forKey: visit.id)
+        state.version += 1
+        
+        do {
+            try await cloudKitConfirmation()
+            pendingOperations.removeValue(forKey: operation.id)
+            
+            #if DEBUG
+            print("✅ DataIntegrityCache: Successfully deleted visit \(visit.id)")
+            #endif
+            
+        } catch {
+            await rollback(operation: operation)
+            
+            #if DEBUG
+            print("❌ DataIntegrityCache: Rolled back visit deletion due to CloudKit error: \(error)")
+            #endif
+            
+            throw DataIntegrityError.cloudKitSyncFailed(error)
+        }
+    }
+    
     // MARK: - Rollback Mechanism
     
     private func rollback(operation: PendingOperation) async {
@@ -359,8 +392,24 @@ actor DataIntegrityCache {
                 let localDogWithVisit = DogWithVisit(persistentDog: localDog, currentVisit: localVisit)
                 let cloudDogWithVisit = DogWithVisit(persistentDog: cloudDog, currentVisit: cloudVisit)
                 
-                // Skip conflict resolution if data is identical
-                if localDogWithVisit != cloudDogWithVisit {
+                // Skip conflict resolution if data is identical OR if there's a pending operation
+                let hasPendingOperation = pendingOperations.values.contains { operation in
+                    switch operation.type {
+                    case .addDog(let pendingDog, _), .updateDog(let pendingDog):
+                        return pendingDog.id == cloudDog.id
+                    case .deleteDog(let pendingDogId):
+                        return pendingDogId == cloudDog.id
+                    case .updateVisit(let pendingVisit):
+                        return pendingVisit.dogId == cloudDog.id
+                    case .deleteVisit(let pendingVisitId):
+                        // Check if this visit belongs to this dog
+                        return currentState.visits[pendingVisitId]?.dogId == cloudDog.id
+                    case .checkoutDog(let pendingDogId, _):
+                        return pendingDogId == cloudDog.id
+                    }
+                }
+                
+                if localDogWithVisit != cloudDogWithVisit && !hasPendingOperation {
                     let resolution = await ConflictResolver.shared.resolveConflict(
                         local: localDogWithVisit,
                         remote: cloudDogWithVisit,
@@ -390,6 +439,12 @@ actor DataIntegrityCache {
                         print("   - Applied \(resolution.recordMerges.count) record merges")
                     }
                     #endif
+                } else if hasPendingOperation {
+                    // Skip conflict resolution - pending operation in progress
+                    #if DEBUG
+                    print("⏸️ Skipping conflict resolution for \(cloudDog.name) - pending operation in progress")
+                    #endif
+                    // Don't add to resolvedDogs - will be handled in pending operations section
                 } else {
                     // No conflicts - use CloudKit version
                     resolvedDogs[cloudDog.id] = cloudDog
@@ -438,10 +493,84 @@ actor DataIntegrityCache {
             }
         }
         
-        state.persistentDogs = resolvedDogs
-        state.visits = resolvedVisits
+        // CRITICAL FIX: Merge CloudKit data with local cache, preserving pending operations
+        // Instead of wholesale replacement, intelligently merge to preserve data integrity
+        
+        // Start with current cache state to preserve pending operations
+        var mergedDogs = state.persistentDogs
+        var mergedVisits = state.visits
+        
+        // Add/update confirmed CloudKit records
+        for (dogId, cloudDog) in resolvedDogs {
+            // Only update if we don't have a pending operation for this dog
+            let hasPendingDogOperation = pendingOperations.values.contains { operation in
+                switch operation.type {
+                case .addDog(let pendingDog, _), .updateDog(let pendingDog):
+                    return pendingDog.id == dogId
+                case .deleteDog(let pendingDogId):
+                    return pendingDogId == dogId
+                case .updateVisit(let pendingVisit):
+                    // Visit updates can affect dog's presence state
+                    return pendingVisit.dogId == dogId
+                case .deleteVisit(let pendingVisitId):
+                    // Visit deletions can affect dog's presence state
+                    return currentState.visits[pendingVisitId]?.dogId == dogId
+                case .checkoutDog(let pendingDogId, _):
+                    // Checkout operations affect dog's presence state
+                    return pendingDogId == dogId
+                }
+            }
+            
+            if !hasPendingDogOperation {
+                mergedDogs[dogId] = cloudDog
+                #if DEBUG
+                print("🔄 Merged dog from CloudKit: \(cloudDog.name)")
+                #endif
+            } else {
+                #if DEBUG
+                print("⏸️ Preserving pending operation for dog: \(mergedDogs[dogId]?.name ?? "Unknown")")
+                #endif
+            }
+        }
+        
+        for (visitId, cloudVisit) in resolvedVisits {
+            // Only update if we don't have a pending operation for this visit
+            let hasPendingVisitOperation = pendingOperations.values.contains { operation in
+                switch operation.type {
+                case .addDog(_, let pendingVisit):
+                    return pendingVisit.id == visitId
+                case .updateVisit(let pendingVisit):
+                    return pendingVisit.id == visitId
+                case .deleteVisit(let pendingVisitId):
+                    return pendingVisitId == visitId
+                case .checkoutDog(let dogId, _):
+                    return cloudVisit.dogId == dogId
+                default:
+                    return false
+                }
+            }
+            
+            if !hasPendingVisitOperation {
+                mergedVisits[visitId] = cloudVisit
+                #if DEBUG
+                print("🔄 Merged visit from CloudKit for dog: \(cloudVisit.dogId)")
+                #endif
+            } else {
+                #if DEBUG
+                print("⏸️ Preserving pending operation for visit: \(visitId)")
+                #endif
+            }
+        }
+        
+        // Apply the merged data (preserves pending operations)
+        state.persistentDogs = mergedDogs
+        state.visits = mergedVisits
         state.version += 1
         state.lastCloudKitSync = Date()
+        
+        #if DEBUG
+        print("✅ Preserved \(pendingOperations.count) pending operations during sync")
+        #endif
         
         // Log conflict resolutions for debugging
         if !conflictResolutions.isEmpty {

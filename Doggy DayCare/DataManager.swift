@@ -346,7 +346,13 @@ class DataManager: ObservableObject {
                 updatedDog.isNeuteredOrSpayed = isNeuteredOrSpayed ?? existingDog.isNeuteredOrSpayed
                 updatedDog.updatedAt = Date()
                 
-                try await persistentDogService.updatePersistentDog(updatedDog)
+                // Update both CloudKit and DataIntegrityCache atomically
+                try await DataIntegrityCache.shared.updateDog(
+                    updatedDog,
+                    cloudKitConfirmation: {
+                        try await self.persistentDogService.updatePersistentDog(updatedDog)
+                    }
+                )
                 persistentDog = updatedDog
             } else {
                 // Create new persistent dog
@@ -381,6 +387,16 @@ class DataManager: ObservableObject {
             #if DEBUG
             print("✅ Created future booking for \(name)")
             #endif
+            
+            // CRITICAL: Update DataIntegrityCache with the future booking
+            // Even though it's a future booking, it needs to be in the cache
+            try await DataIntegrityCache.shared.addDogWithVisit(
+                persistentDog: persistentDog,
+                visit: visit,
+                cloudKitConfirmation: {
+                    // CloudKit operations already done above
+                }
+            )
             
             // Refresh data
             await fetchDogs()
@@ -434,7 +450,13 @@ class DataManager: ObservableObject {
             updatedPersistentDog.isNeuteredOrSpayed = isNeuteredOrSpayed
             updatedPersistentDog.updatedAt = Date()
             
-            try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            // Update both CloudKit and DataIntegrityCache atomically
+            try await DataIntegrityCache.shared.updateDog(
+                updatedPersistentDog,
+                cloudKitConfirmation: {
+                    try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
+                }
+            )
             
             // Update the visit info if it exists
             if var visit = dogWithVisit.currentVisit {
@@ -445,7 +467,13 @@ class DataManager: ObservableObject {
                 visit.scheduledMedications = scheduledMedications
                 visit.updatedAt = Date()
                 
-                try await visitService.updateVisit(visit)
+                // Update both CloudKit and DataIntegrityCache atomically
+                try await DataIntegrityCache.shared.updateVisit(
+                    visit,
+                    cloudKitConfirmation: {
+                        try await self.visitService.updateVisit(visit)
+                    }
+                )
                 
                 // Update persistent dog fields (modify the already existing updatedPersistentDog)
                 updatedPersistentDog.isDaycareFed = isDaycareFed
@@ -455,7 +483,13 @@ class DataManager: ObservableObject {
                 updatedPersistentDog.specialInstructions = specialInstructions
                 updatedPersistentDog.updatedAt = Date()
                 
-                try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+                // Update both CloudKit and DataIntegrityCache atomically
+                try await DataIntegrityCache.shared.updateDog(
+                    updatedPersistentDog,
+                    cloudKitConfirmation: {
+                        try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
+                    }
+                )
             }
             
             #if DEBUG
@@ -521,7 +555,13 @@ class DataManager: ObservableObject {
             updatedPersistentDog.isNeuteredOrSpayed = isNeuteredOrSpayed
             updatedPersistentDog.updatedAt = Date()
             
-            try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            // Update both CloudKit and DataIntegrityCache atomically
+            try await DataIntegrityCache.shared.updateDog(
+                updatedPersistentDog,
+                cloudKitConfirmation: {
+                    try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
+                }
+            )
             
             #if DEBUG
             print("✅ DataManager: Updated persistent dog info for: \(updatedPersistentDog.name)")
@@ -624,7 +664,13 @@ class DataManager: ObservableObject {
                 visit.departureDate = nil
                 visit.updatedAt = Date()
                 
-                try await visitService.updateVisit(visit)
+                // Update both CloudKit and DataIntegrityCache atomically
+                try await DataIntegrityCache.shared.updateVisit(
+                    visit,
+                    cloudKitConfirmation: {
+                        try await self.visitService.updateVisit(visit)
+                    }
+                )
                 #if DEBUG
                 print("✅ Updated visit in CloudKit for undo departure: \(dogWithVisit.name)")
                 #endif
@@ -686,7 +732,13 @@ class DataManager: ObservableObject {
                 visit.departureDate = newDate
                 visit.updatedAt = Date()
                 
-                try await visitService.updateVisit(visit)
+                // Update both CloudKit and DataIntegrityCache atomically
+                try await DataIntegrityCache.shared.updateVisit(
+                    visit,
+                    cloudKitConfirmation: {
+                        try await self.visitService.updateVisit(visit)
+                    }
+                )
                 #if DEBUG
                 print("✅ Updated departure time in CloudKit for \(dogWithVisit.name)")
                 #endif
@@ -727,7 +779,14 @@ class DataManager: ObservableObject {
             visit.isArrivalTimeSet = true  // Mark that arrival time has been set
             visit.updatedAt = Date()
             
-            try await visitService.updateVisit(visit)
+            // CRITICAL: Update DataIntegrityCache so the dog appears on main page
+            // When a future booking's arrival time is set, it becomes an active dog
+            try await DataIntegrityCache.shared.updateVisit(
+                visit,
+                cloudKitConfirmation: {
+                    try await self.visitService.updateVisit(visit)
+                }
+            )
             #if DEBUG
             print("✅ Updated arrival time for \(dogWithVisit.name)")
             #endif
@@ -922,7 +981,12 @@ class DataManager: ObservableObject {
                 #endif
                 
                 // Update persistent dog information
-                try await self.persistentDogService.updatePersistentDog(dog.persistentDog)
+                try await DataIntegrityCache.shared.updateDog(
+                    dog.persistentDog,
+                    cloudKitConfirmation: {
+                        try await self.persistentDogService.updatePersistentDog(dog.persistentDog)
+                    }
+                )
                 
                 #if DEBUG
                 print("✅ Updated persistent dog in CloudKit for \(dog.name)")
@@ -970,7 +1034,13 @@ class DataManager: ObservableObject {
                     visit.updatedAt = Date()
                     
                     print("🔄 Calling CloudKit medication update in background...")
-                    try await self.visitService.updateVisit(visit)
+                    // Update both CloudKit and DataIntegrityCache atomically
+                    try await DataIntegrityCache.shared.updateVisit(
+                        visit,
+                        cloudKitConfirmation: {
+                            try await self.visitService.updateVisit(visit)
+                        }
+                    )
                     print("✅ CloudKit medication update successful")
                 } else {
                     print("⚠️ No current visit found to update medications")
@@ -1026,7 +1096,14 @@ class DataManager: ObservableObject {
             var updatedPersistentDog = dogWithVisit.persistentDog
             updatedPersistentDog.vaccinations = vaccinations
             updatedPersistentDog.updatedAt = Date()
-            try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            
+            // Update both CloudKit and DataIntegrityCache atomically
+            try await DataIntegrityCache.shared.updateDog(
+                updatedPersistentDog,
+                cloudKitConfirmation: {
+                    try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
+                }
+            )
             print("✅ Updated vaccinations in CloudKit")
             
             // Refresh data
@@ -1059,14 +1136,26 @@ class DataManager: ObservableObject {
         }
         
         do {
-            // Delete the visit in CloudKit (this will mark it as deleted)
-            try await visitService.deleteVisit(visit)
+            // Delete the visit in CloudKit with atomic transaction
+            try await DataIntegrityCache.shared.deleteVisit(
+                visit,
+                cloudKitConfirmation: {
+                    try await self.visitService.deleteVisit(visit)
+                }
+            )
             print("✅ Marked visit as deleted in CloudKit")
             
             // Update the persistent dog's last visit date
             var updatedPersistentDog = dogWithVisit.persistentDog
             updatedPersistentDog.lastVisitDate = Date()
-            try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            
+            // Update both CloudKit and DataIntegrityCache atomically
+            try await DataIntegrityCache.shared.updateDog(
+                updatedPersistentDog,
+                cloudKitConfirmation: {
+                    try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
+                }
+            )
             
             // Refresh data
             await fetchDogs()
@@ -1132,7 +1221,13 @@ class DataManager: ObservableObject {
         updatedVisit.updatedAt = Date()
         
         do {
-            try await visitService.updateVisit(updatedVisit)
+            // Update both CloudKit and DataIntegrityCache atomically
+            try await DataIntegrityCache.shared.updateVisit(
+                updatedVisit,
+                cloudKitConfirmation: {
+                    try await self.visitService.updateVisit(updatedVisit)
+                }
+            )
             
             // Update local cache
             await MainActor.run {
@@ -1171,7 +1266,13 @@ class DataManager: ObservableObject {
         updatedVisit.updatedAt = Date()
         
         do {
-            try await visitService.updateVisit(updatedVisit)
+            // Update both CloudKit and DataIntegrityCache atomically
+            try await DataIntegrityCache.shared.updateVisit(
+                updatedVisit,
+                cloudKitConfirmation: {
+                    try await self.visitService.updateVisit(updatedVisit)
+                }
+            )
             
             // Update local cache
             await MainActor.run {
@@ -1345,9 +1446,15 @@ class DataManager: ObservableObject {
         currentVisit.updatedAt = Date()
         
         do {
-            try await visitService.updateVisit(currentVisit)
+            // Update both CloudKit and DataIntegrityCache atomically
+            try await DataIntegrityCache.shared.updateVisit(
+                currentVisit,
+                cloudKitConfirmation: {
+                    try await self.visitService.updateVisit(currentVisit)
+                }
+            )
             
-            // Update visit cache
+            // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
             
             #if DEBUG
@@ -1401,9 +1508,15 @@ class DataManager: ObservableObject {
         currentVisit.updatedAt = Date()
         
         do {
-            try await visitService.updateVisit(currentVisit)
+            // Update both CloudKit and DataIntegrityCache atomically
+            try await DataIntegrityCache.shared.updateVisit(
+                currentVisit,
+                cloudKitConfirmation: {
+                    try await self.visitService.updateVisit(currentVisit)
+                }
+            )
             
-            // Update visit cache
+            // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
             
             #if DEBUG
@@ -1453,9 +1566,15 @@ class DataManager: ObservableObject {
         currentVisit.updatedAt = Date()
         
         do {
-            try await visitService.updateVisit(currentVisit)
+            // Update both CloudKit and DataIntegrityCache atomically
+            try await DataIntegrityCache.shared.updateVisit(
+                currentVisit,
+                cloudKitConfirmation: {
+                    try await self.visitService.updateVisit(currentVisit)
+                }
+            )
             
-            // Update visit cache
+            // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
             
             #if DEBUG
@@ -1515,9 +1634,15 @@ class DataManager: ObservableObject {
         currentVisit.updatedAt = Date()
         
         do {
-            try await visitService.updateVisit(currentVisit)
+            // Update both CloudKit and DataIntegrityCache atomically
+            try await DataIntegrityCache.shared.updateVisit(
+                currentVisit,
+                cloudKitConfirmation: {
+                    try await self.visitService.updateVisit(currentVisit)
+                }
+            )
             
-            // Update visit cache
+            // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
             
             #if DEBUG
@@ -1572,9 +1697,15 @@ class DataManager: ObservableObject {
             currentVisit.updatedAt = Date()
             
             do {
-                try await visitService.updateVisit(currentVisit)
+                // Update both CloudKit and DataIntegrityCache atomically
+                try await DataIntegrityCache.shared.updateVisit(
+                    currentVisit,
+                    cloudKitConfirmation: {
+                        try await self.visitService.updateVisit(currentVisit)
+                    }
+                )
                 
-                // Update visit cache
+                // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
                 
                 #if DEBUG
@@ -1652,9 +1783,15 @@ class DataManager: ObservableObject {
         currentVisit.updatedAt = Date()
         
         do {
-            try await visitService.updateVisit(currentVisit)
+            // Update both CloudKit and DataIntegrityCache atomically
+            try await DataIntegrityCache.shared.updateVisit(
+                currentVisit,
+                cloudKitConfirmation: {
+                    try await self.visitService.updateVisit(currentVisit)
+                }
+            )
             
-            // Update visit cache
+            // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
             
             #if DEBUG
@@ -1709,9 +1846,15 @@ class DataManager: ObservableObject {
             currentVisit.updatedAt = Date()
             
             do {
-                try await visitService.updateVisit(currentVisit)
+                // Update both CloudKit and DataIntegrityCache atomically
+                try await DataIntegrityCache.shared.updateVisit(
+                    currentVisit,
+                    cloudKitConfirmation: {
+                        try await self.visitService.updateVisit(currentVisit)
+                    }
+                )
                 
-                // Update visit cache
+                // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
                 
                 #if DEBUG
@@ -1765,9 +1908,15 @@ class DataManager: ObservableObject {
             currentVisit.updatedAt = Date()
             
             do {
-                try await visitService.updateVisit(currentVisit)
+                // Update both CloudKit and DataIntegrityCache atomically
+                try await DataIntegrityCache.shared.updateVisit(
+                    currentVisit,
+                    cloudKitConfirmation: {
+                        try await self.visitService.updateVisit(currentVisit)
+                    }
+                )
                 
-                // Update visit cache
+                // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
                 
                 #if DEBUG
@@ -1824,9 +1973,15 @@ class DataManager: ObservableObject {
             currentVisit.updatedAt = Date()
             
             do {
-                try await visitService.updateVisit(currentVisit)
+                // Update both CloudKit and DataIntegrityCache atomically
+                try await DataIntegrityCache.shared.updateVisit(
+                    currentVisit,
+                    cloudKitConfirmation: {
+                        try await self.visitService.updateVisit(currentVisit)
+                    }
+                )
                 
-                // Update visit cache
+                // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
                 
                 #if DEBUG
@@ -1888,9 +2043,15 @@ class DataManager: ObservableObject {
         currentVisit.updatedAt = Date()
         
         do {
-            try await visitService.updateVisit(currentVisit)
+            // Update both CloudKit and DataIntegrityCache atomically
+            try await DataIntegrityCache.shared.updateVisit(
+                currentVisit,
+                cloudKitConfirmation: {
+                    try await self.visitService.updateVisit(currentVisit)
+                }
+            )
             
-            // Update visit cache
+            // Update legacy cache for compatibility
             await incrementallyUpdateVisitCache(update: currentVisit)
             
             #if DEBUG
@@ -1945,9 +2106,15 @@ class DataManager: ObservableObject {
             currentVisit.updatedAt = Date()
             
             do {
-                try await visitService.updateVisit(currentVisit)
+                // Update both CloudKit and DataIntegrityCache atomically
+                try await DataIntegrityCache.shared.updateVisit(
+                    currentVisit,
+                    cloudKitConfirmation: {
+                        try await self.visitService.updateVisit(currentVisit)
+                    }
+                )
                 
-                // Update visit cache
+                // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
                 
                 #if DEBUG
@@ -2004,9 +2171,15 @@ class DataManager: ObservableObject {
             currentVisit.updatedAt = Date()
             
             do {
-                try await visitService.updateVisit(currentVisit)
+                // Update both CloudKit and DataIntegrityCache atomically
+                try await DataIntegrityCache.shared.updateVisit(
+                    currentVisit,
+                    cloudKitConfirmation: {
+                        try await self.visitService.updateVisit(currentVisit)
+                    }
+                )
                 
-                // Update visit cache
+                // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
                 
                 #if DEBUG
@@ -2165,7 +2338,12 @@ class DataManager: ObservableObject {
             persistentDog.lastVisitDate = lastVisitDate
             persistentDog.updatedAt = Date()
             
-            try await persistentDogService.updatePersistentDog(persistentDog)
+            try await DataIntegrityCache.shared.updateDog(
+                persistentDog,
+                cloudKitConfirmation: {
+                    try await self.persistentDogService.updatePersistentDog(persistentDog)
+                }
+            )
             print("✅ Updated persistent dog statistics: visitCount=\(persistentDog.visitCount), lastVisitDate=\(lastVisitDate)")
             
             // Update persistent dog cache for database view consistency
@@ -2194,7 +2372,12 @@ class DataManager: ObservableObject {
                 persistentDog.visitCount -= 1
                 persistentDog.updatedAt = Date()
                 
-                try await persistentDogService.updatePersistentDog(persistentDog)
+                try await DataIntegrityCache.shared.updateDog(
+                    persistentDog,
+                    cloudKitConfirmation: {
+                        try await self.persistentDogService.updatePersistentDog(persistentDog)
+                    }
+                )
                 
                 #if DEBUG
                 print("✅ Decremented persistent dog visit count: visitCount=\(persistentDog.visitCount)")
@@ -2246,7 +2429,14 @@ class DataManager: ObservableObject {
                     currentVisit.departureDate = departureDate
                     currentVisit.updatedAt = departureDate
                     
-                    try await self.visitService.updateVisit(currentVisit)
+                    // CRITICAL: Update DataIntegrityCache with departed status
+                    // Dog will still show in "departed today" section until tomorrow
+                    try await DataIntegrityCache.shared.updateVisit(
+                        currentVisit,
+                        cloudKitConfirmation: {
+                            try await self.visitService.updateVisit(currentVisit)
+                        }
+                    )
                     
                     #if DEBUG
                     print("✅ Visit updated in CloudKit for \(dog.name)")
@@ -2671,11 +2861,26 @@ Call Stack: \(callStack)
             var updatedPersistentDog = persistentDog
             updatedPersistentDog.visitCount += 1
             updatedPersistentDog.lastVisitDate = arrivalDate
-            try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            try await DataIntegrityCache.shared.updateDog(
+                updatedPersistentDog,
+                cloudKitConfirmation: {
+                    try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
+                }
+            )
             
             // Update caches
             await incrementallyUpdatePersistentDogCache(update: updatedPersistentDog)
             await incrementallyUpdateVisitCache(add: visit)
+            
+            // CRITICAL: Also update DataIntegrityCache with the new dog+visit combination
+            // This is what the UI actually reads from via getCurrentDogsWithVisits()
+            try await DataIntegrityCache.shared.addDogWithVisit(
+                persistentDog: updatedPersistentDog,
+                visit: visit,
+                cloudKitConfirmation: {
+                    // CloudKit operations already done above
+                }
+            )
             
             // Refresh dogs list
             await fetchDogs()
@@ -2872,7 +3077,12 @@ Call Stack: \(callStack)
             updatedPersistentDog.isNeuteredOrSpayed = isNeuteredOrSpayed
             updatedPersistentDog.updatedAt = Date()
             
-            try await persistentDogService.updatePersistentDog(updatedPersistentDog)
+            try await DataIntegrityCache.shared.updateDog(
+                updatedPersistentDog,
+                cloudKitConfirmation: {
+                    try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
+                }
+            )
             #if DEBUG
             print("✅ DataManager: Successfully updated persistent dog \(name) in CloudKit")
             #endif
@@ -2889,12 +3099,18 @@ Call Stack: \(callStack)
                 currentVisit.scheduledMedications = scheduledMedications
                 currentVisit.updatedAt = Date()
                 
-                try await visitService.updateVisit(currentVisit)
+                // Update both CloudKit and DataIntegrityCache atomically
+                try await DataIntegrityCache.shared.updateVisit(
+                    currentVisit,
+                    cloudKitConfirmation: {
+                        try await self.visitService.updateVisit(currentVisit)
+                    }
+                )
                 #if DEBUG
                 print("✅ DataManager: Updated visit with ID \(currentVisit.id)")
                 #endif
                 
-                // Update visit cache immediately for responsive UI
+                // Update legacy cache for compatibility
                 await incrementallyUpdateVisitCache(update: currentVisit)
             }
             

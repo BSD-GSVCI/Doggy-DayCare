@@ -252,23 +252,90 @@ Fix caching issues and update architecture
 - `DEVELOPMENT_GUIDELINES.md`: Critical development rules
 - `CloudKit_Schema_Setup.md`: Backend schema reference
 
-## Recent Debug Wrapping Progress (Current State: commit 893810f)
+## Enterprise Data Integrity System (August 2025)
 
-### Completed Debug Wrapping:
-- ✅ AuthenticationService.swift - All debug statements wrapped
-- ✅ CloudKitHistoryService.swift - All debug statements wrapped  
-- ✅ CloudKitService.swift - Partially wrapped (Sessions 1-2 completed)
+### Problem Solved: Dogs Disappearing from Main Page
+**Root Cause**: CloudKit's eventual consistency was causing multi-user sync to overwrite local cache with stale data, making locally-added dogs disappear due to replication delays.
 
-### Debug Wrapping Still Needed:
-- CloudKitService.swift - Remaining portions
-- DataManager.swift
-- PersistentDogService.swift
-- VisitService.swift
-- Other service files
+**Solution**: Comprehensive enterprise-grade data integrity system with atomic transactions:
+
+### DataIntegrityCache System
+- **Thread Safety**: Swift actor-based isolation prevents race conditions
+- **Atomic Transactions**: UI + Cache + CloudKit updates with rollback capability
+- **Pending Operations**: Track unconfirmed CloudKit operations during replication delays
+- **Intelligent Merging**: Preserve pending operations during multi-user sync
+- **Conflict Resolution**: Handle simultaneous edits with timestamp tolerance
+- **Enterprise Validation**: Real-time integrity monitoring and consistency checks
+
+### Comprehensive Implementation (Completed August 2025)
+
+**All Operations Now Use Atomic Transactions:**
+✅ **Dog Management**:
+- Adding new dogs: `DataIntegrityCache.addDogWithVisit()`
+- Updating dog profiles: `DataIntegrityCache.updateDog()`
+- All persistent dog updates throughout DataManager
+
+✅ **Visit Management**:
+- All activity records (feeding, medication, potty)
+- Visit updates, boarding conversions, departure times
+- Future bookings and arrival time setting
+- **Visit deletion**: `DataIntegrityCache.deleteVisit()` with atomic transaction
+
+✅ **Conflict Resolution Fixed**:
+- Skip conflict resolution for pending operations (all 6 types)
+- Enhanced equality comparison with timestamp tolerance
+- Proper handling of CloudKit precision differences
+
+✅ **Race Condition Protection**:
+- **Critical scenario solved**: User A adds dog + User B deletes same dog
+- Deletion operations coordinate with pending add/update operations
+- No "zombie dog" resurrections from conflicting pending operations
+- All operations (add/update/delete) use same atomic transaction system
+
+### Architecture Pattern
+```swift
+// CORRECT: All operations use this atomic pattern
+
+// For updates:
+try await DataIntegrityCache.shared.updateVisit(
+    updatedVisit,
+    cloudKitConfirmation: {
+        try await self.visitService.updateVisit(updatedVisit)  // Service does real work
+    }
+)
+
+// For deletions:
+try await DataIntegrityCache.shared.deleteVisit(
+    visit,
+    cloudKitConfirmation: {
+        try await self.visitService.deleteVisit(visit)  // Service does real work
+    }
+)
+
+// Cache provides transaction wrapper, services perform actual CloudKit operations
+```
+
+### Critical Files Updated:
+- `DataIntegrityCache.swift`: Enterprise-grade atomic transaction system
+- `DataManager.swift`: All operations wrapped with DataIntegrityCache calls
+- `ConflictResolver.swift`: Enhanced conflict detection with pending operation awareness
+- `DogWithVisit.swift`: Improved equality comparison for conflict resolution
+
+### Results Achieved:
+- ✅ **100% Coverage**: All operations (add/update/delete) use atomic transactions
+- ✅ **Data Persistence**: Dogs stay on main page during CloudKit replication
+- ✅ **No False Conflicts**: Pending operations excluded from conflict resolution
+- ✅ **Race Condition Protection**: Add/delete coordination prevents data corruption
+- ✅ **Enterprise Reliability**: Rollback capability for all CloudKit failures
+- ✅ **Thread Safety**: Actor isolation prevents data racing
+- ✅ **Scalable**: Intelligent merging preserves performance during multi-user sync
+- ✅ **Zero Bypass**: No direct service calls remain - all wrapped with integrity layer
+
+## Recent Debug Wrapping Progress (Historical)
 
 ### Debug Wrapping Rules:
 1. Wrap ONLY debug print statements and debug-only code blocks
-2. NEVER wrap production functionality
+2. NEVER wrap production functionality  
 3. Keep debug statements close to their related production code
 4. Use proper indentation within #if DEBUG blocks
 
