@@ -154,14 +154,6 @@ class CacheManager: ObservableObject {
         #endif
     }
     
-    /// Remove visit from local cache immediately
-    func removeLocalVisit(_ visitId: UUID) {
-        visits.removeValue(forKey: visitId)
-        #if DEBUG
-        print("💾 Optimistic remove visit: \(visitId)")
-        #endif
-    }
-    
     // MARK: - Error Recovery
     
     /// Revert optimistic update if CloudKit operation fails
@@ -194,6 +186,41 @@ class CacheManager: ObservableObject {
         visits[visit.id] = visit
         #if DEBUG
         print("💾 Reverted visit deletion: \(visit.id)")
+        #endif
+    }
+    
+    // MARK: - Deletion Support
+    
+    /// Remove a persistent dog from cache (for permanent deletion from database)
+    func removeLocalPersistentDog(_ dogId: UUID) {
+        if let dog = persistentDogs[dogId] {
+            persistentDogs.removeValue(forKey: dogId)
+            #if DEBUG
+            print("💾 Removed persistent dog from cache: \(dog.name)")
+            #endif
+        }
+    }
+    
+    /// Soft delete for accidental check-ins - removes the visit but keeps the dog
+    /// This is the proper way to handle "delete" from main page
+    func softDeleteDogVisit(_ dogId: UUID, visitId: UUID) {
+        // Remove the visit (accidental check-in)
+        visits.removeValue(forKey: visitId)
+        
+        // Don't update lastVisitDate - the dog never actually visited!
+        #if DEBUG
+        if let dog = persistentDogs[dogId] {
+            print("💾 Removed accidental check-in for dog: \(dog.name)")
+        }
+        #endif
+    }
+    
+    /// Restore a dog by re-adding its visit (for undo operations)
+    func restoreDogVisit(persistentDog: PersistentDog, visit: Visit) {
+        persistentDogs[persistentDog.id] = persistentDog
+        visits[visit.id] = visit
+        #if DEBUG
+        print("💾 Restored visit for dog: \(persistentDog.name)")
         #endif
     }
     

@@ -223,13 +223,15 @@ struct DogFormView: View {
                     }
                 }
                 
-                Section("Medications") {
-                    if dog != nil {
-                        // For existing dogs, medications are managed through the dedicated interface
-                    Text("Medications are visit-specific and can be added from the Detailed View accessible via the main page")
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                    } else {
+                // Only show medications section if not adding to database only (medications are visit-specific)
+                if !addToDatabaseOnly {
+                    Section("Medications") {
+                        if dog != nil {
+                            // For existing dogs, medications are managed through the dedicated interface
+                        Text("Medications are visit-specific and can be added from the Detailed View accessible via the main page")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                        } else {
                         // For new dog creation, use a simplified medication management interface
                         VStack(alignment: .leading, spacing: 12) {
                             // Daily Medications
@@ -341,7 +343,7 @@ struct DogFormView: View {
                         }
                     }
                 }
-                
+                } 
                 Section("Additional Information") {
                     TextField("Allergies and Feeding Instructions", text: $allergiesAndFeedingInstructions, axis: .vertical)
                         .lineLimit(3...6)

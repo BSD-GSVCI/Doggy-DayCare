@@ -804,50 +804,32 @@ class DataManager: ObservableObject {
     
     /// Incrementally add a new persistent dog to the cache
     private func incrementallyUpdatePersistentDogCache(add persistentDog: PersistentDog) async {
-        // Get current cached dogs or create empty array if cache doesn't exist
-        var cachedDogs: [PersistentDog] = await AdvancedCache.shared.get("persistent_dogs_cache") ?? []
+        // Add to CacheManager
+        cacheManager.updateLocalPersistentDog(persistentDog)
         
-        // Add if not already present
-        if !cachedDogs.contains(where: { $0.id == persistentDog.id }) {
-            cachedDogs.append(persistentDog)
-            AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
-            
-            #if DEBUG
-            print("✅ Incrementally added persistent dog to cache: \(persistentDog.name) (cache had \(cachedDogs.count - 1) dogs)")
-            #endif
-        }
+        #if DEBUG
+        print("✅ Added persistent dog to CacheManager: \(persistentDog.name)")
+        #endif
     }
     
     /// Incrementally update an existing persistent dog in the cache
     private func incrementallyUpdatePersistentDogCache(update persistentDog: PersistentDog) async {
-        // Get current cached dogs
-        if var cachedDogs: [PersistentDog] = await AdvancedCache.shared.get("persistent_dogs_cache") {
-            // Update if exists
-            if let index = cachedDogs.firstIndex(where: { $0.id == persistentDog.id }) {
-                cachedDogs[index] = persistentDog
-                AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
-                
-                #if DEBUG
-                print("✅ Incrementally updated persistent dog in cache: \(persistentDog.name)")
-                #endif
-            }
-        }
+        // Update in CacheManager
+        cacheManager.updateLocalPersistentDog(persistentDog)
+        
+        #if DEBUG
+        print("✅ Updated persistent dog in CacheManager: \(persistentDog.name)")
+        #endif
     }
     
     /// Incrementally remove a persistent dog from the cache
     private func incrementallyUpdatePersistentDogCache(remove dogId: UUID) async {
-        // Get current cached dogs
-        if var cachedDogs: [PersistentDog] = await AdvancedCache.shared.get("persistent_dogs_cache") {
-            // Remove if exists
-            if let index = cachedDogs.firstIndex(where: { $0.id == dogId }) {
-                let removedDog = cachedDogs.remove(at: index)
-                AdvancedCache.shared.set(cachedDogs, for: "persistent_dogs_cache", expirationInterval: 3600)
-                
-                #if DEBUG
-                print("✅ Incrementally removed persistent dog from cache: \(removedDog.name)")
-                #endif
-            }
-        }
+        // Remove from CacheManager for immediate UI update
+        cacheManager.removeLocalPersistentDog(dogId)
+        
+        #if DEBUG
+        print("✅ Removed persistent dog from CacheManager: \(dogId)")
+        #endif
     }
     
     
@@ -1004,21 +986,15 @@ class DataManager: ObservableObject {
             
             // Delete the visit in CloudKit with atomic transaction
             // Optimistic delete: immediate UI update + sync with error handling
-            cacheManager.removeLocalVisit(visit.id)
+            cacheManager.softDeleteDogVisit(dogWithVisit.id, visitId: visit.id)
             self.dogs = cacheManager.getCurrentDogsWithVisits()
             
             try await self.visitService.deleteVisit(visit)
-            print("✅ Marked visit as deleted in CloudKit")
+            print("✅ Deleted accidental check-in visit from CloudKit")
             
-            // Update the persistent dog's last visit date
-            var updatedPersistentDog = dogWithVisit.persistentDog
-            updatedPersistentDog.lastVisitDate = Date()
-            
-            // Optimistic update: immediate UI + sync with error handling
-            cacheManager.updateLocalPersistentDog(updatedPersistentDog)
+            // Don't update lastVisitDate - this was an accidental check-in, dog never actually visited!
+            // Just refresh the UI after visit deletion
             self.dogs = cacheManager.getCurrentDogsWithVisits()
-            
-            try await self.persistentDogService.updatePersistentDog(updatedPersistentDog)
             
             // Refresh data
             await fetchDogs()

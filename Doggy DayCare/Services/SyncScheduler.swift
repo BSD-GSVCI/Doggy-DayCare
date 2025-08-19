@@ -9,7 +9,7 @@ class SyncScheduler: ObservableObject {
     
     // MARK: - Configuration
     
-    private let foregroundSyncInterval: TimeInterval = 10.0 // 10 seconds in foreground
+    private let foregroundSyncInterval: TimeInterval = 15.0 // 15 seconds in foreground
     private let minimumSyncInterval: TimeInterval = 1.0 // Minimum 1 second between syncs
     
     // MARK: - State
@@ -113,49 +113,10 @@ class SyncScheduler: ObservableObject {
     
     func performManualSync() async {
         #if DEBUG
-        print("🔄 Manual sync requested - performing full sync")
+        print("🔄 Manual sync requested")
         #endif
         
-        // Manual refresh should always do full sync, not incremental
-        // Prevent concurrent syncs
-        guard !isSyncing else {
-            #if DEBUG
-            print("🔄 Sync already in progress - skipping manual sync")
-            #endif
-            return
-        }
-        
-        isSyncing = true
-        lastSyncTime = Date()
-        
-        #if DEBUG
-        print("🔄 Starting full sync (no timestamp filtering)...")
-        #endif
-        
-        do {
-            // Fetch ALL active data without modifiedAfter parameter
-            async let persistentDogsTask = persistentDogService.fetchPersistentDogs()
-            async let visitsTask = visitService.fetchActiveVisits()
-            
-            let (persistentDogs, visits) = try await (persistentDogsTask, visitsTask)
-            
-            // Merge with local cache using intelligent timestamp comparison
-            cacheManager.mergeDataFromCloudKit(persistentDogs: persistentDogs, visits: visits)
-            
-            #if DEBUG
-            print("🔄 Full sync complete - fetched \(persistentDogs.count) dogs, \(visits.count) visits")
-            #endif
-            
-        } catch {
-            #if DEBUG
-            print("🔄 Full sync failed: \(error)")
-            #endif
-            
-            // Don't update lastSyncTime on failure
-            lastSyncTime = Date.distantPast
-        }
-        
-        isSyncing = false
+        await performIncrementalSync(forceSync: true)
     }
     
     // MARK: - Core Sync Logic
